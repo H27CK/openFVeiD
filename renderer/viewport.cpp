@@ -1233,8 +1233,14 @@ void Viewport::drawTrack(trackHandler* hTrack, RenderPass pass) {
                 }
             }
 
-            for (auto& am : mesh->instancedAssets) {
+            for (size_t assetIdx = 0; assetIdx < mesh->instancedAssets.size(); ++assetIdx) {
+                auto& am = mesh->instancedAssets[assetIdx];
                 if (am.vao != 0 && !am.instances.empty()) {
+                    if (assetIdx < myTrack->customAssets.size()) {
+                        const auto& asset = myTrack->customAssets[assetIdx];
+                        if (!asset.visible)
+                            continue;
+                    }
                     iShader->useUniform("isAsset", (GLuint)1);
                     glBindVertexArray(am.vao);
                     glDrawElementsInstanced(GL_TRIANGLES, am.indexCount, GL_UNSIGNED_INT, 0, (GLsizei)am.instances.size());
