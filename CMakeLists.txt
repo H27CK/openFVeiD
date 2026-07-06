@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.15)
 project(FVDPlusPlus VERSION 0.9.1 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE RelWithDebInfo)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
 if(WIN32)
@@ -16,7 +16,8 @@ endif()
 include(FetchContent)
 
 # GLFW (Windowing)
-FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git GIT_TAG 3.3.8)
+set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git GIT_TAG 3.4)
 FetchContent_MakeAvailable(glfw)
 
 # Dear ImGui (UI)
@@ -52,38 +53,41 @@ add_library(implot STATIC
 target_include_directories(implot PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(implot PRIVATE imgui) # Critical: ImPlot needs ImGui
 
-# --- Dependencies ---
-# GLM and GLEW
+# GLM
 if(WIN32)
-    find_package(glm REQUIRED)
-    find_package(GLEW REQUIRED)
-    set(GLM_INCLUDE_DIR ${glm_INCLUDE_DIRS})
-    set(GLEW_INCLUDE_DIR ${GLEW_INCLUDE_DIRS})
-    set(GLEW_LIBRARY GLEW::glew_s)
+    find_package(glm CONFIG REQUIRED)
 else()
-    # Try finding system packages first (CI or globally installed)
     find_package(glm QUIET)
-    find_package(GLEW QUIET)
-
-    if(glm_FOUND AND GLEW_FOUND)
-        set(GLM_INCLUDE_DIR ${glm_INCLUDE_DIRS})
-        set(GLEW_INCLUDE_DIR ${GLEW_INCLUDE_DIRS})
-        set(GLEW_LIBRARY GLEW::GLEW)
-    else()
-        # Fallback to local dependencies directory for local dev
+    if(NOT glm_FOUND)
         set(DEPS_ROOT "/path/to/dependencies")
         set(GLM_INCLUDE_DIR "${DEPS_ROOT}/glm-1.0.3")
-        set(GLEW_ROOT "${DEPS_ROOT}/glew-2.3.1")
-        set(GLEW_INCLUDE_DIR "${GLEW_ROOT}/include")
-        set(GLEW_LIBRARY "${GLEW_ROOT}/lib/libGLEW.so")
     endif()
 endif()
 
+# Vulkan (renderer) + glslangValidator (SPIR-V compilation)
+find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
+
+# --- Vulkan shader compilation ---
+file(GLOB VULKAN_SHADER_SOURCES "shaders/vulkan/*.vert" "shaders/vulkan/*.frag")
+set(VULKAN_SHADER_OUTPUTS "")
+foreach(SHADER_SOURCE ${VULKAN_SHADER_SOURCES})
+    get_filename_component(SHADER_NAME ${SHADER_SOURCE} NAME)
+    set(SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders_vulkan/${SHADER_NAME}.spv)
+    add_custom_command(
+        OUTPUT ${SHADER_OUTPUT}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/shaders_vulkan
+        COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} -V ${SHADER_SOURCE} -o ${SHADER_OUTPUT}
+        DEPENDS ${SHADER_SOURCE}
+        COMMENT "Compiling ${SHADER_NAME} to SPIR-V"
+    )
+    list(APPEND VULKAN_SHADER_OUTPUTS ${SHADER_OUTPUT})
+endforeach()
+add_custom_target(vulkan_shaders DEPENDS ${VULKAN_SHADER_OUTPUTS})
+
 # --- Embedded Assets ---
 add_executable(bin2c tools/bin2c.cpp)
-file(GLOB ASSETS_SHADERS RELATIVE ${CMAKE_SOURCE_DIR} "shaders/*")
 file(GLOB ASSETS_FONTS RELATIVE ${CMAKE_SOURCE_DIR} "fonts/*")
-set(ASSETS ${ASSETS_SHADERS} ${ASSETS_FONTS})
+set(ASSETS ${ASSETS_FONTS})
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/embedded_assets.cpp
@@ -96,11 +100,14 @@ add_custom_command(
 # --- Sources ---
 file(GLOB_RECURSE CORE_SOURCES "core/*.cpp")
 set(RENDERER_SOURCES
-    renderer/glframebuffer.cpp
-    renderer/gltexture.cpp
-    renderer/shaderprogram.cpp
+    renderer/spirvlocator.cpp
     renderer/trackmesh.cpp
     renderer/viewport.cpp
+    renderer/vulkan/vulkanbuffer.cpp
+    renderer/vulkan/vulkancontext.cpp
+    renderer/vulkan/vulkanframebuffer.cpp
+    renderer/vulkan/vulkanpipeline.cpp
+    renderer/vulkan/vulkantexture.cpp
 )
 
 if(WIN32)
@@ -119,56 +126,79 @@ add_executable(fvd
     ${RES_FILE}
     ${CMAKE_CURRENT_BINARY_DIR}/embedded_assets.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
 )
+add_dependencies(fvd vulkan_shaders)
 
 execute_process(COMMAND git rev-parse --short HEAD OUTPUT_VARIABLE GIT_COMMIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE)
-target_compile_definitions(fvd PRIVATE GIT_COMMIT_HASH="${GIT_COMMIT_HASH}")
+target_compile_definitions(fvd PRIVATE
+    GIT_COMMIT_HASH="${GIT_COMMIT_HASH}"
+    FVD_SPIRV_DIR="${CMAKE_CURRENT_BINARY_DIR}/shaders_vulkan"
+    GLFW_INCLUDE_NONE
+)
 target_include_directories(fvd PRIVATE
     .
     core/
     renderer/
     ext/
     ${GLM_INCLUDE_DIR}
-    ${GLEW_INCLUDE_DIR}
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
     ${implot_SOURCE_DIR}
 )
+if(TARGET glm::glm)
+    target_link_libraries(fvd PRIVATE glm::glm)
+endif()
 
 # OS Specific libs
 if(UNIX AND NOT APPLE)
     target_link_libraries(fvd PRIVATE
         glfw
-        ${GLEW_LIBRARY}
         imgui
         implot
-        GL
+        Vulkan::Vulkan
         X11
         pthread
         dl
     )
     target_link_options(fvd PRIVATE -rdynamic)
 elseif(APPLE)
-    find_library(OPENGL_LIBRARY OpenGL REQUIRED)
+    find_library(COREFOUNDATION_LIBRARY CoreFoundation REQUIRED)
     target_link_libraries(fvd PRIVATE
         glfw
-        ${GLEW_LIBRARY}
         imgui
         implot
-        ${OPENGL_LIBRARY}
+        Vulkan::Vulkan
+        ${COREFOUNDATION_LIBRARY}
+    )
+    set_target_properties(fvd PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "FVD++"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "org.openfvd.fvdplusplus"
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Info.plist.in
+    )
+    add_custom_command(TARGET fvd POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/track_styles
+            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/track_styles
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_BINARY_DIR}/shaders_vulkan
+            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/shaders_vulkan
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/icons/fvd_orig.icns
+            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/fvd.icns
+        COMMENT "Bundling track styles, shaders and icon"
     )
 elseif(WIN32)
     target_link_libraries(fvd PRIVATE
         glfw
-        ${GLEW_LIBRARY}
         imgui
         implot
-        opengl32
+        Vulkan::Vulkan
         dbghelp
         winmm
     )
-    target_compile_definitions(fvd PRIVATE GLEW_STATIC NOMINMAX)
+    target_compile_definitions(fvd PRIVATE NOMINMAX)
 endif()
-
-

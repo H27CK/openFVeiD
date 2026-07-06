@@ -1,0 +1,47 @@
+name: Build Windows
+
+on:
+  workflow_call:
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-2022
+    env:
+      VCPKG_ROOT: 'C:\vcpkg'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $ver = "1.3.283.0"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$ver/windows/VulkanSDK-$ver-Installer.exe" -OutFile vulkan-sdk.exe
+          Start-Process .\vulkan-sdk.exe -ArgumentList "--accept-licenses","--default-answer","--confirm-command","install" -Wait
+          "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
+          "C:\VulkanSDK\$ver\Bin" >> $env:GITHUB_PATH
+
+      - name: Install Dependencies via vcpkg
+        run: |
+          vcpkg install glm:x64-windows-static
+
+      - name: Configure CMake
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Package Windows
+        shell: pwsh
+        run: |
+          mkdir dist
+          copy build/Release/fvd.exe dist/
+          xcopy /e /i build\shaders_vulkan dist\shaders_vulkan
+          xcopy /e /i track_styles dist\track_styles
+          Compress-Archive -Path dist/* -DestinationPath fvd-windows-x64.zip
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: fvd-windows-x64.zip

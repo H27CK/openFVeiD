@@ -1,0 +1,37 @@
+name: Build Linux
+
+on:
+  workflow_call:
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libvulkan-dev glslang-tools libglm-dev
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j $(nproc)
+
+      - name: Package Linux
+        run: |
+          mkdir dist
+          cp build/fvd dist/
+          strip dist/fvd
+          cp -r build/shaders_vulkan dist/
+          cp -r track_styles dist/
+          zip -r fvd-linux-x64.zip dist/*
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binary
+          path: fvd-linux-x64.zip

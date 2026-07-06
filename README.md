@@ -1,6 +1,6 @@
 # FVD++ (Modernized)
 
-FVD++ is an advanced Force Vector Design tool for creating high-precision roller coaster layouts. This version is a modern rewrite of the original software, transitioning from legacy Qt-based roots to a high-performance **Dear ImGui** architecture. This transition establishes a modern foundation for expanding the tool with advanced design features. All ongoing development and updates will be hosted in this repository (macOS support is currently in development). Note that while this repository is named `openFVeiD` to distinguish it from repositories containing legacy code, the application itself is still referred to as **FVD++**.
+FVD++ is an advanced Force Vector Design tool for creating high-precision roller coaster layouts. This version is a modern rewrite of the original software, transitioning from legacy Qt-based roots to a high-performance **Dear ImGui** architecture. This transition establishes a modern foundation for expanding the tool with advanced design features. All ongoing development and updates will be hosted in this repository. Note that while this repository is named `openFVeiD` to distinguish it from repositories containing legacy code, the application itself is still referred to as **FVD++**.
 
 ## Heritage & Credits
 
@@ -8,10 +8,11 @@ This project is a successor to the original [openFVD](https://github.com/altlenn
 
 - **Original Author:** [Stephan "Lenny" Alt](https://github.com/altlenny) (<alt.stephan@web.de>)
 - **Modernization & Maintenance:** [Veia](https://github.com/H27CK) (<h27ck@proton.me>)
+- **Vulkan Renderer & macOS Port:** [Ercan "geforcefan" Akyürek](https://github.com/geforcefan) (<ercan.akyuerek@gmail.com>)
 
 ### Original Contributors
 - Lucas van den Bosch (Documentation and tutorials)
-- Ercan "geforcefan" Akyürek (Early cross-platform testing)
+- Ercan "geforcefan" Akyürek (Early cross-platform testing, Vulkan renderer, macOS support)
 
 ### Testing & QA (0.9+)
 Special thanks to:
@@ -36,7 +37,7 @@ Special thanks to:
   - Track export to NoLimits 2 (`.nl2elem`) and CSV.
   - Track import from CSV with automated Bezier generation and geometric smoothing.
   - Multi-STL 3D environment loading integrated with project files.
-- **Renderer:** OpenGL viewport rendering with shader management, floor grid, and shadow projection.
+- **Renderer:** Vulkan viewport rendering (MoltenVK on macOS) with floor grid and shadow projection.
 
 ## Documentation
 
@@ -123,27 +124,35 @@ The following clearance envelope track styles have been contributed by the commu
 
 ### Dependencies
 
-FVD++ requires the following libraries compiled from source:
+FVD++ renders through Vulkan and needs:
 - **GLM** (v1.0.3)
-- **GLEW** (v2.3.1)
+- **Vulkan loader and headers** plus **glslangValidator** for SPIR-V compilation (a Vulkan SDK installation covers both)
 
 #### System Prerequisites
 
-Ensure you have CMake, standard build tools, and OpenGL/windowing libraries installed on your Linux system:
+Ensure you have CMake, standard build tools, Vulkan and windowing libraries installed on your system:
 - **Linux (Debian/Ubuntu):**
   ```bash
-  sudo apt install -y build-essential cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+  sudo apt install -y build-essential cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libvulkan-dev glslang-tools libglm-dev
+  ```
+- **macOS (Homebrew):**
+  ```bash
+  brew install cmake glm molten-vk vulkan-loader vulkan-headers glslang
+  ```
+- **Windows:** install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/) and GLM via vcpkg:
+  ```powershell
+  vcpkg install glm:x64-windows-static
   ```
 
-#### Configuring GLM and GLEW Paths
+#### Configuring the GLM Path
 
-If GLEW and GLM are not found automatically by CMake, it will fall back to a local dependency folder.
+If GLM is not found automatically by CMake, it will fall back to a local dependency folder.
 To configure this fallback:
 1. Open `CMakeLists.txt` and locate the fallback section:
    ```cmake
    set(DEPS_ROOT "/path/to/dependencies")
    ```
-2. Modify `/path/to/dependencies` to point to the directory containing your compiled `glm-1.0.3` and `glew-2.3.1` folders.
+2. Modify `/path/to/dependencies` to point to the directory containing your `glm-1.0.3` folder.
 
 ### Build Commands
 
@@ -157,7 +166,7 @@ To configure this fallback:
    ```
    *(Adjust the `CMAKE_TOOLCHAIN_FILE` path to match your local vcpkg or dependency setup if different.)*
 
-#### Linux
+#### Linux / macOS
 
 1. Open a terminal and run:
    ```bash
@@ -165,6 +174,17 @@ To configure this fallback:
    cmake ..
    make
    ```
+
+On macOS the build produces an application bundle with the community track styles included. Launch it with:
+```bash
+open build/fvd.app
+```
+
+Downloaded builds (for example CI artifacts) are not notarized, so macOS reports them as damaged. Clear the quarantine flag once:
+```bash
+xattr -cr fvd.app
+```
+User data (options, logs, track styles, skyboxes) lives in `~/Library/Application Support/FVD++`. The shipped track styles are copied there on first launch; running the app from a source checkout keeps using the checkout's `track_styles/` directly.
 
 ## License
 

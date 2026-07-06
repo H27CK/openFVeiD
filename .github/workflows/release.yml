@@ -1,0 +1,59 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name (e.g. v0.9.1)'
+        required: true
+        default: 'v0.9-alpha'
+      release_title:
+        description: 'Release title'
+        required: true
+        default: 'FVD++ v0.9'
+      is_draft:
+        description: 'Create as a draft?'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+  macos:
+    uses: ./.github/workflows/build-macos.yml
+
+  create-release:
+    name: Create Release
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-binary
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-binary
+
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-binary
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name }}
+          name: ${{ github.event.inputs.release_title }}
+          draft: ${{ github.event.inputs.is_draft }}
+          files: |
+            fvd-windows-x64.zip
+            fvd-linux-x64.zip
+            fvd-macos-arm64.zip

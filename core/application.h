@@ -1,6 +1,7 @@
 /*
 #    FVD++, an advanced coaster design tool
 #    Copyright (C) 2026 Veia <h27ck@proton.me>
+#    Copyright (C) 2026 Ercan Akyürek <ercan.akyuerek@gmail.com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -43,12 +44,14 @@
 #include <memory>
 #include <filesystem>
 
-#include <GL/glew.h>
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+
+#include "renderer/vulkan/vulkancontext.h"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+#include "imgui_impl_vulkan.h"
 #include "imgui_internal.h"
 #include "implot.h"
 
@@ -82,6 +85,7 @@ private:
     void FramePacing(double frameStartTime);
 
     GLFWwindow* window = nullptr;
+    VulkanContext vulkanContext;
 
     std::string currentFilePath = "";
     bool firstFrame = true;
