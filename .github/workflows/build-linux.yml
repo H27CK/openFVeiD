@@ -2,6 +2,10 @@ name: Build Linux
 
 on:
   workflow_call:
+    inputs:
+      version:
+        type: string
+        default: ''
 
 jobs:
   build-linux:
@@ -16,7 +20,7 @@ jobs:
           sudo apt-get install -y build-essential cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libvulkan-dev glslang-tools libglm-dev
 
       - name: Configure CMake
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFVD_VERSION=${{ inputs.version }}
 
       - name: Build
         run: cmake --build build -j $(nproc)

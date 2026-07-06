@@ -82,6 +82,10 @@ bool Application::Initialize() {
 #define GIT_COMMIT_HASH "unknown"
 #endif
 
+#ifndef FVD_VERSION
+#define FVD_VERSION "unknown"
+#endif
+
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
@@ -731,7 +735,7 @@ void Application::Render(float deltaTime) {
         ImGui::Text("FVD++ (Force Vector Design)");
         ImGui::Separator();
 
-        ImGui::Text("Version: 0.9.1");
+        ImGui::Text("Version: %s", FVD_VERSION);
         ImGui::Text("Commit: %s", GIT_COMMIT_HASH);
 
         ImGui::Separator();

@@ -2,6 +2,10 @@ name: Build macOS
 
 on:
   workflow_call:
+    inputs:
+      version:
+        type: string
+        default: ''
 
 jobs:
   build-macos:
@@ -16,7 +20,7 @@ jobs:
           brew install cmake glm molten-vk vulkan-loader vulkan-headers glslang
 
       - name: Configure CMake
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFVD_VERSION=${{ inputs.version }}
 
       - name: Build
         run: cmake --build build -j 4

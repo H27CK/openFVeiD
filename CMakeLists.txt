@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.15)
-project(FVDPlusPlus VERSION 0.9.1 LANGUAGES C CXX)
+project(FVDPlusPlus VERSION 0.9.3 LANGUAGES C CXX)
+
+set(FVD_VERSION "" CACHE STRING "Version string shown in the app, injected by the release workflow")
+if(FVD_VERSION STREQUAL "")
+    execute_process(COMMAND git describe --tags --always --dirty
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE FVD_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+endif()
+if(FVD_VERSION STREQUAL "")
+    set(FVD_VERSION "v${PROJECT_VERSION}-dev")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -133,6 +143,7 @@ add_dependencies(fvd vulkan_shaders)
 execute_process(COMMAND git rev-parse --short HEAD OUTPUT_VARIABLE GIT_COMMIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE)
 target_compile_definitions(fvd PRIVATE
     GIT_COMMIT_HASH="${GIT_COMMIT_HASH}"
+    FVD_VERSION="${FVD_VERSION}"
     FVD_SPIRV_DIR="${CMAKE_CURRENT_BINARY_DIR}/shaders_vulkan"
     GLFW_INCLUDE_NONE
 )
