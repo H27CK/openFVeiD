@@ -19,6 +19,7 @@
 
 #include "core/application.h"
 #include "core/workingdirectory.h"
+#include "customstyle.h"
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -569,6 +570,28 @@ void Application::Render(float deltaTime) {
                 exitViewport();
                 showOptions = true;
             }
+            if (ImGui::MenuItem("Reload Assets")) {
+                for (auto th : trackList) {
+                    if (th->mMesh) {
+                        th->mMesh->clearParametricStyles();
+                    }
+                    track* t = th->trackData;
+                    if (t) {
+                        if (!t->customStyleFile.empty()) {
+                            t->importParametricStyle(t->customStyleFile);
+                        } else {
+                            for (auto& asset : t->customAssets) {
+                                if (asset.loadedModel) {
+                                    delete asset.loadedModel;
+                                    asset.loadedModel = nullptr;
+                                }
+                            }
+                            t->requestUpdateTrack(0, 0);
+                        }
+                    }
+                }
+                viewport.markSceneDirty();
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Quit")) {
                 exitViewport();
@@ -895,7 +918,7 @@ void Application::Render(float deltaTime) {
                 ImGui::Text("FPS Limit");
                 ImGui::TableNextColumn();
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                ImGui::SliderInt("##FPSLimit", &gloParent->mOptions->targetFPS, 30, 240, "%d FPS");
+                ImGui::SliderInt("##FPSLimit", &gloParent->mOptions->targetFPS, 30, 400, "%d FPS");
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Limits the maximum frame rate to save CPU/GPU power.\nOnly active when VSync is OFF.");
 
@@ -1056,6 +1079,32 @@ void Application::Render(float deltaTime) {
                 }
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key.");
+                }
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Ctrl Incr.");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Sets the absolute value increment when using Ctrl + Scroll Wheel over input fields.");
+                }
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::InputFloat("##CtrlScrollInc", &gloParent->mOptions->scrollCtrlIncrement, 0.001f, 0.1f, "%.3f")) {
+                    gloParent->mOptions->scrollCtrlIncrement = std::max(0.0001f, gloParent->mOptions->scrollCtrlIncrement);
+                }
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Shift Incr.");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Sets the absolute value increment when using Shift + Scroll Wheel over input fields.");
+                }
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::InputFloat("##ShiftScrollInc", &gloParent->mOptions->scrollShiftIncrement, 0.1f, 10.0f, "%.3f")) {
+                    gloParent->mOptions->scrollShiftIncrement = std::max(0.0001f, gloParent->mOptions->scrollShiftIncrement);
                 }
 
                 auto KeyBindButton = [](const char* label, int& key) {

@@ -1226,8 +1226,11 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
             vkCmdDrawIndexed(commandBuffer, am.indexCount, (uint32_t)am.instances.size(), 0, 0, 0);
         };
 
-        for (auto& am : mesh->instancedAssets)
-            drawInstanced(am, 1);
+        for (size_t assetIdx = 0; assetIdx < mesh->instancedAssets.size(); ++assetIdx) {
+            if (assetIdx < myTrack->customAssets.size() && !myTrack->customAssets[assetIdx].visible)
+                continue;
+            drawInstanced(mesh->instancedAssets[assetIdx], 1);
+        }
         for (auto& am : mesh->instancedExtrusions)
             drawInstanced(am, 0);
     }

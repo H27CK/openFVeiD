@@ -456,6 +456,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
 
                     PROP_ROW("Interval", if (ImGui::DragFloat("##Interval", &asset.interval, 0.1f, 0.01f, 100.0f)) myTrack->requestUpdateTrack(0, 0);)
                     PROP_ROW("Color", if (ImGui::ColorEdit3("##Color", &asset.color.x)) myTrack->requestUpdateTrack(0, 0);)
+                    PROP_ROW("Visible", if (ImGui::Checkbox("##Visible", &asset.visible)) myTrack->requestUpdateTrack(0, 0);)
 
                     END_PROP_TABLE()
                     if (ImGui::Button("Remove Asset")) {

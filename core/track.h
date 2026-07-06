@@ -74,6 +74,7 @@ public:
         glm::vec3 color = glm::vec3(0.7f);       // Asset color
         bool fullLayout = false;                 // Automatically cover entire layout
         bool toEnd = true;                       // Automatically repeat to end of track
+        bool visible = true;                     // Whether the asset is visible
     };
 
     track();
