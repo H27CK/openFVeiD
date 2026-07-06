@@ -1546,6 +1546,7 @@ std::string track::loadTrack(istream& file) {
                         asset.fullLayout = (asset.startDist == 0.0f && asset.endDist < 0.0f);
                         asset.toEnd = (asset.endDist < 0.0f);
                     }
+                    asset.visible = true;
 
                     customAssets.push_back(asset);
                 }
@@ -1769,6 +1770,7 @@ bool track::importParametricStyle(const std::string& filepath) {
                         asset.fullLayout = (asset.startDist == 0.0f && asset.endDist < 0.0f);
                         asset.toEnd = (asset.endDist < 0.0f);
                     }
+                    asset.visible = true;
 
                     asset.filepath = baseDir + filename;
                     asset.loadedModel = nullptr;
@@ -2089,6 +2091,7 @@ void track::loadAsstChunk(std::istream& file, uint8_t version, uint32_t length) 
         asset.color.z = readFloat(&file);
         asset.fullLayout = readBool(&file);
         asset.toEnd = readBool(&file);
+        asset.visible = true;
         asset.loadedModel = nullptr;
         customAssets.push_back(asset);
     }

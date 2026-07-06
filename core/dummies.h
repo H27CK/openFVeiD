@@ -72,6 +72,8 @@ struct DummyOptions {
     float sunYaw = 0.0f;
     float stallSpeed = 0.1f;
     float graphSpacingLimit = 0.1f;
+    float scrollCtrlIncrement = 0.1f;
+    float scrollShiftIncrement = 10.0f;
 
     glm::vec3 graphColors[14] = {
         glm::vec3(1.0f, 0.2f, 0.2f), // EditRoll
@@ -117,6 +119,8 @@ struct DummyOptions {
                 << mouseSensitivity << " "
                 << msaaSamples << " "
                 << screenshotMultiplier << " "
+                << scrollCtrlIncrement << " "
+                << scrollShiftIncrement << " "
                 << shadowsEnabled << " "
                 << showFPS << " "
                 << skyboxEnabled << " "
@@ -141,10 +145,11 @@ struct DummyOptions {
         std::ifstream in(path);
         if (in) {
             std::string version;
-            in >> version;
+            if (!(in >> version))
+                return;
 
             if (version == "FVD_OPT_V1") {
-                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> keyBackward >> keyForward >> keyLeft >> keyRight >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> screenshotMultiplier >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> stlShadowsEnabled >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
+                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> keyBackward >> keyForward >> keyLeft >> keyRight >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> screenshotMultiplier >> scrollCtrlIncrement >> scrollShiftIncrement >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> stlShadowsEnabled >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
 
                 for (int i = 0; i < 14; ++i) {
                     if (!(in >> graphColors[i].x >> graphColors[i].y >> graphColors[i].z))
