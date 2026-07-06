@@ -5,6 +5,7 @@
 #    FVD++, an advanced coaster design tool for NoLimits
 #    Copyright (C) 2012-2015, Stephan "Lenny" Alt <alt.stephan@web.de>
 #    Copyright (C) 2026 Veia <h27ck@proton.me>
+#    Copyright (C) 2026 Ercan Akyürek <ercan.akyuerek@gmail.com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -20,11 +21,12 @@
 #    along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <GL/glew.h>
 #include <vector>
 #include <string>
 #include <map>
 #include <glm/glm.hpp>
+
+#include "renderer/vulkan/vulkanbuffer.h"
 
 typedef struct tracknode_s {
     glm::vec3 pos;
@@ -64,10 +66,10 @@ struct track_asset_instance_t {
 };
 
 struct track_asset_mesh_t {
-    GLuint vao = 0;
-    GLuint vbo_base = 0;
-    GLuint ebo_base = 0;
-    GLuint vbo_instances = 0;
+    VulkanBuffer baseVertexBuffer;
+    VulkanBuffer baseIndexBuffer;
+    VulkanBuffer instanceBuffer;
+    bool baseUploaded = false;
     int indexCount = 0;
     std::vector<track_asset_instance_t> instances;
     CustomTrackStyle* sourceModel = nullptr;
@@ -89,7 +91,6 @@ public:
     CustomTrackStyle* customStyle;
     std::string loadedStyleFile;
 
-    GLuint SplineBuffer;
     std::vector<gpu_spline_node_t> gpuSpline;
 
     int currentMeshQuality = -1;
@@ -137,8 +138,9 @@ public:
     std::vector<int> posList;
     std::vector<int> secList;
 
-    GLuint TrackBuffer[7], TrackObject[5], TrackIndices[5];
-    GLuint HeartBuffer[5], HeartObject[5], HeartIndices[5];
+    VulkanBuffer splineBuffer;
+    VkDescriptorSet splineStorageSet = VK_NULL_HANDLE;
+    VulkanBuffer heartlineBuffer;
 
     track* trackData;
 
@@ -149,8 +151,6 @@ public:
     // Performance Caches
     std::vector<mnode*> allPoints;
     size_t gpuSplineCapacity = 0;
-    size_t trackBufferCapacity = 0;
-    std::map<GLuint, size_t> instanceCapacities;
 
 private:
     int j;

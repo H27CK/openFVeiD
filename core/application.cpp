@@ -1,6 +1,7 @@
 /*
 #    FVD++, an advanced coaster design tool
 #    Copyright (C) 2026 Veia <h27ck@proton.me>
+#    Copyright (C) 2026 Ercan Akyürek <ercan.akyuerek@gmail.com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -17,6 +18,7 @@
 */
 
 #include "core/application.h"
+#include "core/workingdirectory.h"
 #include "customstyle.h"
 
 #ifdef _WIN32
@@ -45,6 +47,7 @@ bool Application::Initialize() {
 #ifdef _WIN32
     timeBeginPeriod(1);
 #endif
+    initializeWorkingDirectory();
     common::InitLogger("fvd.log");
     common::InitCrashHandler();
 
@@ -69,16 +72,18 @@ bool Application::Initialize() {
         std::cerr << "GLFW Error " << error << ": " << description << std::endl;
     });
 
+    glfwInitVulkanLoader(vkGetInstanceProcAddr);
     if (!glfwInit())
         return false;
 
-    const char* glsl_version = "#version 460 core";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "unknown"
+#endif
+
+#ifndef FVD_VERSION
+#define FVD_VERSION "unknown"
 #endif
 
 #define STRINGIFY(x) #x
@@ -100,12 +105,10 @@ bool Application::Initialize() {
 #endif
 
     glfwMaximizeWindow(window);
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(gloParent->mOptions->vSync ? 1 : 0);
 
-    glewExperimental = GL_TRUE;
-    if (glewInit() != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW!" << std::endl;
+    vulkanContext.setVSync(gloParent->mOptions->vSync);
+    if (!vulkanContext.initialize(window)) {
+        std::cerr << "Failed to initialize Vulkan!" << std::endl;
         return false;
     }
 
@@ -157,8 +160,31 @@ bool Application::Initialize() {
         style.Colors[ImGuiCol_WindowBg].w = 1.0f;
     }
 
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+
+    static VkFormat swapchainColorFormat = vulkanContext.swapchainFormat;
+    ImGui_ImplVulkan_InitInfo vulkanInitInfo = {};
+    vulkanInitInfo.ApiVersion = VK_API_VERSION_1_3;
+    vulkanInitInfo.Instance = vulkanContext.instance;
+    vulkanInitInfo.PhysicalDevice = vulkanContext.physicalDevice;
+    vulkanInitInfo.Device = vulkanContext.device;
+    vulkanInitInfo.QueueFamily = vulkanContext.graphicsQueueFamily;
+    vulkanInitInfo.Queue = vulkanContext.graphicsQueue;
+    vulkanInitInfo.DescriptorPoolSize = 64;
+    vulkanInitInfo.MinImageCount = 2;
+    vulkanInitInfo.ImageCount = vulkanContext.swapchainImageCount;
+    vulkanInitInfo.UseDynamicRendering = true;
+    vulkanInitInfo.PipelineInfoMain.PipelineRenderingCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &swapchainColorFormat,
+        .depthAttachmentFormat = VulkanContext::depthFormat,
+        .stencilAttachmentFormat = VulkanContext::depthFormat,
+    };
+    if (!ImGui_ImplVulkan_Init(&vulkanInitInfo)) {
+        std::cerr << "Failed to initialize the ImGui Vulkan backend!" << std::endl;
+        return false;
+    }
 
     gViewport = &viewport;
     viewport.initialize(1280, 720);
@@ -240,7 +266,11 @@ void Application::Run() {
             ImGui::GetIO().AddMousePosEvent(-1000000.0f, -1000000.0f);
         }
 
-        ImGui_ImplOpenGL3_NewFrame();
+        if (!vulkanContext.acquireFrame()) {
+            continue;
+        }
+
+        ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
@@ -264,22 +294,17 @@ void Application::Run() {
         Render(deltaTime);
 
         ImGui::Render();
-        int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(mistColor.x * mistColor.w, mistColor.y * mistColor.w, mistColor.z * mistColor.w, mistColor.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-            GLFWwindow* backup_current_context = glfwGetCurrentContext();
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-            glfwMakeContextCurrent(backup_current_context);
-        }
+        vulkanContext.beginSwapchainRendering(mistColor.x * mistColor.w, mistColor.y * mistColor.w,
+                                              mistColor.z * mistColor.w);
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), vulkanContext.currentCommandBuffer());
 
         // 4. Present
-        glfwSwapBuffers(window);
+        vulkanContext.endFrame();
+
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+        }
 
         // 5. Frame Pacing (VSync OFF path)
         if (!gloParent->mOptions->vSync) {
@@ -710,7 +735,7 @@ void Application::Render(float deltaTime) {
         ImGui::Text("FVD++ (Force Vector Design)");
         ImGui::Separator();
 
-        ImGui::Text("Version: 0.9.1");
+        ImGui::Text("Version: %s", FVD_VERSION);
         ImGui::Text("Commit: %s", GIT_COMMIT_HASH);
 
         ImGui::Separator();
@@ -952,7 +977,7 @@ void Application::Render(float deltaTime) {
                 ImGui::Text("VSync");
                 ImGui::TableNextColumn();
                 if (ImGui::Checkbox("##VSync", &gloParent->mOptions->vSync))
-                    glfwSwapInterval(gloParent->mOptions->vSync ? 1 : 0);
+                    vulkanContext.setVSync(gloParent->mOptions->vSync);
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Synchronizes the frame rate with your monitor's refresh rate.\nEliminates screen tearing but may add minor input lag.");
                 ImGui::EndTable();
@@ -1350,7 +1375,7 @@ void Application::Render(float deltaTime) {
 
             viewport.setShowPOVMarker3D(graphView.getShowPOVMarker());
             viewport.render(trackList);
-            ImGui::Image((void*)(intptr_t)viewport.getOutputTexture(), viewportPanelSize, ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image((ImTextureID)viewport.getOutputTexture(), viewportPanelSize);
         }
         ImGui::End();
 
@@ -1626,14 +1651,19 @@ void Application::Shutdown() {
     gloParent->mOptions->save("options.cfg");
     LOG_INFO("FVD++ shutting down...");
 
+    vulkanContext.waitIdle();
     for (auto track : trackList)
         delete track;
     trackList.clear();
 
-    ImGui_ImplOpenGL3_Shutdown();
+    viewport.shutdown();
+
+    ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImPlot::DestroyContext();
     ImGui::DestroyContext();
+
+    vulkanContext.shutdown();
 
     glfwDestroyWindow(window);
     glfwTerminate();

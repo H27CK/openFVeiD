@@ -32,6 +32,9 @@ fvd
 build/
 *.log
 
+# macOS
+.DS_Store
+
 # local configuration
 imgui.ini
 options.cfg

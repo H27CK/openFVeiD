@@ -1,0 +1,19 @@
+name: Build
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, vulkan-renderer]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+  macos:
+    uses: ./.github/workflows/build-macos.yml
