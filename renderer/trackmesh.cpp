@@ -2,6 +2,7 @@
 #    FVD++, an advanced coaster design tool for NoLimits
 #    Copyright (C) 2012-2015, Stephan "Lenny" Alt <alt.stephan@web.de>
 #    Copyright (C) 2026 Veia <h27ck@proton.me>
+#    Copyright (C) 2026 Ercan Akyürek <ercan.akyuerek@gmail.com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -18,6 +19,7 @@
 */
 
 #include "trackmesh.h"
+#include "renderer/vulkan/vulkancontext.h"
 #include "mnode.h"
 #include "section.h"
 #include "track.h"
@@ -30,32 +32,22 @@
 #include <chrono>
 #include <map>
 
+
+static void releaseAssetMesh(track_asset_mesh_t& assetMesh) {
+    if (gVulkanContext)
+        gVulkanContext->waitIdle();
+    assetMesh.baseVertexBuffer.destroy();
+    assetMesh.baseIndexBuffer.destroy();
+    assetMesh.instanceBuffer.destroy();
+    assetMesh.baseUploaded = false;
+}
+
 trackMesh::trackMesh(track* parent) {
     isInit = false;
     customStyle = nullptr;
     primitiveCylinder = nullptr;
     primitiveBox = nullptr;
     currentMeshQuality = -1;
-
-    for (int i = 0; i < 5; ++i) {
-        TrackObject[i] = 0;
-        TrackIndices[i] = 0;
-        HeartObject[i] = 0;
-        HeartIndices[i] = 0;
-    }
-    for (int i = 0; i < 7; ++i)
-        TrackBuffer[i] = 0;
-    for (int i = 0; i < 5; ++i)
-        HeartBuffer[i] = 0;
-    SplineBuffer = 0;
-
-    glGenVertexArrays(5, TrackObject);
-    glGenBuffers(7, TrackBuffer);
-    glGenBuffers(5, TrackIndices);
-    glGenVertexArrays(5, HeartObject);
-    glGenBuffers(5, HeartBuffer);
-    glGenBuffers(5, HeartIndices);
-    glGenBuffers(1, &SplineBuffer);
 
     trackVertexSize = 0;
     numRails = 0;
@@ -69,28 +61,12 @@ trackMesh::~trackMesh() {
         delete customStyle;
         customStyle = nullptr;
     }
-    for (auto& am : instancedAssets) {
-        if (am.vao)
-            glDeleteVertexArrays(1, &am.vao);
-        if (am.vbo_base)
-            glDeleteBuffers(1, &am.vbo_base);
-        if (am.ebo_base)
-            glDeleteBuffers(1, &am.ebo_base);
-        if (am.vbo_instances)
-            glDeleteBuffers(1, &am.vbo_instances);
-    }
+    for (auto& am : instancedAssets)
+        releaseAssetMesh(am);
     instancedAssets.clear();
 
-    for (auto& am : instancedExtrusions) {
-        if (am.vao)
-            glDeleteVertexArrays(1, &am.vao);
-        if (am.vbo_base)
-            glDeleteBuffers(1, &am.vbo_base);
-        if (am.ebo_base)
-            glDeleteBuffers(1, &am.ebo_base);
-        if (am.vbo_instances)
-            glDeleteBuffers(1, &am.vbo_instances);
-    }
+    for (auto& am : instancedExtrusions)
+        releaseAssetMesh(am);
     instancedExtrusions.clear();
 
     if (primitiveCylinder)
@@ -98,33 +74,13 @@ trackMesh::~trackMesh() {
     if (primitiveBox)
         delete primitiveBox;
 
-    if (TrackObject[0] != 0)
-        glDeleteVertexArrays(5, TrackObject);
-    if (HeartObject[0] != 0)
-        glDeleteVertexArrays(5, HeartObject);
-    if (TrackBuffer[0] != 0)
-        glDeleteBuffers(7, TrackBuffer);
-    if (HeartBuffer[0] != 0)
-        glDeleteBuffers(5, HeartBuffer);
-    if (SplineBuffer != 0)
-        glDeleteBuffers(1, &SplineBuffer);
-    if (TrackIndices[0] != 0)
-        glDeleteBuffers(5, TrackIndices);
-    if (HeartIndices[0] != 0)
-        glDeleteBuffers(5, HeartIndices);
+    if (gVulkanContext)
+        gVulkanContext->waitIdle();
+    splineBuffer.destroy();
+    heartlineBuffer.destroy();
 }
 
 void trackMesh::init() {
-    if (TrackObject[0] == 0) {
-        glGenVertexArrays(5, TrackObject);
-        glGenBuffers(7, TrackBuffer);
-        glGenBuffers(5, TrackIndices);
-        glGenVertexArrays(5, HeartObject);
-        glGenBuffers(5, HeartBuffer);
-        glGenBuffers(5, HeartIndices);
-        glGenBuffers(1, &SplineBuffer);
-    }
-
     isInit = true;
     buildMeshes(0);
 }
@@ -311,15 +267,7 @@ void trackMesh::buildMeshes(int fromNode) {
         instancedExtrusions.push_back({});
     }
     while (instancedExtrusions.size() > trackData->customExtrusions.size()) {
-        auto& am = instancedExtrusions.back();
-        if (am.vao)
-            glDeleteVertexArrays(1, &am.vao);
-        if (am.vbo_base)
-            glDeleteBuffers(1, &am.vbo_base);
-        if (am.ebo_base)
-            glDeleteBuffers(1, &am.ebo_base);
-        if (am.vbo_instances)
-            glDeleteBuffers(1, &am.vbo_instances);
+        releaseAssetMesh(instancedExtrusions.back());
         instancedExtrusions.pop_back();
     }
 
@@ -329,13 +277,7 @@ void trackMesh::buildMeshes(int fromNode) {
 
         CustomTrackStyle* targetModel = (ext.shape == track::ExtrusionShape::Cylindrical) ? primitiveCylinder : primitiveBox;
         if (am.sourceModel != targetModel) {
-            if (am.vao != 0) {
-                glDeleteVertexArrays(1, &am.vao);
-                glDeleteBuffers(1, &am.vbo_base);
-                glDeleteBuffers(1, &am.ebo_base);
-                glDeleteBuffers(1, &am.vbo_instances);
-                am.vao = 0;
-            }
+            releaseAssetMesh(am);
             am.sourceModel = targetModel;
             am.instances.clear(); // Full rebuild if model changed
         }
@@ -398,15 +340,7 @@ void trackMesh::buildMeshes(int fromNode) {
         instancedAssets.push_back({});
     }
     while (instancedAssets.size() > trackData->customAssets.size()) {
-        auto& am = instancedAssets.back();
-        if (am.vao)
-            glDeleteVertexArrays(1, &am.vao);
-        if (am.vbo_base)
-            glDeleteBuffers(1, &am.vbo_base);
-        if (am.ebo_base)
-            glDeleteBuffers(1, &am.ebo_base);
-        if (am.vbo_instances)
-            glDeleteBuffers(1, &am.vbo_instances);
+        releaseAssetMesh(instancedAssets.back());
         instancedAssets.pop_back();
     }
 
@@ -431,13 +365,7 @@ void trackMesh::buildMeshes(int fromNode) {
             continue;
 
         if (assetMesh.sourceModel != asset.loadedModel) {
-            if (assetMesh.vao != 0) {
-                glDeleteVertexArrays(1, &assetMesh.vao);
-                glDeleteBuffers(1, &assetMesh.vbo_base);
-                glDeleteBuffers(1, &assetMesh.ebo_base);
-                glDeleteBuffers(1, &assetMesh.vbo_instances);
-                assetMesh.vao = 0;
-            }
+            releaseAssetMesh(assetMesh);
             assetMesh.sourceModel = asset.loadedModel;
             assetMesh.instances.clear();
         }
@@ -554,25 +482,13 @@ void trackMesh::recolorTrack() {
 
 void trackMesh::clearParametricStyles() {
     for (auto& am : instancedExtrusions) {
-        if (am.vao != 0) {
-            glDeleteVertexArrays(1, &am.vao);
-            glDeleteBuffers(1, &am.vbo_base);
-            glDeleteBuffers(1, &am.ebo_base);
-            glDeleteBuffers(1, &am.vbo_instances);
-            am.vao = 0;
-        }
+        releaseAssetMesh(am);
         am.instances.clear();
     }
     instancedExtrusions.clear();
 
     for (auto& am : instancedAssets) {
-        if (am.vao != 0) {
-            glDeleteVertexArrays(1, &am.vao);
-            glDeleteBuffers(1, &am.vbo_base);
-            glDeleteBuffers(1, &am.ebo_base);
-            glDeleteBuffers(1, &am.vbo_instances);
-            am.vao = 0;
-        }
+        releaseAssetMesh(am);
         am.instances.clear();
     }
     instancedAssets.clear();
@@ -581,210 +497,51 @@ void trackMesh::clearParametricStyles() {
 }
 
 void trackMesh::updateVertexArrays(int fromNode) {
-    // Calculate start distance for incremental updates (same logic as buildMeshes)
-    float startDist = 0.0f;
-    if (fromNode > 0) {
-        int numPoints = trackData->getNumPoints();
-        if (fromNode <= numPoints) {
-            startDist = std::max(0.0f, (float)trackData->getPoint(fromNode)->fTotalLength - 0.2f);
-        }
-    }
+    (void)fromNode;
+    if (!gVulkanContext)
+        return;
 
-    // 1. Spline SSBO
+    gVulkanContext->waitIdle();
+
     if (!gpuSpline.empty()) {
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SplineBuffer);
         size_t requiredSize = gpuSpline.size() * sizeof(gpu_spline_node_t);
-
-        if (fromNode == 0 || requiredSize > gpuSplineCapacity) {
-            // Orphan and Full Upload
-            glBufferData(GL_SHADER_STORAGE_BUFFER, requiredSize, nullptr, GL_DYNAMIC_DRAW);
-            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, requiredSize, gpuSpline.data());
-            gpuSplineCapacity = requiredSize;
-        } else {
-            // Partial Upload
-            int spliceIndex = std::floor(startDist / 0.1f);
-            if (spliceIndex < (int)gpuSpline.size()) {
-                size_t offset = spliceIndex * sizeof(gpu_spline_node_t);
-                size_t size = (gpuSpline.size() - spliceIndex) * sizeof(gpu_spline_node_t);
-                glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, size, gpuSpline.data() + spliceIndex);
-            }
+        bool grew = requiredSize > splineBuffer.capacity;
+        splineBuffer.ensureCapacity(*gVulkanContext, requiredSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        splineBuffer.write(gpuSpline.data(), requiredSize);
+        if (splineStorageSet == VK_NULL_HANDLE) {
+            splineStorageSet = gVulkanContext->allocateStorageBufferSet(splineBuffer.buffer, splineBuffer.capacity);
+        } else if (grew) {
+            gVulkanContext->updateStorageBufferSet(splineStorageSet, splineBuffer.buffer, splineBuffer.capacity);
         }
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, SplineBuffer);
+        gpuSplineCapacity = splineBuffer.capacity;
     }
 
-    // 2. Main Track Buffer (Rails/Crossties)
-    glBindBuffer(GL_ARRAY_BUFFER, TrackBuffer[0]);
-    size_t requiredTrackSize = rails.size() * sizeof(tracknode_t);
-    if (fromNode == 0 || requiredTrackSize > trackBufferCapacity) {
-        glBufferData(GL_ARRAY_BUFFER, requiredTrackSize, nullptr, GL_DYNAMIC_DRAW);
-        if (requiredTrackSize > 0)
-            glBufferSubData(GL_ARRAY_BUFFER, 0, requiredTrackSize, rails.data());
-        trackBufferCapacity = requiredTrackSize;
-    } else if (requiredTrackSize > 0) {
-        glBufferSubData(GL_ARRAY_BUFFER, 0, requiredTrackSize, rails.data());
-    }
-
-    glBindVertexArray(TrackObject[0]);
-    // Attributes only need to be set once during initialization or if buffer layout changes
-    // but for now we keep them to ensure correct state after possible GL state changes
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), 0);
-    glVertexAttribPointer(7, 3, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), (void*)(3 * sizeof(float)));
-    glVertexAttribPointer(8, 2, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), (void*)(6 * sizeof(float)));
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), (void*)(8 * sizeof(float)));
-    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), (void*)(9 * sizeof(float)));
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), (void*)(10 * sizeof(float)));
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), (void*)(11 * sizeof(float)));
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), (void*)(12 * sizeof(float)));
-    glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, sizeof(tracknode_t), (void*)(13 * sizeof(float)));
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glEnableVertexAttribArray(2);
-    glEnableVertexAttribArray(3);
-    glEnableVertexAttribArray(4);
-    glEnableVertexAttribArray(5);
-    glEnableVertexAttribArray(6);
-    glEnableVertexAttribArray(7);
-    glEnableVertexAttribArray(8);
-
-    // 3. Instanced Assets
-    for (auto& am : instancedAssets) {
+    auto uploadInstanced = [&](track_asset_mesh_t& am) {
         if (am.instances.empty() || am.sourceModel == nullptr)
-            continue;
-        if (am.vao == 0) {
-            glGenVertexArrays(1, &am.vao);
-            glGenBuffers(1, &am.vbo_base);
-            glGenBuffers(1, &am.ebo_base);
-            glGenBuffers(1, &am.vbo_instances);
-            glBindVertexArray(am.vao);
-            glBindBuffer(GL_ARRAY_BUFFER, am.vbo_base);
-            glBufferData(GL_ARRAY_BUFFER, am.sourceModel->vertices.size() * sizeof(StyleVertex), am.sourceModel->vertices.data(), GL_STATIC_DRAW);
-            glEnableVertexAttribArray(0);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(StyleVertex), (void*)0);
-            glEnableVertexAttribArray(1);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(StyleVertex), (void*)(3 * sizeof(float)));
-            glEnableVertexAttribArray(2);
-            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(StyleVertex), (void*)(6 * sizeof(float)));
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, am.ebo_base);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, am.sourceModel->indices.size() * sizeof(unsigned int), am.sourceModel->indices.data(), GL_STATIC_DRAW);
-
-            glBindBuffer(GL_ARRAY_BUFFER, am.vbo_instances);
-            glBufferData(GL_ARRAY_BUFFER, am.instances.size() * sizeof(track_asset_instance_t), am.instances.data(), GL_DYNAMIC_DRAW);
-            for (int i = 0; i < 4; ++i) {
-                glEnableVertexAttribArray(3 + i);
-                glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(track_asset_instance_t), (void*)(i * sizeof(glm::vec4)));
-                glVertexAttribDivisor(3 + i, 1);
-            }
-            glEnableVertexAttribArray(7);
-            glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(track_asset_instance_t), (void*)(sizeof(glm::mat4)));
-            glVertexAttribDivisor(7, 1);
-            glEnableVertexAttribArray(8);
-            glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, sizeof(track_asset_instance_t), (void*)(sizeof(glm::mat4) + sizeof(glm::vec4)));
-            glVertexAttribDivisor(8, 1);
-            glEnableVertexAttribArray(9);
-            glVertexAttribPointer(9, 3, GL_FLOAT, GL_FALSE, sizeof(track_asset_instance_t), (void*)(sizeof(glm::mat4) + 2 * sizeof(glm::vec4)));
-            glVertexAttribDivisor(9, 1);
-            glBindVertexArray(0);
-        } else {
-            glBindBuffer(GL_ARRAY_BUFFER, am.vbo_instances);
-            size_t requiredSize = am.instances.size() * sizeof(track_asset_instance_t);
-
-            if (fromNode == 0 || requiredSize > instanceCapacities[am.vbo_instances]) {
-                glBufferData(GL_ARRAY_BUFFER, requiredSize, nullptr, GL_DYNAMIC_DRAW);
-                glBufferSubData(GL_ARRAY_BUFFER, 0, requiredSize, am.instances.data());
-                instanceCapacities[am.vbo_instances] = requiredSize;
-            } else {
-                int spliceIndex = 0;
-                if (startDist > 0.0f) {
-                    for (int i = (int)am.instances.size() - 1; i >= 0; --i) {
-                        if (am.instances[i].matrix[3].x < startDist) {
-                            spliceIndex = i + 1;
-                            break;
-                        }
-                    }
-                }
-
-                if (spliceIndex < (int)am.instances.size()) {
-                    size_t offset = spliceIndex * sizeof(track_asset_instance_t);
-                    size_t size = (am.instances.size() - spliceIndex) * sizeof(track_asset_instance_t);
-                    glBufferSubData(GL_ARRAY_BUFFER, offset, size, am.instances.data() + spliceIndex);
-                }
-            }
+            return;
+        if (!am.baseUploaded) {
+            size_t vertexBytes = am.sourceModel->vertices.size() * sizeof(StyleVertex);
+            size_t indexBytes = am.sourceModel->indices.size() * sizeof(unsigned int);
+            am.baseVertexBuffer.ensureCapacity(*gVulkanContext, vertexBytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            am.baseVertexBuffer.write(am.sourceModel->vertices.data(), vertexBytes);
+            am.baseIndexBuffer.ensureCapacity(*gVulkanContext, indexBytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+            am.baseIndexBuffer.write(am.sourceModel->indices.data(), indexBytes);
+            am.baseUploaded = true;
         }
+        size_t instanceBytes = am.instances.size() * sizeof(track_asset_instance_t);
+        am.instanceBuffer.ensureCapacity(*gVulkanContext, instanceBytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        am.instanceBuffer.write(am.instances.data(), instanceBytes);
+    };
+    for (auto& am : instancedAssets)
+        uploadInstanced(am);
+    for (auto& am : instancedExtrusions)
+        uploadInstanced(am);
+
+    if (!heartline.empty()) {
+        size_t heartlineBytes = heartline.size() * sizeof(meshnode_t);
+        heartlineBuffer.ensureCapacity(*gVulkanContext, heartlineBytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        heartlineBuffer.write(heartline.data(), heartlineBytes);
     }
-
-    // 4. Instanced Extrusions
-    for (auto& am : instancedExtrusions) {
-        if (am.instances.empty() || am.sourceModel == nullptr)
-            continue;
-        if (am.vao == 0) {
-            glGenVertexArrays(1, &am.vao);
-            glGenBuffers(1, &am.vbo_base);
-            glGenBuffers(1, &am.ebo_base);
-            glGenBuffers(1, &am.vbo_instances);
-            glBindVertexArray(am.vao);
-            glBindBuffer(GL_ARRAY_BUFFER, am.vbo_base);
-            glBufferData(GL_ARRAY_BUFFER, am.sourceModel->vertices.size() * sizeof(StyleVertex), am.sourceModel->vertices.data(), GL_STATIC_DRAW);
-            glEnableVertexAttribArray(0);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(StyleVertex), (void*)0);
-            glEnableVertexAttribArray(1);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(StyleVertex), (void*)(3 * sizeof(float)));
-            glEnableVertexAttribArray(2);
-            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(StyleVertex), (void*)(6 * sizeof(float)));
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, am.ebo_base);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, am.sourceModel->indices.size() * sizeof(unsigned int), am.sourceModel->indices.data(), GL_STATIC_DRAW);
-
-            glBindBuffer(GL_ARRAY_BUFFER, am.vbo_instances);
-            glBufferData(GL_ARRAY_BUFFER, am.instances.size() * sizeof(track_asset_instance_t), am.instances.data(), GL_DYNAMIC_DRAW);
-            for (int i = 0; i < 4; ++i) {
-                glEnableVertexAttribArray(3 + i);
-                glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(track_asset_instance_t), (void*)(i * sizeof(glm::vec4)));
-                glVertexAttribDivisor(3 + i, 1);
-            }
-            glEnableVertexAttribArray(7);
-            glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(track_asset_instance_t), (void*)(sizeof(glm::mat4)));
-            glVertexAttribDivisor(7, 1);
-            glEnableVertexAttribArray(8);
-            glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, sizeof(track_asset_instance_t), (void*)(sizeof(glm::mat4) + sizeof(glm::vec4)));
-            glVertexAttribDivisor(8, 1);
-            glEnableVertexAttribArray(9);
-            glVertexAttribPointer(9, 3, GL_FLOAT, GL_FALSE, sizeof(track_asset_instance_t), (void*)(sizeof(glm::mat4) + 2 * sizeof(glm::vec4)));
-            glVertexAttribDivisor(9, 1);
-            glBindVertexArray(0);
-        } else {
-            glBindBuffer(GL_ARRAY_BUFFER, am.vbo_instances);
-            size_t requiredSize = am.instances.size() * sizeof(track_asset_instance_t);
-
-            if (fromNode == 0 || requiredSize > instanceCapacities[am.vbo_instances]) {
-                glBufferData(GL_ARRAY_BUFFER, requiredSize, nullptr, GL_DYNAMIC_DRAW);
-                glBufferSubData(GL_ARRAY_BUFFER, 0, requiredSize, am.instances.data());
-                instanceCapacities[am.vbo_instances] = requiredSize;
-            } else {
-                int spliceIndex = 0;
-                if (startDist > 0.0f) {
-                    for (int i = (int)am.instances.size() - 1; i >= 0; --i) {
-                        if (am.instances[i].matrix[3].x < startDist) {
-                            spliceIndex = i + 1;
-                            break;
-                        }
-                    }
-                }
-
-                if (spliceIndex < (int)am.instances.size()) {
-                    size_t offset = spliceIndex * sizeof(track_asset_instance_t);
-                    size_t size = (am.instances.size() - spliceIndex) * sizeof(track_asset_instance_t);
-                    glBufferSubData(GL_ARRAY_BUFFER, offset, size, am.instances.data() + spliceIndex);
-                }
-            }
-        }
-    }
-
-    glBindVertexArray(HeartObject[0]);
-    glBindBuffer(GL_ARRAY_BUFFER, HeartBuffer[0]);
-    glBufferData(GL_ARRAY_BUFFER, heartline.size() * sizeof(meshnode_t), nullptr, GL_DYNAMIC_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, heartline.size() * sizeof(meshnode_t), heartline.data());
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(meshnode_t), 0);
-    glEnableVertexAttribArray(0);
-    glBindVertexArray(0);
 }
 
 void trackMesh::generatePrimitives() {
@@ -798,14 +555,8 @@ void trackMesh::generatePrimitives() {
     if (primitiveBox)
         delete primitiveBox;
     for (auto& am : instancedExtrusions) {
-        if (am.vao != 0) {
-            glDeleteVertexArrays(1, &am.vao);
-            glDeleteBuffers(1, &am.vbo_base);
-            glDeleteBuffers(1, &am.ebo_base);
-            glDeleteBuffers(1, &am.vbo_instances);
-            am.vao = 0;
-            am.sourceModel = nullptr;
-        }
+        releaseAssetMesh(am);
+        am.sourceModel = nullptr;
     }
 
     int sides = 8, rings = 5;

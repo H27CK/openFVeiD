@@ -1,6 +1,7 @@
 /*
 #    FVD++, an advanced coaster design tool
 #    Copyright (C) 2026 Veia <h27ck@proton.me>
+#    Copyright (C) 2026 Ercan Akyürek <ercan.akyuerek@gmail.com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -19,23 +20,23 @@
 #ifndef VIEWPORT_H
 #define VIEWPORT_H
 
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <vector>
 #include <string>
 
-class ShaderProgram;
-class GlTexture;
-class GlFramebuffer;
+#include "renderer/vulkan/vulkanbuffer.h"
+#include "renderer/vulkan/vulkanframebuffer.h"
+#include "renderer/vulkan/vulkanpipeline.h"
+#include "renderer/vulkan/vulkantexture.h"
+
 class trackHandler;
 class mnode;
 
 struct Mesh {
-    GLuint object;
-    GLuint buffer;
-    GLuint ebo = 0;
+    VulkanBuffer vertexBuffer;
+    VulkanBuffer indexBuffer;
     int count = 0;
 };
 
@@ -61,11 +62,11 @@ public:
     };
 
     void initialize(int width, int height);
+    void shutdown();
     void resize(int width, int height);
     void render(const std::vector<trackHandler*>& trackList);
     void update(float deltaTime);
 
-    // Camera Controls
     void moveCamera(glm::vec3 delta);
     void rotateCamera(float yaw, float pitch);
     void panCamera(float dx, float dy);
@@ -74,7 +75,6 @@ public:
     void resetView();
     void focusOnSection(int sectionIdx);
 
-    // Settings
     void setMistColor(glm::vec3 color);
     void setFOV(float f) {
         if (fov != f) {
@@ -105,13 +105,11 @@ public:
         return isCaptured;
     }
 
-    // View Modes
     ViewMode getViewMode() const {
         return viewMode;
     }
     void setViewMode(ViewMode mode);
 
-    // POV Mode
     bool getPOVMode() const {
         return povMode;
     }
@@ -154,7 +152,6 @@ public:
         }
     }
 
-    // Orthographic Mode
     bool getOrthoMode() const {
         return viewMode != ViewMode::Perspective;
     }
@@ -171,7 +168,6 @@ public:
         }
     }
 
-    // Shader Mode
     void setTrackShaderMode(int mode) {
         if (curTrackShader != mode) {
             curTrackShader = mode;
@@ -184,57 +180,52 @@ public:
 
     void captureScreenshot(int multiplier, const std::string& path, const std::vector<trackHandler*>& trackList);
 
-    GLuint getOutputTexture();
+    void* getOutputTexture();
     std::vector<StlMesh> stlMeshes;
 
 private:
-    void initShaders();
+    void initPipelines();
+    void destroyPipelines();
     void initTextures();
     void initFloorMesh();
 
     void buildMatrices(float offset = 0.0f);
-    void drawSky();
-    void drawFloor();
-    void drawOrthoGrid();
+    void drawSky(VkCommandBuffer commandBuffer);
+    void drawFloor(VkCommandBuffer commandBuffer);
+    void drawOrthoGrid(VkCommandBuffer commandBuffer);
     enum class RenderPass {
-        NormalMap,
         Main,
         PlanarShadow
     };
 
-    void drawTrack(trackHandler* track, RenderPass pass);
-    void drawStls(RenderPass pass);
-    void drawMarkers(RenderPass pass);
+    void drawTrack(VkCommandBuffer commandBuffer, trackHandler* track, RenderPass pass);
+    void drawStls(VkCommandBuffer commandBuffer, RenderPass pass);
+    void drawMarkers(VkCommandBuffer commandBuffer);
+    void refreshOutputTexture();
 
-    // Framebuffers
-    GLuint msaaFBO;
-    GLuint msaaColorTex;
-    GLuint msaaDepthRB;
-    GlFramebuffer* normalMapFb;
-    GlFramebuffer* occlusionFb;
-    GlFramebuffer* finalOutputFb;
+    VulkanFramebuffer finalOutputFb;
+    void* outputTextureId = nullptr;
 
-    // Shaders
-    ShaderProgram* skyShader;
-    ShaderProgram* floorShader;
-    ShaderProgram* trackShader;
-    ShaderProgram* trackInstancedShader;
-    ShaderProgram* normalMapShader;
-    ShaderProgram* occlusionShader;
-    ShaderProgram* simpleShadowShader;
-    ShaderProgram* stlShader;
+    VulkanPipeline skyPipeline;
+    VulkanPipeline floorPipeline;
+    VulkanPipeline heartlinePipeline;
+    VulkanPipeline trackInstancedPipeline;
+    VulkanPipeline shadowInstancedPipeline;
+    VulkanPipeline shadowStlPipeline;
+    VulkanPipeline stlPipeline;
+    VulkanPipeline markerPipeline;
+    VulkanPipeline orthoGridPipeline;
 
-    GlTexture* skyTexture;
-    GlTexture* floorTexture;
-    GlTexture* rasterTexture;
+    VulkanTexture* skyTexture = nullptr;
+    VulkanTexture floorTexture;
+    VulkanTexture rasterTexture;
+    VulkanTexture dummyCubeTexture;
+    VulkanBuffer zeroAttributeBuffer;
 
-    // Meshes
     Mesh skyMesh;
     Mesh floorMesh;
     Mesh markerMesh;
-    Mesh orthoGridMesh;
 
-    // Camera State
     glm::vec3 freeFlyPos;
     glm::vec3 freeFlyDir;
     glm::vec3 freeFlySide;
@@ -245,7 +236,6 @@ private:
     glm::mat4 ProjectionMatrix;
     glm::mat4 ModelMatrix;
     glm::mat4 ProjectionModelMatrix;
-    glm::mat4 lightSpaceMatrix;
 
     float fov;
     glm::vec3 mistColor;
@@ -265,6 +255,7 @@ private:
     int shadowMode;
     int curTrackShader;
     int msaaSamples;
+    VkSampleCountFlagBits currentSampleCount = VK_SAMPLE_COUNT_1_BIT;
 
     bool sceneDirty = true;
     bool isCaptured = false;
@@ -272,4 +263,4 @@ private:
     bool shadowIsHighQuality = false;
 };
 
-#endif // VIEWPORT_H
+#endif
