@@ -33,7 +33,7 @@ inline bool ValueScroll(float* v, float step = 1.0f, float ctrlStep = 0.1f) {
     if (ImGui::IsItemHovered()) {
         ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
         if (ImGui::GetIO().MouseWheel != 0.0f) {
-            float s = step;
+            float s = gloParent->mOptions->scrollIncrement;
             if (ImGui::GetIO().KeyCtrl) {
                 s = gloParent->mOptions->scrollCtrlIncrement;
             } else if (ImGui::GetIO().KeyShift) {
@@ -50,7 +50,7 @@ inline bool ValueScrollInt(int* v, int step = 1, int ctrlStep = 1) {
     if (ImGui::IsItemHovered()) {
         ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
         if (ImGui::GetIO().MouseWheel != 0.0f) {
-            int s = step;
+            int s = std::max(1, (int)gloParent->mOptions->scrollIncrement);
             if (ImGui::GetIO().KeyCtrl) {
                 s = std::max(1, (int)gloParent->mOptions->scrollCtrlIncrement);
             } else if (ImGui::GetIO().KeyShift) {

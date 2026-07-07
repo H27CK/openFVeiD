@@ -1088,7 +1088,20 @@ void Application::Render(float deltaTime) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text("Ctrl Incr.");
+                ImGui::Text("Incr. Scroll");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Sets the absolute value increment when using Scroll Wheel over input fields.");
+                }
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::InputFloat("##ScrollInc", &gloParent->mOptions->scrollIncrement, 0.01f, 1.0f, "%.3f")) {
+                    gloParent->mOptions->scrollIncrement = std::max(0.0001f, gloParent->mOptions->scrollIncrement);
+                }
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Incr. Ctrl");
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Sets the absolute value increment when using Ctrl + Scroll Wheel over input fields.");
                 }
@@ -1101,7 +1114,7 @@ void Application::Render(float deltaTime) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text("Shift Incr.");
+                ImGui::Text("Incr. Shift");
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Sets the absolute value increment when using Shift + Scroll Wheel over input fields.");
                 }
