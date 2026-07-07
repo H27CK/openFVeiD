@@ -188,7 +188,7 @@ User data (options, logs, track styles, skyboxes) lives in `~/Library/Applicatio
 
 ## Installing Track Styles
 
-Track styles customize the rails, cross-sections, and clearances of your coasters. You can easily install them using either of the following methods.
+Track styles customize the rails, spines, cross-sections, etc. of your coasters. You can easily install them using either of the following methods.
 
 ### Location of the `track_styles` Folder:
 - **Windows / Linux:** Located right next to your `fvd.exe` / `fvd` executable.
