@@ -44,7 +44,9 @@
 #include <memory>
 #include <filesystem>
 
+#ifndef GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_NONE
+#endif
 #include <GLFW/glfw3.h>
 
 #include "renderer/vulkan/vulkancontext.h"
