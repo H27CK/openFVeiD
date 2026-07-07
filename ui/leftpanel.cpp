@@ -411,7 +411,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
                             myTrack->requestUpdateTrack(0, 0);
                             myTrack->processPendingUpdates();
                         } if (ImGui::IsItemHovered()) {
-                            ImGui::SetTooltip("When enabled, shading follows the track's spline smoothly");
+                            ImGui::SetTooltip("When enabled, shading follows the track's spline smoothly.");
                         })
 
                     PROP_ROW(
