@@ -3,6 +3,7 @@
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aUv;
+layout(location = 10) in float aFaceRefZ;
 
 // Instance data
 layout(location = 3) in mat4 aInstanceMatrix;
@@ -32,6 +33,7 @@ layout(set = 0, binding = 0) uniform TrackInstancedUniforms {
     float uTrackLength;
     float heartline;
     int isAsset;
+    int smoothAlongSpline;
     int padding;
 } u;
 
@@ -135,6 +137,18 @@ void main() {
     vec3 iNorm = normalize(mix(nodes[i0].norm.xyz, nodes[i1].norm.xyz, t));
     vec3 iDir = normalize(mix(nodes[i0].dir.xyz, nodes[i1].dir.xyz, t));
 
+    float normalRefZ = (u.smoothAlongSpline == 0) ? aFaceRefZ : aPosition.z;
+    float normalDist = startDist + (normalRefZ - minZ);
+    normalDist = clamp(normalDist, 0.0, u.uTrackLength);
+    float fNormalIndex = normalDist / 0.1;
+    int n0 = int(floor(fNormalIndex));
+    int n1 = n0 + 1;
+    float nt = fract(fNormalIndex);
+
+    vec3 nLat = normalize(mix(nodes[n0].lat.xyz, nodes[n1].lat.xyz, nt));
+    vec3 nNorm = normalize(mix(nodes[n0].norm.xyz, nodes[n1].norm.xyz, nt));
+    vec3 nDir = normalize(mix(nodes[n0].dir.xyz, nodes[n1].dir.xyz, nt));
+
     // Sample selection state per-vertex
     float selected = mix(nodes[i0].lat.w, nodes[i1].lat.w, t);
 
@@ -175,10 +189,10 @@ void main() {
     vec3 localNormal = aNormal;
     if (shouldInvert) localNormal = -localNormal;
 
-    vec3 warpedNormal = normalize(-(iLat * localNormal.x) - (iNorm * localNormal.y) + (iDir * localNormal.z));
-    bNormal = mat3(u.modelMatrix * u.anchorBase) * warpedNormal;
+    vec3 warpedNormal = normalize(-(nLat * localNormal.x) - (nNorm * localNormal.y) + (nDir * localNormal.z));
+    bNormal = mat3(u.anchorBase) * warpedNormal;
 
     bPosition = worldPos - vec4(u.eyePos.xyz, 0.0);
-
+    
     gl_Position = u.projectionMatrix * u.modelMatrix * worldPos;
 }

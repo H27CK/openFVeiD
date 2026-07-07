@@ -32,7 +32,6 @@
 #include <chrono>
 #include <map>
 
-
 static void releaseAssetMesh(track_asset_mesh_t& assetMesh) {
     if (gVulkanContext)
         gVulkanContext->waitIdle();
@@ -364,6 +363,8 @@ void trackMesh::buildMeshes(int fromNode) {
         if (!asset.loadedModel->isValid)
             continue;
 
+        assetMesh.smoothNormalsAlongSpline = asset.smoothAlongSpline;
+
         if (assetMesh.sourceModel != asset.loadedModel) {
             releaseAssetMesh(assetMesh);
             assetMesh.sourceModel = asset.loadedModel;
@@ -584,6 +585,7 @@ void trackMesh::generatePrimitives() {
             v.pos = glm::vec3(cos(angle), sin(angle), z);
             v.normal = glm::vec3(cos(angle), sin(angle), 0.0f);
             v.uv = glm::vec2((float)s / (float)sides, z);
+            v.faceRefZ = 0.0f;
             primitiveCylinder->vertices.push_back(v);
         }
     }
@@ -612,9 +614,11 @@ void trackMesh::generatePrimitives() {
             v1.pos = p[f];
             v1.normal = n[f];
             v1.uv = glm::vec2(0.0f, z);
+            v1.faceRefZ = 0.0f;
             v2.pos = p[(f + 1) % 4];
             v2.normal = n[f];
             v2.uv = glm::vec2(1.0f, z);
+            v2.faceRefZ = 0.0f;
             primitiveBox->vertices.push_back(v1);
             primitiveBox->vertices.push_back(v2);
         }
@@ -630,6 +634,15 @@ void trackMesh::generatePrimitives() {
             primitiveBox->indices.push_back(next);
             primitiveBox->indices.push_back(next + 1);
         }
+    }
+    for (size_t t = 0; t + 2 < primitiveBox->indices.size(); t += 3) {
+        unsigned int i0 = primitiveBox->indices[t];
+        unsigned int i1 = primitiveBox->indices[t + 1];
+        unsigned int i2 = primitiveBox->indices[t + 2];
+        float avgZ = (primitiveBox->vertices[i0].pos.z + primitiveBox->vertices[i1].pos.z + primitiveBox->vertices[i2].pos.z) / 3.0f;
+        primitiveBox->vertices[i0].faceRefZ = avgZ;
+        primitiveBox->vertices[i1].faceRefZ = avgZ;
+        primitiveBox->vertices[i2].faceRefZ = avgZ;
     }
     primitiveBox->isValid = true;
 }

@@ -75,6 +75,7 @@ public:
         bool fullLayout = false;                 // Automatically cover entire layout
         bool toEnd = true;                       // Automatically repeat to end of track
         bool visible = true;                     // Whether the asset is visible
+        bool smoothAlongSpline = true;           // Blend duplicate-vertex normals for smoother shading
     };
 
     track();

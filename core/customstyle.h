@@ -27,6 +27,7 @@ struct StyleVertex {
     glm::vec3 pos;
     glm::vec3 normal;
     glm::vec2 uv;
+    float faceRefZ;
 };
 
 class CustomTrackStyle {

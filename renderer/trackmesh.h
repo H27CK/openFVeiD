@@ -73,6 +73,7 @@ struct track_asset_mesh_t {
     int indexCount = 0;
     std::vector<track_asset_instance_t> instances;
     CustomTrackStyle* sourceModel = nullptr;
+    bool smoothNormalsAlongSpline = true;
 };
 
 struct gpu_spline_node_t {

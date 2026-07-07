@@ -459,6 +459,7 @@ void Viewport::initPipelines() {
         {7, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 64},
         {8, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 80},
         {9, 1, VK_FORMAT_R32G32B32_SFLOAT, 96},
+        {10, 0, VK_FORMAT_R32_SFLOAT, offsetof(StyleVertex, faceRefZ)},
     };
     VulkanPipelineConfig trackInstancedConfig = {
         .vertexSpirvPath = locateSpirvShader("track_instanced.vert"),
@@ -1181,7 +1182,7 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
         mesh->splineStorageSet != VK_NULL_HANDLE &&
         (!mesh->instancedAssets.empty() || !mesh->instancedExtrusions.empty())) {
 
-        auto drawInstanced = [&](track_asset_mesh_t& am, int isAsset) {
+        auto drawInstanced = [&](track_asset_mesh_t& am, int isAsset, int smoothAlongSpline) {
             if (am.instances.empty() || am.sourceModel == nullptr || !am.baseUploaded)
                 return;
             if (pass == RenderPass::PlanarShadow) {
@@ -1215,6 +1216,7 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
                     .trackLength = (float)myTrack->getTotalLength(),
                     .heartline = (float)myTrack->fHeart,
                     .isAsset = isAsset,
+                    .smoothAlongSpline = smoothAlongSpline,
                 };
                 trackInstancedPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
                 trackInstancedPipeline.bindStorageSet(commandBuffer, mesh->splineStorageSet);
@@ -1229,10 +1231,12 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
         for (size_t assetIdx = 0; assetIdx < mesh->instancedAssets.size(); ++assetIdx) {
             if (assetIdx < myTrack->customAssets.size() && !myTrack->customAssets[assetIdx].visible)
                 continue;
-            drawInstanced(mesh->instancedAssets[assetIdx], 1);
+            auto& am = mesh->instancedAssets[assetIdx];
+
+            drawInstanced(am, 1, am.smoothNormalsAlongSpline);
         }
         for (auto& am : mesh->instancedExtrusions)
-            drawInstanced(am, 0);
+            drawInstanced(am, 0, 1);
     }
 
     if (pass == RenderPass::Main && myTrack->drawHeartline != 1 &&

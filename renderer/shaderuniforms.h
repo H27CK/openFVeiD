@@ -83,6 +83,7 @@ struct TrackInstancedUniforms {
     float trackLength;
     float heartline;
     int32_t isAsset;
+    int32_t smoothAlongSpline;
     int32_t padding;
 };
 

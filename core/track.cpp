@@ -1672,15 +1672,15 @@ bool track::exportParametricStyle(const std::string& filepath) {
     std::ofstream out(filepath);
     if (!out)
         return false;
-    out << "FVD_STYLE_V1\n";
+    out << "FVD_STYLE_V2\n";
     for (const auto& ext : customExtrusions) {
         out << "EXTRUSION " << (int)ext.shape << " " << ext.size.x << " " << ext.size.y << " " << ext.offset.x << " " << ext.offset.y << "\n";
     }
     for (const auto& asset : customAssets) {
         std::string filename = std::filesystem::path(asset.filepath).filename().string();
-        out << "ASSET \"" << filename << "\" " << asset.startDist << " " << asset.endDist << " " << asset.interval << " "
+        out << "ASSET \"" << filename << "\" " << asset.startDist << " " << (asset.toEnd ? -1.0f : asset.endDist) << " " << asset.interval << " "
             << asset.color.x << " " << asset.color.y << " " << asset.color.z << " "
-            << (asset.fullLayout ? 1 : 0) << " " << (asset.toEnd ? 1 : 0) << "\n";
+            << (asset.fullLayout ? 1 : 0) << " " << (asset.toEnd ? 1 : 0) << " " << (asset.smoothAlongSpline ? 1 : 0) << "\n";
     }
     return true;
 }
@@ -1691,7 +1691,7 @@ bool track::importParametricStyle(const std::string& filepath) {
         return false;
     std::string version;
     in >> version;
-    if (version != "FVD_STYLE_V1")
+    if (version != "FVD_STYLE_V1" && version != "FVD_STYLE_V2")
         return false;
 
     std::string baseDir = std::filesystem::path(filepath).parent_path().string();
@@ -1761,14 +1761,20 @@ bool track::importParametricStyle(const std::string& filepath) {
                 std::stringstream pss(params);
                 if (pss >> asset.startDist >> asset.endDist >> asset.interval >> asset.color.x >> asset.color.y >> asset.color.z) {
                     // Try to read optional flags
-                    int fl = 0, te = 0;
-                    if (pss >> fl >> te) {
+                    int fl = 0, te = 0, blend = 1;
+                    if (pss >> fl >> te >> blend) {
                         asset.fullLayout = (fl != 0);
                         asset.toEnd = (te != 0);
+                        asset.smoothAlongSpline = (blend != 0);
+                    } else if (pss >> fl >> te) {
+                        asset.fullLayout = (fl != 0);
+                        asset.toEnd = (te != 0);
+                        asset.smoothAlongSpline = true;
                     } else {
                         // Fallback for older .fvdstyle files
                         asset.fullLayout = (asset.startDist == 0.0f && asset.endDist < 0.0f);
                         asset.toEnd = (asset.endDist < 0.0f);
+                        asset.smoothAlongSpline = true;
                     }
                     asset.visible = true;
 
