@@ -43,6 +43,11 @@ add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
 )
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
+if(MSVC)
+    target_compile_options(imgui PRIVATE /w)
+else()
+    target_compile_options(imgui PRIVATE -w)
+endif()
 
 # ImPlot (Graphs)
 FetchContent_Declare(implot GIT_REPOSITORY https://github.com/epezent/implot.git GIT_TAG master)
@@ -62,6 +67,11 @@ add_library(implot STATIC
 )
 target_include_directories(implot PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(implot PRIVATE imgui) # Critical: ImPlot needs ImGui
+if(MSVC)
+    target_compile_options(implot PRIVATE /w)
+else()
+    target_compile_options(implot PRIVATE -w)
+endif()
 
 # GLM
 if(WIN32)
