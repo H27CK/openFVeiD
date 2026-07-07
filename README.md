@@ -45,7 +45,7 @@ Special thanks to:
 
 ## Community Track Styles
 
-The following parametric track styles have been contributed by the community:
+The following parametric track styles have been contributed by the community. See [How to Install Track Styles](https://github.com/H27CK/FVeiD#installing-track-styles) for instructions:
 
 | Author | Style | Version |
 | :--- | :--- | :---: |
@@ -185,6 +185,34 @@ Downloaded builds (for example CI artifacts) are not notarized, so macOS reports
 xattr -cr fvd.app
 ```
 User data (options, logs, track styles, skyboxes) lives in `~/Library/Application Support/FVD++`. The shipped track styles are copied there on first launch; running the app from a source checkout keeps using the checkout's `track_styles/` directly.
+
+## Installing Track Styles
+
+Track styles customize the rails, cross-sections, and clearances of your coasters. You can easily install them using either of the following methods.
+
+### Location of the `track_styles` Folder:
+- **Windows / Linux:** Located right next to your `fvd.exe` / `fvd` executable.
+- **macOS:** Located inside your user's Application Support directory: `~/Library/Application Support/FVD++`. *(You can open Finder, press `Cmd+Shift+G`, and paste this path to navigate there directly.)*
+
+---
+
+### Method 1: Install All Community Styles at Once (Recommended)
+
+With every official release, we publish a pre-packaged `track_styles.zip` containing all available community styles.
+1. Download `track_styles.zip` from the [Latest GitHub Release](https://github.com/H27CK/openFVeiD/releases/latest).
+2. Extract the ZIP. It will contain a `community` folder.
+3. Move or copy this `community` folder directly into your local `track_styles` directory.
+4. Use **File > Reload Assets** in the main menu (or restart FVD++) to immediately use them!
+
+---
+
+### Method 2: Install Separate Track Styles Individually
+
+If you want to download a specific style from the repository (e.g. from the `track_styles/` folder):
+1. Navigate to the style directory on GitHub (for example, `track_styles/Loundlim/Clearance Envelopes/`).
+2. Download the `.fvdstyle` file (which defines the style) and its associated `.glb` mesh asset file (which contains the 3D model).
+3. Place **both files next to each other** inside your local `track_styles` directory (or a custom subfolder inside it, such as `track_styles/mine/`).
+4. Use **File > Reload Assets** in the main menu (or restart FVD++) to immediately reload and select the style in the drop-down menu!
 
 ## License
 
