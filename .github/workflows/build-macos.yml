@@ -27,9 +27,9 @@ jobs:
 
       - name: Package macOS
         run: |
-          strip -x build/fvd.app/Contents/MacOS/fvd
-          codesign --force --deep --sign - build/fvd.app
-          ditto -c -k --keepParent build/fvd.app fvd-macos-arm64.zip
+          strip -x "build/FVD++.app/Contents/MacOS/FVD++"
+          codesign --force --deep --sign - "build/FVD++.app"
+          ditto -c -k --keepParent "build/FVD++.app" fvd-macos-arm64.zip
 
       - name: Upload macOS Artifact
         uses: actions/upload-artifact@v4

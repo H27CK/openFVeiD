@@ -167,7 +167,9 @@ target_include_directories(fvd PRIVATE
     ${imgui_SOURCE_DIR}/backends
     ${implot_SOURCE_DIR}
 )
-if(TARGET glm::glm)
+if(TARGET glm::glm-header-only)
+    target_link_libraries(fvd PRIVATE glm::glm-header-only)
+elseif(TARGET glm::glm)
     target_link_libraries(fvd PRIVATE glm::glm)
 endif()
 
@@ -185,20 +187,26 @@ if(UNIX AND NOT APPLE)
     target_link_options(fvd PRIVATE -rdynamic)
 elseif(APPLE)
     find_library(COREFOUNDATION_LIBRARY CoreFoundation REQUIRED)
+    find_library(MOLTENVK_LIBRARY NAMES MoltenVK
+        HINTS /opt/homebrew/opt/molten-vk/lib /usr/local/opt/molten-vk/lib REQUIRED)
     target_link_libraries(fvd PRIVATE
         glfw
         imgui
         implot
-        Vulkan::Vulkan
+        ${MOLTENVK_LIBRARY}
         ${COREFOUNDATION_LIBRARY}
     )
+    target_include_directories(fvd PRIVATE ${Vulkan_INCLUDE_DIRS})
     set_target_properties(fvd PROPERTIES
+        OUTPUT_NAME "FVD++"
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_BUNDLE_NAME "FVD++"
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.openfvd.fvdplusplus"
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Info.plist.in
+        BUILD_RPATH "@loader_path/../Frameworks"
+        INSTALL_RPATH "@loader_path/../Frameworks"
     )
     add_custom_command(TARGET fvd POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -210,7 +218,18 @@ elseif(APPLE)
         COMMAND ${CMAKE_COMMAND} -E copy
             ${CMAKE_SOURCE_DIR}/icons/fvd_orig.icns
             $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/fvd.icns
-        COMMENT "Bundling track styles, shaders and icon"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Frameworks
+        COMMAND ${CMAKE_COMMAND} -E copy ${MOLTENVK_LIBRARY}
+            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Frameworks/libMoltenVK.dylib
+        COMMAND install_name_tool -id @rpath/libMoltenVK.dylib
+            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Frameworks/libMoltenVK.dylib
+        COMMAND install_name_tool -change ${MOLTENVK_LIBRARY} @rpath/libMoltenVK.dylib
+            $<TARGET_FILE:fvd>
+        COMMAND codesign --force --sign -
+            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Frameworks/libMoltenVK.dylib
+        COMMAND codesign --force --sign - $<TARGET_BUNDLE_DIR:fvd>
+        COMMENT "Bundling track styles, shaders, icon and MoltenVK"
     )
 elseif(WIN32)
     target_link_libraries(fvd PRIVATE
