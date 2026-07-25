@@ -138,6 +138,9 @@ void TransitionView::renderSelectionList(trackHandler* hTrack, subfunc* currentS
                 case freeform:
                     degreeStr = "Freeform";
                     break;
+                case custom_math:
+                    degreeStr = "Custom";
+                    break;
                 }
 
                 sprintf(buf, "%d: %s %.2f %s%s%s###sf_%p", i, degreeStr, (float)displayLength, lenSuffix.c_str(),
@@ -232,13 +235,47 @@ void TransitionView::renderBasicProperties(trackHandler* hTrack, subfunc* sf, Ap
             hTrack->trackData->requestUpdateTrack(sf->parent->secParent, 0);
         })
 
-    const char* types[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "ToZero"};
-    int numTypes = (sf->parent->type == funcRoll) ? 8 : 7;
-    int typeIdx = (int)sf->degree;
+    const char* typesRoll[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "ToZero", "Custom"};
+    const char* typesForce[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "Custom"};
+    const char** types;
+    int numTypes;
+    int typeIdx;
+    if (sf->parent->type == funcRoll) {
+        types = typesRoll;
+        numTypes = 9;
+        if (sf->degree == custom_math) {
+            typeIdx = 8;
+        } else {
+            typeIdx = (int)sf->degree;
+        }
+    } else {
+        types = typesForce;
+        numTypes = 8;
+        if (sf->degree == custom_math) {
+            typeIdx = 7;
+        } else {
+            typeIdx = (int)sf->degree;
+        }
+    }
+
     PROP_ROW(
         "Type",
         if (ImGui::Combo("##Type", &typeIdx, types, numTypes)) {
-            sf->changeDegree((eDegree)typeIdx);
+            eDegree targetDegree;
+            if (sf->parent->type == funcRoll) {
+                if (typeIdx == 8) {
+                    targetDegree = custom_math;
+                } else {
+                    targetDegree = (eDegree)typeIdx;
+                }
+            } else {
+                if (typeIdx == 7) {
+                    targetDegree = custom_math;
+                } else {
+                    targetDegree = (eDegree)typeIdx;
+                }
+            }
+            sf->changeDegree(targetDegree);
             hTrack->trackData->requestUpdateTrack(sf->parent->secParent, 0);
             app->pushUndo();
         })
@@ -343,6 +380,27 @@ void TransitionView::renderTypeSpecificProperties(trackHandler* hTrack, subfunc*
                 sf->arg1 = (double)val;
                 changed = true;
             })
+    } else if (sf->degree == custom_math) {
+        char buf[256];
+        strncpy(buf, sf->customExpr.c_str(), sizeof(buf));
+        buf[sizeof(buf) - 1] = '\0';
+        PROP_ROW(
+            "Formula",
+            if (ImGui::InputText("##Formula", buf, sizeof(buf))) {
+                sf->customExpr = buf;
+                sf->compileExpr();
+                changed = true;
+                app->pushUndo();
+            })
+        if (!sf->compileError.empty()) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Error");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", sf->compileError.c_str());
+        }
     }
 
     if (changed) {
@@ -391,18 +449,19 @@ void TransitionView::renderActions(trackHandler* hTrack, subfunc* sf, Applicatio
     if (!canRemove)
         ImGui::BeginDisabled();
     if (ImGui::Button("Remove")) {
-        sf->parent->removeSubFunction(idx);
-        if (!sf->parent->funcList.empty()) {
+        func* fParent = sf->parent;
+        fParent->removeSubFunction(idx);
+        if (!fParent->funcList.empty()) {
             int newIdx = (idx > 0) ? idx - 1 : 0;
-            if (newIdx < (int)sf->parent->funcList.size()) {
-                gloParent->selectedFunc = sf->parent->funcList[newIdx];
+            if (newIdx < (int)fParent->funcList.size()) {
+                gloParent->selectedFunc = fParent->funcList[newIdx];
             } else {
                 gloParent->selectedFunc = nullptr;
             }
         } else {
             gloParent->selectedFunc = nullptr;
         }
-        hTrack->trackData->requestUpdateTrack(sf->parent->secParent, 0);
+        hTrack->trackData->requestUpdateTrack(fParent->secParent, 0);
         app->pushUndo();
     }
     if (!canRemove)

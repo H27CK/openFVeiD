@@ -463,7 +463,7 @@ VkDescriptorSet VulkanContext::dummyStorageSet() {
             .allocationSize = requirements.size,
             .memoryTypeIndex = findMemoryType(requirements.memoryTypeBits,
                                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+                                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
         };
         vkAllocateMemory(device, &allocateInfo, nullptr, &dummyStorageMemory);
         vkBindBufferMemory(device, dummyStorageBuffer, dummyStorageMemory, 0);
@@ -493,7 +493,7 @@ void VulkanContext::createFrameResources() {
             .allocationSize = requirements.size,
             .memoryTypeIndex = findMemoryType(requirements.memoryTypeBits,
                                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+                                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
         };
         vkCheck(vkAllocateMemory(device, &allocateInfo, nullptr, &memory), "ring memory");
         vkBindBufferMemory(device, buffer, memory, 0);

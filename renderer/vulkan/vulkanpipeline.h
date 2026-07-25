@@ -34,7 +34,9 @@ struct VulkanPipelineConfig {
     bool depthTest = true;
     bool depthWrite = true;
     bool alphaBlend = false;
-    enum class StencilMode { none, writeReference, testReferenceIncrement };
+    enum class StencilMode { none,
+                             writeReference,
+                             testReferenceIncrement };
     StencilMode stencilMode = StencilMode::none;
     VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
     uint32_t sampledImageCount = 0;

@@ -40,13 +40,22 @@ struct Mesh {
     int count = 0;
 };
 
-struct StlMesh {
+struct GlbPrimitive {
     Mesh mesh;
     int vertexCount;
+    int indexCount;
+    glm::vec4 baseColorFactor = glm::vec4(1.0f);
+    bool hasTexture = false;
+    VulkanTexture texture;
+};
+
+struct GlbMesh {
+    std::vector<GlbPrimitive> primitives;
     std::string path;
-    glm::vec3 color;
-    bool visible;
-    bool showWireframe;
+    bool visible = true;
+    bool selected = false;
+    glm::vec3 minAABB = glm::vec3(0.0f);
+    glm::vec3 maxAABB = glm::vec3(0.0f);
 };
 
 class Viewport {
@@ -92,8 +101,11 @@ public:
         }
     }
     bool loadGroundTexture(const std::string& path);
-    bool addStlMesh(const std::string& path);
-    void removeStlMesh(int index);
+    bool addGlbMesh(const std::string& path);
+    void removeGlbMesh(int index);
+    bool selectGlbAtRay(float ndcX, float ndcY);
+    bool hasSelectedGlb() const;
+    void deleteSelectedGlb();
 
     void markSceneDirty() {
         sceneDirty = true;
@@ -141,6 +153,12 @@ public:
             sceneDirty = true;
         }
     }
+    void resetPOVHeight() {
+        if (povHeightOffset != 0.0f) {
+            povHeightOffset = 0.0f;
+            sceneDirty = true;
+        }
+    }
     mnode* getPOVNode() const {
         return povNode;
     }
@@ -181,7 +199,7 @@ public:
     void captureScreenshot(int multiplier, const std::string& path, const std::vector<trackHandler*>& trackList);
 
     void* getOutputTexture();
-    std::vector<StlMesh> stlMeshes;
+    std::vector<GlbMesh> glbMeshes;
 
 private:
     void initPipelines();
@@ -199,7 +217,7 @@ private:
     };
 
     void drawTrack(VkCommandBuffer commandBuffer, trackHandler* track, RenderPass pass);
-    void drawStls(VkCommandBuffer commandBuffer, RenderPass pass);
+    void drawGlbs(VkCommandBuffer commandBuffer, RenderPass pass);
     void drawMarkers(VkCommandBuffer commandBuffer);
     void refreshOutputTexture();
 
@@ -211,8 +229,8 @@ private:
     VulkanPipeline heartlinePipeline;
     VulkanPipeline trackInstancedPipeline;
     VulkanPipeline shadowInstancedPipeline;
-    VulkanPipeline shadowStlPipeline;
-    VulkanPipeline stlPipeline;
+    VulkanPipeline shadowGlbPipeline;
+    VulkanPipeline glbPipeline;
     VulkanPipeline markerPipeline;
     VulkanPipeline orthoGridPipeline;
 
@@ -220,6 +238,7 @@ private:
     VulkanTexture floorTexture;
     VulkanTexture rasterTexture;
     VulkanTexture dummyCubeTexture;
+    VulkanTexture dummyWhiteTexture;
     VulkanBuffer zeroAttributeBuffer;
 
     Mesh skyMesh;

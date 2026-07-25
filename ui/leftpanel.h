@@ -36,31 +36,28 @@ public:
     void renderEnvironmentTab();
 
     int activeTab; // 0 for Project, 1 for Track
+    int selectedSectionIdx;
 
 private:
     void renderProjectTab(Application* app);
     void renderTrackTab(trackHandler* activeTrack, Application* app);
 
     void renderTrackProperties(trackHandler* track, Application* app);
+    void renderParametricStyleTab(trackHandler* track, Application* app);
     void renderTrackSmoothing(trackHandler* track, Application* app);
     void renderColorsTab(trackHandler* hTrack, Application* app);
 
     void renderSectionProperties(trackHandler* hTrack, section* sec, Application* app);
 
     // Sub-components
-    void renderStlList();
     void renderAnchorProperties(trackHandler* hTrack, section* sec, Application* app);
     void renderStraightProperties(trackHandler* hTrack, section* sec, Application* app);
     void renderCurvedProperties(trackHandler* hTrack, section* sec, Application* app);
     void renderForcedProperties(trackHandler* hTrack, section* sec, Application* app);
     void renderBezierProperties(trackHandler* hTrack, section* sec, Application* app);
-    void renderMeasurements(trackHandler* hTrack, Application* app);
-    void renderTrainGenerator(trackHandler* hTrack, Application* app);
-    void renderOffsetList(trackHandler* hTrack, Application* app);
 
     void syncAnchorNode(trackHandler* hTrack);
 
-    int selectedSectionIdx;
     int selectedSmoothingIdx;
 };
 

@@ -41,7 +41,7 @@ jobs:
           mkdir dist
           copy build/Release/fvd.exe dist/
           xcopy /e /i build\shaders_vulkan dist\shaders_vulkan
-          xcopy /e /i track_styles dist\track_styles
+          xcopy /e /i community\track_styles dist\track_styles
           Compress-Archive -Path dist/* -DestinationPath fvd-windows-x64.zip
 
       - name: Upload Windows Artifact

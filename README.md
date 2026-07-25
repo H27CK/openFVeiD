@@ -49,20 +49,20 @@ The following parametric track styles have been contributed by the community. Se
 
 | Author | Style | Version |
 | :--- | :--- | :---: |
-| nerfer10 | [Arrow](track_styles/nerfer10/Arrow) | 1.0 |
-| nerfer10 | [B&M](track_styles/nerfer10/B&M) | 1.0 |
-| xwaldo | [B&M Classic](track_styles/xwaldo/bm_classic) | 1.0 |
-| xwaldo | [GCI](track_styles/xwaldo/gci) | 1.0 |
-| nerfer10 | [Generic Flat](track_styles/nerfer10/Generic%20Flat) | 1.0 |
-| nerfer10 | [Raptor](track_styles/nerfer10/Raptor) | 1.0 |
-| Loundlim | [Intamin LSM 0.9m](track_styles/Loundlim/Intamin%20LSM%200.9m) | 1.0 |
-| Loundlim | [Intamin Tri Tube 0.9m](track_styles/Loundlim/Intamin%20Tri%20Tube%200.9m) | 1.0 |
-| Loundlim | [RMC IBox Track](track_styles/Loundlim/RMC%20IBox%20Track) | 1.0 |
-| Loundlim | [RMC Topper Track](track_styles/Loundlim/RMC%20Topper%20Track) | 1.0 |
-| Loundlim | [S&S Airlaunch & Looper](track_styles/Loundlim/S%26S%20Air%20Launch%20%26%20Looper) | 1.0 |
-| nerfer10 | [Schwarzkopf](track_styles/nerfer10/Schwarzkopf) | 1.0 |
-| nerfer10 | [Small Flat](track_styles/nerfer10/Small%20Flat) | 1.0 |
-| xwaldo | [Vekoma MK1101](track_styles/xwaldo/vekoma_mk1101) | 1.0 |
+| nerfer10 | [Arrow](community/track_styles/nerfer10/Arrow) | 1.0 |
+| nerfer10 | [B&M](community/track_styles/nerfer10/B&M) | 1.0 |
+| xwaldo | [B&M Classic](community/track_styles/xwaldo/bm_classic) | 1.0 |
+| xwaldo | [GCI](community/track_styles/xwaldo/gci) | 1.0 |
+| nerfer10 | [Generic Flat](community/track_styles/nerfer10/Generic%20Flat) | 1.0 |
+| nerfer10 | [Raptor](community/track_styles/nerfer10/Raptor) | 1.0 |
+| Loundlim | [Intamin LSM 0.9m](community/track_styles/Loundlim/Intamin%20LSM%200.9m) | 1.0 |
+| Loundlim | [Intamin Tri Tube 0.9m](community/track_styles/Loundlim/Intamin%20Tri%20Tube%200.9m) | 1.0 |
+| Loundlim | [RMC IBox Track](community/track_styles/Loundlim/RMC%20IBox%20Track) | 1.0 |
+| Loundlim | [RMC Topper Track](community/track_styles/Loundlim/RMC%20Topper%20Track) | 1.0 |
+| Loundlim | [S&S Airlaunch & Looper](community/track_styles/Loundlim/S%26S%20Air%20Launch%20%26%20Looper) | 1.0 |
+| nerfer10 | [Schwarzkopf](community/track_styles/nerfer10/Schwarzkopf) | 1.0 |
+| nerfer10 | [Small Flat](community/track_styles/nerfer10/Small%20Flat) | 1.0 |
+| xwaldo | [Vekoma MK1101](community/track_styles/xwaldo/vekoma_mk1101) | 1.0 |
 
 ## Community Clearance Envelopes
 
@@ -70,50 +70,50 @@ The following clearance envelope track styles have been contributed by the commu
 
 | Author | Style | Version | Reference Train / Model |
 | :--- | :--- | :---: | :--- |
-| Loundlim | [Arrow 4D](track_styles/Loundlim/Clearance%20Envelopes/Arrow%204D%20clearance%20(NL2).fvdstyle) | 1.0 | Arrow 4D (NL2) |
-| Loundlim | [Arrow Corkscrew](track_styles/Loundlim/Clearance%20Envelopes/Arrow%20Corkscrew%20clearance%20(NL2).fvdstyle) | 1.0 | Arrow Corkscrew (NL2) |
-| Loundlim | [Arrow Suspended](track_styles/Loundlim/Clearance%20Envelopes/Arrow%20Suspended%20clearance%20(NL2).fvdstyle) | 1.0 | Arrow Suspended (NL2) |
-| Loundlim | [B&M Dive](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Dive%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Dive (NL2) |
-| Loundlim | [B&M Dive with scoops](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Dive%20with%20scoops%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Dive with scoops (NL2) |
-| Loundlim | [B&M Floorless](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Floorless%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Floorless (NL2) |
-| Loundlim | [B&M Flyer](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Flyer%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Flyer (NL2) |
-| Loundlim | [B&M Hyper (4 across)](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Hyper%20(4%20across)%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Hyper 4-across (NL2) |
-| Loundlim | [B&M Hyper (staggered)](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Hyper%20(staggered)%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Hyper staggered (NL2) |
-| Loundlim | [B&M Hyper (staggered with scoops)](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Hyper%20(staggered%20with%20scoops)%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Hyper staggered with scoops (NL2) |
-| Loundlim | [B&M Invert](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Invert%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Invert (NL2) |
-| Loundlim | [B&M Sitdown](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Sitdown%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Sitdown (NL2) |
-| Loundlim | [B&M Standup](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Standup%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Standup (NL2) |
-| Loundlim | [B&M Wing](track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Wing%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Wing (NL2) |
-| Loundlim | [GCI Millenium Flyer](track_styles/Loundlim/Clearance%20Envelopes/GCI%20Millenium%20Flyer%20clearance%20(NL2).fvdstyle) | 1.0 | GCI Millenium Flyer (NL2) |
-| Loundlim | [Gerstlauer Bobsled](track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Bobsled%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Bobsled (NL2) |
-| Loundlim | [Gerstlauer Eurofighter (1&2)](track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Eurofighter%20(1%262)%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Eurofighter (NL2) |
-| Loundlim | [Gerstlauer Infinity 1st gen](track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Infinity%201st%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Infinity 1st Gen (NL2) |
-| Loundlim | [Gerstlauer Infinity 2nd gen](track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Infinity%202nd%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Infinity 2nd Gen (NL2) |
-| Loundlim | [Gerstlauer Spinner](track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Spinner%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Spinner (NL2) |
-| Loundlim | [Gravity Group Timberliner](track_styles/Loundlim/Clearance%20Envelopes/Gravity%20Group%20Timberliner%20clearance%20(NL2).fvdstyle) | 1.0 | Gravity Group Timberliner (NL2) |
-| Loundlim | [Intamin Hyper](track_styles/Loundlim/Clearance%20Envelopes/Intamin%20Hyper%20clearance%20(NL2).fvdstyle) | 1.0 | Intamin Hyper (NL2) |
-| Loundlim | [Intamin Impulse](track_styles/Loundlim/Clearance%20Envelopes/Intamin%20Impulse%20clearance%20(NL2).fvdstyle) | 1.0 | Intamin Impulse (NL2) |
-| Loundlim | [Intamin LSM](track_styles/Loundlim/Clearance%20Envelopes/Intamin%20LSM%20clearance%20(Serming).fvdstyle) | 1.0 | Intamin LSM (Serming) |
-| Loundlim | [Intamin Rocket](track_styles/Loundlim/Clearance%20Envelopes/Intamin%20Rocket%20clearance%20(NL2).fvdstyle) | 1.0 | Intamin Rocket (NL2) |
-| Loundlim | [Mack Extreme Spinner](track_styles/Loundlim/Clearance%20Envelopes/Mack%20Extreme%20Spinner%20clearance.fvdstyle) | 1.0 | Mack Extreme Spinner |
-| Loundlim | [Mack LSM & Hyper](track_styles/Loundlim/Clearance%20Envelopes/Mack%20LSM%20%26%20Hyper%20clearance%20(NL2).fvdstyle) | 1.0 | Mack LSM & Hyper (NL2) |
-| Loundlim | [Maurer Spinner](track_styles/Loundlim/Clearance%20Envelopes/Maurer%20Spinner%20clearance%20(NL2).fvdstyle) | 1.0 | Maurer Spinner (NL2) |
-| Loundlim | [Maurer X-Car](track_styles/Loundlim/Clearance%20Envelopes/Maurer%20X-Car%20clearance%20(NL2).fvdstyle) | 1.0 | Maurer X-Car (NL2) |
-| Loundlim | [Morgan Wooden Trailored](track_styles/Loundlim/Clearance%20Envelopes/Morgan%20Wooden%20Trailored%20clearance%20(NL2).fvdstyle) | 1.0 | Morgan Wooden Trailored (NL2) |
-| Loundlim | [Permier LIM](track_styles/Loundlim/Clearance%20Envelopes/Permier%20LIM%20clearance%20(NL2).fvdstyle) | 1.0 | Premier LIM (NL2) |
-| Loundlim | [Premier Skyrocket](track_styles/Loundlim/Clearance%20Envelopes/Premier%20Skyrocket%20clearance%20(Coasterpete).fvdstyle) | 1.0 | Premier Skyrocket (Coasterpete) |
-| Loundlim | [PTC 4 & 6 seater](track_styles/Loundlim/Clearance%20Envelopes/PTC%204%20%26%206%20seater%20clearance%20(NL2).fvdstyle) | 1.0 | PTC 4 & 6-seater (NL2) |
-| Loundlim | [RMC Hybrid 1st gen](track_styles/Loundlim/Clearance%20Envelopes/RMC%20Hybrid%201st%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | RMC Hybrid 1st Gen (NL2) |
-| Loundlim | [RMC Raptor](track_styles/Loundlim/Clearance%20Envelopes/RMC%20Raptor%20clearance%20(TheCodeMaster).fvdstyle) | 1.0 | RMC Raptor (TheCodeMaster) |
-| Loundlim | [Schwarzkopf Looper 1st gen](track_styles/Loundlim/Clearance%20Envelopes/Schwarzkopf%20Looper%201st%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | Schwarzkopf Looper 1st Gen (NL2) |
-| Loundlim | [Schwarzkopf Looper 2nd gen](track_styles/Loundlim/Clearance%20Envelopes/Schwarzkopf%20Looper%202nd%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | Schwarzkopf Looper 2nd Gen (NL2) |
-| Loundlim | [Vekoma Flying Dutchman](track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20Flying%20Dutchman%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma Flying Dutchman (NL2) |
-| Loundlim | [Vekoma Inverted Boomerang](track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20Inverted%20Boomerang%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma Inverted Boomerang (NL2) |
-| Loundlim | [Vekoma Minetrain](track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20Minetrain%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma Minetrain (NL2) |
-| Loundlim | [Vekoma MK1101](track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20MK1101%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma MK1101 (NL2) |
-| Loundlim | [Vekoma Motorbike](track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20Motorbike%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma Motorbike (NL2) |
-| Loundlim | [Vekoma SLC](track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20SLC%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma SLC (NL2) |
-| Loundlim | [Vekoma STC](track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20STC%20clearance%20(Pieter%20%26%20Serming).fvdstyle) | 1.0 | Vekoma STC (Pieter & Serming) |
+| Loundlim | [Arrow 4D](community/track_styles/Loundlim/Clearance%20Envelopes/Arrow%204D%20clearance%20(NL2).fvdstyle) | 1.0 | Arrow 4D (NL2) |
+| Loundlim | [Arrow Corkscrew](community/track_styles/Loundlim/Clearance%20Envelopes/Arrow%20Corkscrew%20clearance%20(NL2).fvdstyle) | 1.0 | Arrow Corkscrew (NL2) |
+| Loundlim | [Arrow Suspended](community/track_styles/Loundlim/Clearance%20Envelopes/Arrow%20Suspended%20clearance%20(NL2).fvdstyle) | 1.0 | Arrow Suspended (NL2) |
+| Loundlim | [B&M Dive](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Dive%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Dive (NL2) |
+| Loundlim | [B&M Dive with scoops](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Dive%20with%20scoops%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Dive with scoops (NL2) |
+| Loundlim | [B&M Floorless](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Floorless%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Floorless (NL2) |
+| Loundlim | [B&M Flyer](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Flyer%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Flyer (NL2) |
+| Loundlim | [B&M Hyper (4 across)](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Hyper%20(4%20across)%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Hyper 4-across (NL2) |
+| Loundlim | [B&M Hyper (staggered)](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Hyper%20(staggered)%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Hyper staggered (NL2) |
+| Loundlim | [B&M Hyper (staggered with scoops)](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Hyper%20(staggered%20with%20scoops)%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Hyper staggered with scoops (NL2) |
+| Loundlim | [B&M Invert](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Invert%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Invert (NL2) |
+| Loundlim | [B&M Sitdown](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Sitdown%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Sitdown (NL2) |
+| Loundlim | [B&M Standup](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Standup%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Standup (NL2) |
+| Loundlim | [B&M Wing](community/track_styles/Loundlim/Clearance%20Envelopes/B%26M%20Wing%20clearance%20(NL2).fvdstyle) | 1.0 | B&M Wing (NL2) |
+| Loundlim | [GCI Millenium Flyer](community/track_styles/Loundlim/Clearance%20Envelopes/GCI%20Millenium%20Flyer%20clearance%20(NL2).fvdstyle) | 1.0 | GCI Millenium Flyer (NL2) |
+| Loundlim | [Gerstlauer Bobsled](community/track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Bobsled%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Bobsled (NL2) |
+| Loundlim | [Gerstlauer Eurofighter (1&2)](community/track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Eurofighter%20(1%262)%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Eurofighter (NL2) |
+| Loundlim | [Gerstlauer Infinity 1st gen](community/track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Infinity%201st%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Infinity 1st Gen (NL2) |
+| Loundlim | [Gerstlauer Infinity 2nd gen](community/track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Infinity%202nd%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Infinity 2nd Gen (NL2) |
+| Loundlim | [Gerstlauer Spinner](community/track_styles/Loundlim/Clearance%20Envelopes/Gerstlauer%20Spinner%20clearance%20(NL2).fvdstyle) | 1.0 | Gerstlauer Spinner (NL2) |
+| Loundlim | [Gravity Group Timberliner](community/track_styles/Loundlim/Clearance%20Envelopes/Gravity%20Group%20Timberliner%20clearance%20(NL2).fvdstyle) | 1.0 | Gravity Group Timberliner (NL2) |
+| Loundlim | [Intamin Hyper](community/track_styles/Loundlim/Clearance%20Envelopes/Intamin%20Hyper%20clearance%20(NL2).fvdstyle) | 1.0 | Intamin Hyper (NL2) |
+| Loundlim | [Intamin Impulse](community/track_styles/Loundlim/Clearance%20Envelopes/Intamin%20Impulse%20clearance%20(NL2).fvdstyle) | 1.0 | Intamin Impulse (NL2) |
+| Loundlim | [Intamin LSM](community/track_styles/Loundlim/Clearance%20Envelopes/Intamin%20LSM%20clearance%20(Serming).fvdstyle) | 1.0 | Intamin LSM (Serming) |
+| Loundlim | [Intamin Rocket](community/track_styles/Loundlim/Clearance%20Envelopes/Intamin%20Rocket%20clearance%20(NL2).fvdstyle) | 1.0 | Intamin Rocket (NL2) |
+| Loundlim | [Mack Extreme Spinner](community/track_styles/Loundlim/Clearance%20Envelopes/Mack%20Extreme%20Spinner%20clearance.fvdstyle) | 1.0 | Mack Extreme Spinner |
+| Loundlim | [Mack LSM & Hyper](community/track_styles/Loundlim/Clearance%20Envelopes/Mack%20LSM%20%26%20Hyper%20clearance%20(NL2).fvdstyle) | 1.0 | Mack LSM & Hyper (NL2) |
+| Loundlim | [Maurer Spinner](community/track_styles/Loundlim/Clearance%20Envelopes/Maurer%20Spinner%20clearance%20(NL2).fvdstyle) | 1.0 | Maurer Spinner (NL2) |
+| Loundlim | [Maurer X-Car](community/track_styles/Loundlim/Clearance%20Envelopes/Maurer%20X-Car%20clearance%20(NL2).fvdstyle) | 1.0 | Maurer X-Car (NL2) |
+| Loundlim | [Morgan Wooden Trailored](community/track_styles/Loundlim/Clearance%20Envelopes/Morgan%20Wooden%20Trailored%20clearance%20(NL2).fvdstyle) | 1.0 | Morgan Wooden Trailored (NL2) |
+| Loundlim | [Permier LIM](community/track_styles/Loundlim/Clearance%20Envelopes/Permier%20LIM%20clearance%20(NL2).fvdstyle) | 1.0 | Premier LIM (NL2) |
+| Loundlim | [Premier Skyrocket](community/track_styles/Loundlim/Clearance%20Envelopes/Premier%20Skyrocket%20clearance%20(Coasterpete).fvdstyle) | 1.0 | Premier Skyrocket (Coasterpete) |
+| Loundlim | [PTC 4 & 6 seater](community/track_styles/Loundlim/Clearance%20Envelopes/PTC%204%20%26%206%20seater%20clearance%20(NL2).fvdstyle) | 1.0 | PTC 4 & 6-seater (NL2) |
+| Loundlim | [RMC Hybrid 1st gen](community/track_styles/Loundlim/Clearance%20Envelopes/RMC%20Hybrid%201st%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | RMC Hybrid 1st Gen (NL2) |
+| Loundlim | [RMC Raptor](community/track_styles/Loundlim/Clearance%20Envelopes/RMC%20Raptor%20clearance%20(TheCodeMaster).fvdstyle) | 1.0 | RMC Raptor (TheCodeMaster) |
+| Loundlim | [Schwarzkopf Looper 1st gen](community/track_styles/Loundlim/Clearance%20Envelopes/Schwarzkopf%20Looper%201st%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | Schwarzkopf Looper 1st Gen (NL2) |
+| Loundlim | [Schwarzkopf Looper 2nd gen](community/track_styles/Loundlim/Clearance%20Envelopes/Schwarzkopf%20Looper%202nd%20gen%20clearance%20(NL2).fvdstyle) | 1.0 | Schwarzkopf Looper 2nd Gen (NL2) |
+| Loundlim | [Vekoma Flying Dutchman](community/track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20Flying%20Dutchman%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma Flying Dutchman (NL2) |
+| Loundlim | [Vekoma Inverted Boomerang](community/track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20Inverted%20Boomerang%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma Inverted Boomerang (NL2) |
+| Loundlim | [Vekoma Minetrain](community/track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20Minetrain%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma Minetrain (NL2) |
+| Loundlim | [Vekoma MK1101](community/track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20MK1101%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma MK1101 (NL2) |
+| Loundlim | [Vekoma Motorbike](community/track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20Motorbike%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma Motorbike (NL2) |
+| Loundlim | [Vekoma SLC](community/track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20SLC%20clearance%20(NL2).fvdstyle) | 1.0 | Vekoma SLC (NL2) |
+| Loundlim | [Vekoma STC](community/track_styles/Loundlim/Clearance%20Envelopes/Vekoma%20STC%20clearance%20(Pieter%20%26%20Serming).fvdstyle) | 1.0 | Vekoma STC (Pieter & Serming) |
 
 ## Known Issues
 
@@ -208,8 +208,8 @@ With every official release, we publish a pre-packaged `track_styles.zip` contai
 
 ### Method 2: Install Separate Track Styles Individually
 
-If you want to download a specific style from the repository (e.g. from the `track_styles/` folder):
-1. Navigate to the style directory on GitHub (for example, `track_styles/Loundlim/Clearance Envelopes/`).
+If you want to download a specific style from the repository (e.g. from the `community/track_styles/` folder):
+1. Navigate to the style directory on GitHub (for example, `community/track_styles/Loundlim/Clearance Envelopes/`).
 2. Download the `.fvdstyle` file (which defines the style) and its associated `.glb` mesh asset file (which contains the 3D model).
 3. Place **both files next to each other** inside your local `track_styles` directory (or a custom subfolder inside it, such as `track_styles/mine/`).
 4. Use **File > Reload Assets** in the main menu (or restart FVD++) to immediately reload and select the style in the drop-down menu!

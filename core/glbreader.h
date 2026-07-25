@@ -16,21 +16,39 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#ifndef STLREADER_H
-#define STLREADER_H
+#ifndef GLB_READER_H
+#define GLB_READER_H
 
 #include <vector>
 #include <string>
-#include "lenassert.h"
+#include <glm/glm.hpp>
 
-struct Triangle {
-    glm::dvec3 normal;
-    glm::dvec3 vertices[3];
+struct GlbVertex {
+    glm::vec3 pos;    // Location 0
+    glm::vec3 normal; // Location 7
+    glm::vec2 uv;     // Location 8
 };
 
-bool readStl(const std::string& fileName, std::vector<Triangle>& triangles);
+struct GlbTextureData {
+    std::vector<uint8_t> rgba;
+    int width = 0;
+    int height = 0;
+};
 
-std::vector<glm::dvec3> extractVertices(const std::vector<Triangle>& triangles);
-std::vector<glm::dvec3> extractVerticesNormal(const std::vector<Triangle>& triangles);
+struct GlbPrimitiveData {
+    std::vector<GlbVertex> vertices;
+    std::vector<uint32_t> indices;
+    glm::vec4 baseColorFactor = glm::vec4(1.0f);
+    bool hasTexture = false;
+    GlbTextureData textureData;
+};
 
-#endif // STLREADER_H
+struct GlbModelData {
+    std::vector<GlbPrimitiveData> primitives;
+    glm::vec3 minAABB = glm::vec3(3.40282347e+38F);
+    glm::vec3 maxAABB = glm::vec3(-3.40282347e+38F);
+};
+
+bool readGlb(const std::string& fileName, GlbModelData& modelData);
+
+#endif // GLB_READER_H

@@ -3,10 +3,11 @@
 layout(location = 0) in vec4 bPosition;
 layout(location = 1) in vec3 bNormal;
 layout(location = 2) in vec3 baryCoord;
+layout(location = 3) in vec2 bUv;
 
 layout(location = 0) out vec4 oFragColor;
 
-layout(set = 0, binding = 0) uniform StlUniforms {
+layout(set = 0, binding = 0) uniform GlbUniforms {
     mat4 projectionMatrix;
     mat4 modelMatrix;
     mat4 anchorBase;
@@ -24,13 +25,16 @@ layout(set = 0, binding = 0) uniform StlUniforms {
     float padding2;
 } u;
 
+layout(set = 0, binding = 1) uniform sampler2D uTexture;
+
 void main(void)
 {
-    vec3 m_color = u.solidColor.rgb;
+    vec4 texColor = texture(uTexture, bUv);
+    vec3 m_color = u.solidColor.rgb * texColor.rgb;
+    float alpha = u.solidColor.a * texColor.a;
+
     vec3 normal = normalize(bNormal);
-
     float diffusal = max(dot(normal, -u.lightDir.xyz), 0.0);
-
     float ambient = 0.8;
 
     vec3 finalColor = (ambient + diffusal * 0.5) * m_color;
@@ -42,7 +46,7 @@ void main(void)
         finalColor = mix(finalColor, u.mistColor.rgb, mistFactor);
     }
 
-    oFragColor = vec4(clamp(finalColor, 0.0, 1.0), 1.0);
+    oFragColor = vec4(clamp(finalColor, 0.0, 1.0), alpha);
 
     if (u.wire == 1) {
         float edgeDist = min(min(baryCoord.x, baryCoord.y), baryCoord.z);

@@ -24,8 +24,8 @@ public:
     // Chunk-based helpers
     void saveEnvironmentChunk(std::ostream& out);
     void loadEnvironmentChunk(std::istream& in, uint8_t version, uint32_t length);
-    void saveStlsChunk(std::ostream& out);
-    void loadStlsChunk(std::istream& in, uint8_t version, uint32_t length);
+    void saveGlbsChunk(std::ostream& out);
+    void loadGlbsChunk(std::istream& in, uint8_t version, uint32_t length);
     void saveTracksChunk(std::ostream& out);
     void loadTracksChunk(std::istream& in, uint8_t version, uint32_t length);
 

@@ -34,7 +34,8 @@ enum eDegree {
     sinusoidal = 5,
     plateau = 6,
     tozero = 7,
-    freeform = 8
+    freeform = 8,
+    custom_math = 9
 };
 
 typedef struct bez_s {
@@ -46,9 +47,12 @@ class subfunc {
 public:
     subfunc();
     subfunc(double min, double max, double start, double diff, func* getparent = 0);
+    ~subfunc();
     void update(double min, double max, double diff);
 
     double getValue(double x, bool skipUpdate = false);
+
+    bool compileExpr();
 
     void changeDegree(eDegree newDegree);
     void updateBez();
@@ -83,6 +87,12 @@ public:
     func* parent;
     std::vector<bez_t> pointList;
     std::vector<double> valueList;
+
+    // Custom math function members
+    std::string customExpr;
+    void* compiledExpr = nullptr;
+    double customVarX = 0.0;
+    std::string compileError;
 
 private:
     double applyTension(double x);

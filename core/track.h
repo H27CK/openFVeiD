@@ -26,7 +26,6 @@
 #include "secforced.h"
 #include "secgeometric.h"
 #include "secgeometricriderlocal.h"
-#include "secnlcsv.h"
 #include "secstraight.h"
 #include "sectionhandler.h"
 #include <vector>
@@ -122,6 +121,7 @@ public:
     void loadExtrChunk(std::istream& file, uint8_t version, uint32_t length);
     void loadAsstChunk(std::istream& file, uint8_t version, uint32_t length);
     void loadOffsChunk(std::istream& file, uint8_t version, uint32_t length);
+    void loadLimChunk(std::istream& file, uint8_t version, uint32_t length);
 
     bool exportParametricStyle(const std::string& filepath);
     bool importParametricStyle(const std::string& filepath);
@@ -168,6 +168,9 @@ public:
     double fMaxPosNormal;
     double fMaxNegNormal;
     double fMaxLateral;
+    double fMinLateral;
+    bool enforceMinRadius;
+    double minRadius;
 
     struct TrainOffset {
         char name[64] = "Measurement Point";

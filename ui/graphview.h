@@ -73,6 +73,7 @@ struct GraphData {
 struct EditableGraphData {
     std::vector<double> x;
     std::vector<double> y;
+    std::vector<int> nodes;
     subfunc* sf;
     ImVec4 color;
     std::string label;
@@ -84,6 +85,7 @@ public:
     ~GraphView();
 
     void renderList(trackHandler* track);
+    void lockPlayheadToCurrentTransition(trackHandler* hTrack);
     void renderMeasurementsMenu(trackHandler* track);
     void renderPlot(trackHandler* track);
     void renderResultingPlot(trackHandler* track);
@@ -92,9 +94,6 @@ public:
     void updateData(trackHandler* track);
     void exportToCSV(const std::string& filepath, trackHandler* hTrack);
 
-    bool getShowPOVMarker() const {
-        return showPOVMarker;
-    }
     bool hasResultingGraphsVisible() const;
     bool hasMeasurementGraphsVisible(trackHandler* track) const;
     int getTotalPlottedPoints() const;
@@ -115,9 +114,10 @@ private:
     std::vector<EditableGraphData> editableGraphs;
     std::vector<double> sectionBoundaries;
     std::vector<std::pair<double, double>> gimbalLockRegions;
+    std::vector<std::pair<double, double>> radiusLimitRegions;
+    std::vector<std::pair<double, double>> forceLimitRegions;
     bool needsUpdate;
-    bool showSectionBoundaries;
-    bool showPOVMarker;
+    bool playheadSnappingEnabled;
     bool doAutoFocus;
     bool autoScaleYEdit;
     bool autoScaleYResult;
@@ -125,6 +125,9 @@ private:
     bool switchToResultingTab = false;
     bool isPlayingPOV = false;
     float povAccumulator = 0.0f;
+    bool playheadLocked = false;
+    int lockedPOVPos = 0;
+    subfunc* lockedTransition = nullptr;
 
     int lastSubplotRows = -1;
     double linkedXMin = 0.0;

@@ -89,7 +89,7 @@ jobs:
       - name: Package Track Styles
         run: |
           mkdir -p temp_styles/community
-          cp -r track_styles/* temp_styles/community/
+          cp -r community/track_styles/* temp_styles/community/
           cd temp_styles
           zip -r ../track_styles.zip community
           cd ..

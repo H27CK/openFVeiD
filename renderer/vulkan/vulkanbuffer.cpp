@@ -46,7 +46,7 @@ void VulkanBuffer::create(VulkanContext& context, VkDeviceSize size, VkBufferUsa
         .allocationSize = requirements.size,
         .memoryTypeIndex = context.findMemoryType(requirements.memoryTypeBits,
                                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+                                                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
     if (vkAllocateMemory(device, &allocateInfo, nullptr, &memory) != VK_SUCCESS) {
         fprintf(stderr, "[vulkan] buffer memory allocation failed\n");

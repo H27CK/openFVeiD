@@ -42,14 +42,20 @@ public:
     VkSampleCountFlagBits clampSampleCount(int requestedSamples);
     VkCommandBuffer beginOneTimeCommands();
     void endOneTimeCommands(VkCommandBuffer commandBuffer);
-    int currentFrameIndex() const { return currentFrame; }
-    VkCommandBuffer currentCommandBuffer() { return frameActive ? frames[currentFrame].commandBuffer : VK_NULL_HANDLE; }
+    int currentFrameIndex() const {
+        return currentFrame;
+    }
+    VkCommandBuffer currentCommandBuffer() {
+        return frameActive ? frames[currentFrame].commandBuffer : VK_NULL_HANDLE;
+    }
 
     uint32_t pushUniformData(const void* data, size_t bytes);
     VkDeviceSize pushStreamData(const void* data, size_t bytes);
     VkBuffer uniformRingBuffer();
     VkBuffer streamRingBuffer();
-    VkBuffer frameUniformRingBuffer(uint32_t frame) { return frames[frame].uniformRing; }
+    VkBuffer frameUniformRingBuffer(uint32_t frame) {
+        return frames[frame].uniformRing;
+    }
 
     VkDescriptorSetLayout storageSetLayout();
     VkDescriptorSet allocateStorageBufferSet(VkBuffer buffer, VkDeviceSize range);

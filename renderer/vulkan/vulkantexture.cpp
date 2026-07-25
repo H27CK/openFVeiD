@@ -75,7 +75,7 @@ void VulkanTexture::createInternal(VulkanContext& context, uint32_t width, uint3
         .allocationSize = stagingRequirements.size,
         .memoryTypeIndex = context.findMemoryType(stagingRequirements.memoryTypeBits,
                                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+                                                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
     vkAllocateMemory(device, &stagingAllocate, nullptr, &stagingMemory);
     vkBindBufferMemory(device, staging, stagingMemory, 0);

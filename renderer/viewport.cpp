@@ -27,7 +27,7 @@
 #include "mnode.h"
 #include "lenassert.h"
 #include "dummies.h"
-#include "stlreader.h"
+#include "glbreader.h"
 #include "customstyle.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
@@ -124,14 +124,20 @@ void Viewport::shutdown() {
     floorTexture.destroy();
     rasterTexture.destroy();
     dummyCubeTexture.destroy();
+    dummyWhiteTexture.destroy();
     zeroAttributeBuffer.destroy();
     skyMesh.vertexBuffer.destroy();
     floorMesh.vertexBuffer.destroy();
     markerMesh.vertexBuffer.destroy();
     markerMesh.indexBuffer.destroy();
-    for (auto& sm : stlMeshes) {
-        sm.mesh.vertexBuffer.destroy();
-        sm.mesh.indexBuffer.destroy();
+    for (auto& sm : glbMeshes) {
+        for (auto& prim : sm.primitives) {
+            prim.mesh.vertexBuffer.destroy();
+            prim.mesh.indexBuffer.destroy();
+            if (prim.hasTexture) {
+                prim.texture.destroy();
+            }
+        }
     }
     finalOutputFb.destroy();
 }
@@ -187,8 +193,8 @@ void Viewport::destroyPipelines() {
     heartlinePipeline.destroy();
     trackInstancedPipeline.destroy();
     shadowInstancedPipeline.destroy();
-    shadowStlPipeline.destroy();
-    stlPipeline.destroy();
+    shadowGlbPipeline.destroy();
+    glbPipeline.destroy();
     markerPipeline.destroy();
     orthoGridPipeline.destroy();
 }
@@ -261,6 +267,7 @@ void Viewport::initTextures() {
 
     unsigned char whitePixel[4] = {255, 255, 255, 255};
     floorTexture.create2d(*gVulkanContext, 1, 1, whitePixel);
+    dummyWhiteTexture.create2d(*gVulkanContext, 1, 1, whitePixel);
 
     unsigned char cubeFaces[6 * 4] = {};
     dummyCubeTexture.createCube(*gVulkanContext, 1, 1, cubeFaces);
@@ -496,15 +503,15 @@ void Viewport::initPipelines() {
     shadowInstancedConfig.sampleCount = currentSampleCount;
     shadowInstancedPipeline.create(*gVulkanContext, shadowInstancedConfig);
 
-    VulkanPipelineConfig shadowStlConfig = {
+    VulkanPipelineConfig shadowGlbConfig = {
         .vertexSpirvPath = locateSpirvShader("simple_shadow.vert"),
         .fragmentSpirvPath = locateSpirvShader("simple_shadow.frag"),
         .vertexBindings = {
-            {0, 6 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
+            {0, sizeof(GlbVertex), VK_VERTEX_INPUT_RATE_VERTEX},
             {zeroBinding, 0, VK_VERTEX_INPUT_RATE_INSTANCE},
         },
         .vertexAttributes = {
-            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GlbVertex, pos)},
             {3, zeroBinding, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
             {4, zeroBinding, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
             {5, zeroBinding, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
@@ -519,40 +526,46 @@ void Viewport::initPipelines() {
         .uniformBufferSize = sizeof(SimpleShadowUniforms),
         .usesStorageSet = true,
     };
-    shadowStlConfig.sampleCount = currentSampleCount;
-    shadowStlPipeline.create(*gVulkanContext, shadowStlConfig);
+    shadowGlbConfig.sampleCount = currentSampleCount;
+    shadowGlbPipeline.create(*gVulkanContext, shadowGlbConfig);
 
-    VulkanPipelineConfig stlConfig = {
-        .vertexSpirvPath = locateSpirvShader("stl.vert"),
-        .fragmentSpirvPath = locateSpirvShader("stl.frag"),
-        .vertexBindings = {{0, 6 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX}},
+    VulkanPipelineConfig glbConfig = {
+        .vertexSpirvPath = locateSpirvShader("glb.vert"),
+        .fragmentSpirvPath = locateSpirvShader("glb.frag"),
+        .vertexBindings = {{0, sizeof(GlbVertex), VK_VERTEX_INPUT_RATE_VERTEX}},
         .vertexAttributes = {
-            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-            {7, 0, VK_FORMAT_R32G32B32_SFLOAT, 12},
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GlbVertex, pos)},
+            {7, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GlbVertex, normal)},
+            {8, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(GlbVertex, uv)},
         },
         .alphaBlend = true,
+        .sampledImageCount = 1,
         .uniformBufferSize = sizeof(StlUniforms),
     };
-    stlConfig.sampleCount = currentSampleCount;
-    stlPipeline.create(*gVulkanContext, stlConfig);
+    glbConfig.sampleCount = currentSampleCount;
+    glbPipeline.create(*gVulkanContext, glbConfig);
+    glbPipeline.bindTexture(0, dummyWhiteTexture.view, dummyWhiteTexture.sampler);
 
     VulkanPipelineConfig markerConfig = {
-        .vertexSpirvPath = locateSpirvShader("stl.vert"),
-        .fragmentSpirvPath = locateSpirvShader("stl.frag"),
+        .vertexSpirvPath = locateSpirvShader("glb.vert"),
+        .fragmentSpirvPath = locateSpirvShader("glb.frag"),
         .vertexBindings = {{0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX}},
         .vertexAttributes = {
             {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
             {7, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+            {8, zeroBinding, VK_FORMAT_R32G32_SFLOAT, 0},
         },
         .alphaBlend = true,
+        .sampledImageCount = 1,
         .uniformBufferSize = sizeof(StlUniforms),
     };
     markerConfig.sampleCount = currentSampleCount;
     markerPipeline.create(*gVulkanContext, markerConfig);
+    markerPipeline.bindTexture(0, dummyWhiteTexture.view, dummyWhiteTexture.sampler);
 
     VulkanPipelineConfig orthoGridConfig = {
-        .vertexSpirvPath = locateSpirvShader("stl.vert"),
-        .fragmentSpirvPath = locateSpirvShader("stl.frag"),
+        .vertexSpirvPath = locateSpirvShader("glb.vert"),
+        .fragmentSpirvPath = locateSpirvShader("glb.frag"),
         .vertexBindings = {
             {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
             {zeroBinding, 0, VK_VERTEX_INPUT_RATE_VERTEX},
@@ -560,14 +573,17 @@ void Viewport::initPipelines() {
         .vertexAttributes = {
             {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
             {7, zeroBinding, VK_FORMAT_R32G32B32_SFLOAT, 0},
+            {8, zeroBinding, VK_FORMAT_R32G32_SFLOAT, 0},
         },
         .topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
         .alphaBlend = true,
         .stencilMode = VulkanPipelineConfig::StencilMode::writeReference,
+        .sampledImageCount = 1,
         .uniformBufferSize = sizeof(StlUniforms),
     };
     orthoGridConfig.sampleCount = currentSampleCount;
     orthoGridPipeline.create(*gVulkanContext, orthoGridConfig);
+    orthoGridPipeline.bindTexture(0, dummyWhiteTexture.view, dummyWhiteTexture.sampler);
 }
 
 void Viewport::render(const std::vector<trackHandler*>& trackList) {
@@ -611,8 +627,8 @@ void Viewport::render(const std::vector<trackHandler*>& trackList) {
                 drawTrack(commandBuffer, track, RenderPass::PlanarShadow);
             }
         }
-        if (gloParent->mOptions->stlShadowsEnabled) {
-            drawStls(commandBuffer, RenderPass::PlanarShadow);
+        if (gloParent->mOptions->glbShadowsEnabled) {
+            drawGlbs(commandBuffer, RenderPass::PlanarShadow);
         }
     }
 
@@ -621,7 +637,7 @@ void Viewport::render(const std::vector<trackHandler*>& trackList) {
             drawTrack(commandBuffer, track, RenderPass::Main);
         }
     }
-    drawStls(commandBuffer, RenderPass::Main);
+    drawGlbs(commandBuffer, RenderPass::Main);
     drawMarkers(commandBuffer);
 
     finalOutputFb.endRendering(commandBuffer);
@@ -724,14 +740,14 @@ void Viewport::captureScreenshot(int multiplier, const std::string& path, const 
             if (track->trackData->drawHeartline != 3)
                 drawTrack(commandBuffer, track, RenderPass::PlanarShadow);
         }
-        if (gloParent->mOptions->stlShadowsEnabled)
-            drawStls(commandBuffer, RenderPass::PlanarShadow);
+        if (gloParent->mOptions->glbShadowsEnabled)
+            drawGlbs(commandBuffer, RenderPass::PlanarShadow);
     }
     for (auto track : trackList) {
         if (track->trackData->drawHeartline != 3)
             drawTrack(commandBuffer, track, RenderPass::Main);
     }
-    drawStls(commandBuffer, RenderPass::Main);
+    drawGlbs(commandBuffer, RenderPass::Main);
     drawMarkers(commandBuffer);
     finalOutputFb.endRendering(commandBuffer);
     if (ownCommands) {
@@ -754,48 +770,154 @@ void Viewport::captureScreenshot(int multiplier, const std::string& path, const 
     sceneDirty = true;
 }
 
-bool Viewport::addStlMesh(const std::string& path) {
-    std::vector<Triangle> triangles;
-    if (!readStl(path, triangles)) {
+bool Viewport::addGlbMesh(const std::string& path) {
+    GlbModelData modelData;
+    if (!readGlb(path, modelData)) {
         return false;
     }
 
-    std::vector<glm::dvec3> vertices = extractVerticesNormal(triangles);
-    if (vertices.empty())
-        return false;
+    GlbMesh gm;
+    gm.path = path;
+    gm.visible = true;
+    gm.selected = false;
+    gm.minAABB = modelData.minAABB;
+    gm.maxAABB = modelData.maxAABB;
 
-    StlMesh sm;
-    sm.path = path;
-    sm.color = glm::vec3(0.7f, 0.7f, 0.7f);
-    sm.visible = true;
-    sm.showWireframe = false;
-    sm.vertexCount = (int)vertices.size() / 2;
+    for (auto& primData : modelData.primitives) {
+        GlbPrimitive prim;
+        prim.vertexCount = (int)primData.vertices.size();
+        prim.indexCount = (int)primData.indices.size();
+        prim.baseColorFactor = primData.baseColorFactor;
+        prim.hasTexture = primData.hasTexture;
 
-    std::vector<float> bufferData;
-    bufferData.reserve(vertices.size() * 3);
-    for (const auto& v : vertices) {
-        bufferData.push_back((float)v.x);
-        bufferData.push_back((float)v.y);
-        bufferData.push_back((float)v.z);
+        // Create vertex buffer
+        size_t vertexBufferSize = primData.vertices.size() * sizeof(GlbVertex);
+        prim.mesh.vertexBuffer.create(*gVulkanContext, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        prim.mesh.vertexBuffer.write(primData.vertices.data(), vertexBufferSize);
+
+        // Create index buffer
+        size_t indexBufferSize = primData.indices.size() * sizeof(uint32_t);
+        prim.mesh.indexBuffer.create(*gVulkanContext, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        prim.mesh.indexBuffer.write(primData.indices.data(), indexBufferSize);
+
+        // Create texture if present
+        if (prim.hasTexture) {
+            prim.texture.create2d(*gVulkanContext, primData.textureData.width, primData.textureData.height, primData.textureData.rgba.data());
+        }
+
+        gm.primitives.push_back(std::move(prim));
     }
 
-    sm.mesh.vertexBuffer.create(*gVulkanContext, bufferData.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    sm.mesh.vertexBuffer.write(bufferData.data(), bufferData.size() * sizeof(float));
-
-    stlMeshes.push_back(std::move(sm));
+    glbMeshes.push_back(std::move(gm));
     sceneDirty = true;
     return true;
 }
 
-void Viewport::removeStlMesh(int index) {
-    if (index < 0 || index >= (int)stlMeshes.size())
+void Viewport::removeGlbMesh(int index) {
+    if (index < 0 || index >= (int)glbMeshes.size())
         return;
 
     gVulkanContext->waitIdle();
-    stlMeshes[index].mesh.vertexBuffer.destroy();
-    stlMeshes[index].mesh.indexBuffer.destroy();
-    stlMeshes.erase(stlMeshes.begin() + index);
+    for (auto& prim : glbMeshes[index].primitives) {
+        prim.mesh.vertexBuffer.destroy();
+        prim.mesh.indexBuffer.destroy();
+        if (prim.hasTexture) {
+            prim.texture.destroy();
+        }
+    }
+    glbMeshes.erase(glbMeshes.begin() + index);
     sceneDirty = true;
+}
+
+bool Viewport::selectGlbAtRay(float ndcX, float ndcY) {
+    glm::mat4 invPV = glm::inverse(ProjectionModelMatrix);
+
+    glm::vec4 nearNdc(ndcX, -ndcY, -1.0f, 1.0f);
+    glm::vec4 farNdc(ndcX, -ndcY, 1.0f, 1.0f);
+
+    glm::vec4 nearWorld = invPV * nearNdc;
+    nearWorld /= nearWorld.w;
+    glm::vec4 farWorld = invPV * farNdc;
+    farWorld /= farWorld.w;
+
+    glm::vec3 rayOrigin = cameraPos;
+    if (viewMode != ViewMode::Perspective) {
+        rayOrigin = glm::vec3(nearWorld);
+    }
+    glm::vec3 rayDir = glm::normalize(glm::vec3(farWorld - nearWorld));
+
+    int closestIdx = -1;
+    float closestT = INFINITY;
+
+    auto rayAABBIntersect = [](const glm::vec3& ro, const glm::vec3& rd, const glm::vec3& minBox, const glm::vec3& maxBox, float& t) {
+        float tMin = -INFINITY;
+        float tMax = INFINITY;
+
+        for (int i = 0; i < 3; ++i) {
+            if (std::abs(rd[i]) < 1e-6f) {
+                if (ro[i] < minBox[i] || ro[i] > maxBox[i]) {
+                    return false;
+                }
+            } else {
+                float invD = 1.0f / rd[i];
+                float t0 = (minBox[i] - ro[i]) * invD;
+                float t1 = (maxBox[i] - ro[i]) * invD;
+                if (t0 > t1)
+                    std::swap(t0, t1);
+                tMin = std::max(tMin, t0);
+                tMax = std::min(tMax, t1);
+                if (tMin > tMax)
+                    return false;
+            }
+        }
+        t = tMin;
+        return tMax >= 0.0f;
+    };
+
+    for (int i = 0; i < (int)glbMeshes.size(); ++i) {
+        const auto& gm = glbMeshes[i];
+        if (!gm.visible)
+            continue;
+        float t = 0.0f;
+        if (rayAABBIntersect(rayOrigin, rayDir, gm.minAABB, gm.maxAABB, t)) {
+            if (t < closestT) {
+                closestT = t;
+                closestIdx = i;
+            }
+        }
+    }
+
+    bool changed = false;
+    for (int i = 0; i < (int)glbMeshes.size(); ++i) {
+        bool shouldBeSelected = (i == closestIdx);
+        if (glbMeshes[i].selected != shouldBeSelected) {
+            glbMeshes[i].selected = shouldBeSelected;
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        sceneDirty = true;
+    }
+    return closestIdx != -1;
+}
+
+bool Viewport::hasSelectedGlb() const {
+    for (const auto& gm : glbMeshes) {
+        if (gm.selected) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Viewport::deleteSelectedGlb() {
+    for (int i = 0; i < (int)glbMeshes.size(); ++i) {
+        if (glbMeshes[i].selected) {
+            removeGlbMesh(i);
+            break;
+        }
+    }
 }
 
 void Viewport::buildMatrices(float offset) {
@@ -820,7 +942,7 @@ void Viewport::buildMatrices(float offset) {
         if (povPos < 0)
             povPos += curTrack->getNumPoints();
         if (povPos > curTrack->getNumPoints())
-            povPos = 0;
+            povPos = curTrack->getNumPoints();
 
         povNode = curTrack->getPoint(povPos);
 
@@ -1111,8 +1233,8 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
     }
 }
 
-void Viewport::drawStls(VkCommandBuffer commandBuffer, RenderPass pass) {
-    if (stlMeshes.empty())
+void Viewport::drawGlbs(VkCommandBuffer commandBuffer, RenderPass pass) {
+    if (glbMeshes.empty())
         return;
 
     VkDeviceSize zeroOffset = 0;
@@ -1127,15 +1249,18 @@ void Viewport::drawStls(VkCommandBuffer commandBuffer, RenderPass pass) {
             .isInstanced = 0,
             .isAsset = 0,
         };
-        shadowStlPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
-        shadowStlPipeline.bindStorageSet(commandBuffer, gVulkanContext->dummyStorageSet());
-        for (const auto& sm : stlMeshes) {
+        shadowGlbPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
+        shadowGlbPipeline.bindStorageSet(commandBuffer, gVulkanContext->dummyStorageSet());
+        for (const auto& sm : glbMeshes) {
             if (!sm.visible)
                 continue;
-            VkBuffer buffers[2] = {sm.mesh.vertexBuffer.buffer, zeroAttributeBuffer.buffer};
-            VkDeviceSize offsets[2] = {0, 0};
-            vkCmdBindVertexBuffers(commandBuffer, 0, 2, buffers, offsets);
-            vkCmdDraw(commandBuffer, sm.vertexCount, 1, 0, 0);
+            for (const auto& prim : sm.primitives) {
+                VkBuffer buffers[2] = {prim.mesh.vertexBuffer.buffer, zeroAttributeBuffer.buffer};
+                VkDeviceSize offsets[2] = {0, 0};
+                vkCmdBindVertexBuffers(commandBuffer, 0, 2, buffers, offsets);
+                vkCmdBindIndexBuffer(commandBuffer, prim.mesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(commandBuffer, prim.indexCount, 1, 0, 0, 0);
+            }
         }
         return;
     }
@@ -1154,14 +1279,27 @@ void Viewport::drawStls(VkCommandBuffer commandBuffer, RenderPass pass) {
         .mistNear = gloParent->mOptions->mistNear,
         .mistFar = gloParent->mOptions->mistFar,
     };
-    for (const auto& sm : stlMeshes) {
+    for (const auto& sm : glbMeshes) {
         if (!sm.visible)
             continue;
-        uniforms.solidColor = glm::vec4(sm.color, 1.0f);
-        uniforms.wire = sm.showWireframe ? 1 : 0;
-        stlPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &sm.mesh.vertexBuffer.buffer, &zeroOffset);
-        vkCmdDraw(commandBuffer, sm.vertexCount, 1, 0, 0);
+        for (const auto& prim : sm.primitives) {
+            if (sm.selected) {
+                uniforms.solidColor = prim.baseColorFactor * glm::vec4(1.3f, 1.3f, 0.7f, 1.0f);
+            } else {
+                uniforms.solidColor = prim.baseColorFactor;
+            }
+            glbPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
+
+            if (prim.hasTexture) {
+                glbPipeline.bindTexture(0, prim.texture.view, prim.texture.sampler);
+            } else {
+                glbPipeline.bindTexture(0, dummyWhiteTexture.view, dummyWhiteTexture.sampler);
+            }
+
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, &prim.mesh.vertexBuffer.buffer, &zeroOffset);
+            vkCmdBindIndexBuffer(commandBuffer, prim.mesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(commandBuffer, prim.indexCount, 1, 0, 0, 0);
+        }
     }
 }
 

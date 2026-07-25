@@ -22,15 +22,15 @@ void main(void)
     if (aPosition.x < -0.5)
     {// left
         if (aPosition.y < -0.5)
-            texCoord = u.bottomLeft.xyz;
-        else
             texCoord = u.topLeft.xyz;
+        else
+            texCoord = u.bottomLeft.xyz;
     }
     else
     {// right
         if (aPosition.y < -0.5)
-            texCoord = u.bottomRight.xyz;
-        else
             texCoord = u.topRight.xyz;
+        else
+            texCoord = u.bottomRight.xyz;
     }
 }
