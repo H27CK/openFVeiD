@@ -41,7 +41,6 @@ enum secType {
     forced,
     geometric,
     bezier,
-    nolimitscsv,
     geometricriderlocal
 };
 

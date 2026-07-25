@@ -18,6 +18,7 @@
 */
 
 #include "secforced.h"
+#include "common.h"
 #include "exportfuncs.h"
 #include "mnode.h"
 #include <algorithm>
@@ -132,9 +133,6 @@ int secforced::updateSection(int node) {
             latForce->getValue((float)(i + 1) / F_HZ) * prevNode->vLat -
             glm::dvec3(0.0, 1.0, 0.0);
 
-        curNode->forceNormal = normForce->getValue((float)(i + 1) / F_HZ);
-        curNode->forceLateral = latForce->getValue((float)(i + 1) / F_HZ);
-
         float nForce = -glm::dot(forceVec, glm::normalize(prevNode->vNorm)) * F_G;
         float lForce = -glm::dot(forceVec, glm::normalize(prevNode->vLat)) * F_G;
 
@@ -143,18 +141,16 @@ int secforced::updateSection(int node) {
                            ? prevNode->fVel
                            : prevNode->fHeartDistFromLast * F_HZ;
 
-        if (gloParent && gloParent->mOptions && gloParent->mOptions->enforceMinRadius) {
-            float minRadius = gloParent->mOptions->minRadius;
-            if (minRadius > 0.0f) {
-                float maxForceRadius = (estVel * estVel) / minRadius;
-                float maxForceAbsolute = 25.0f * F_G; // Max 25 Gs
-                float maxForce = std::min(maxForceRadius, maxForceAbsolute);
-                float currentForce = sqrt(nForce * nForce + lForce * lForce);
-                if (currentForce > maxForce && currentForce > std::numeric_limits<float>::epsilon()) {
-                    restricted = true;
-                }
+        if (parent->enableForceLimits) {
+            double nfG = nForce / F_G;
+            double lfG = lForce / F_G;
+            if (nfG > parent->fMaxPosNormal || nfG < parent->fMaxNegNormal || lfG > parent->fMaxLateral || lfG < parent->fMinLateral) {
+                restricted = true;
             }
         }
+
+        curNode->forceNormal = nForce / F_G;
+        curNode->forceLateral = lForce / F_G;
 
         curNode->vDir = glm::normalize(
             glm::angleAxis(nForce / F_HZ / estVel, prevNode->vLat) *
@@ -175,6 +171,19 @@ int secforced::updateSection(int node) {
         curNode->setRoll(rollFunc->getValue((float)(i + 1) / F_HZ) /
                          F_HZ); // - rollFunc->getValue(i/1000.f));
         calcDirFromLast(i + 1);
+
+        if (parent->enforceMinRadius && parent->minRadius > 0.0f) {
+            double dotProd = glm::dot(curNode->vDir, prevNode->vDir);
+            double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
+            double ds = curNode->fDistFromLast;
+            if (deltaThetaRad > 1e-7) {
+                double physicalRadius = ds / deltaThetaRad;
+                if (physicalRadius < parent->minRadius) {
+                    restricted = true;
+                }
+            }
+        }
+
         if (bOrientation == EULER ||
             rollFunc->getSubfunc((float)(i + 1) / F_HZ)->degree == tozero) {
             curNode->setRoll(glm::dot(curNode->vDir, glm::dvec3(0.0, -1.0, 0.0)) *
@@ -344,9 +353,6 @@ int secforced::updateDistanceSection(int node) {
             latForce->getValue(length + prevNode->fVel / F_HZ) * prevNode->vLat -
             glm::dvec3(0.0, 1.0, 0.0);
 
-        curNode->forceNormal = normForce->getValue(length + prevNode->fVel / F_HZ);
-        curNode->forceLateral = latForce->getValue(length + prevNode->fVel / F_HZ);
-
         float nForce = -glm::dot(forceVec, glm::normalize(prevNode->vNorm)) * F_G;
         float lForce = -glm::dot(forceVec, glm::normalize(prevNode->vLat)) * F_G;
 
@@ -355,18 +361,16 @@ int secforced::updateDistanceSection(int node) {
                            ? prevNode->fVel
                            : prevNode->fHeartDistFromLast * F_HZ;
 
-        if (gloParent && gloParent->mOptions && gloParent->mOptions->enforceMinRadius) {
-            float minRadius = gloParent->mOptions->minRadius;
-            if (minRadius > 0.0f) {
-                float maxForceRadius = (estVel * estVel) / minRadius;
-                float maxForceAbsolute = 25.0f * F_G; // Max 25 Gs
-                float maxForce = std::min(maxForceRadius, maxForceAbsolute);
-                float currentForce = sqrt(nForce * nForce + lForce * lForce);
-                if (currentForce > maxForce && currentForce > std::numeric_limits<float>::epsilon()) {
-                    restricted = true;
-                }
+        if (parent->enableForceLimits) {
+            double nfG = nForce / F_G;
+            double lfG = lForce / F_G;
+            if (nfG > parent->fMaxPosNormal || nfG < parent->fMaxNegNormal || lfG > parent->fMaxLateral || lfG < parent->fMinLateral) {
+                restricted = true;
             }
         }
+
+        curNode->forceNormal = nForce / F_G;
+        curNode->forceLateral = lForce / F_G;
 
         curNode->vDir = glm::normalize(
             glm::angleAxis(nForce / F_HZ / estVel, prevNode->vLat) *
@@ -391,6 +395,19 @@ int secforced::updateDistanceSection(int node) {
         curNode->setRoll(rollFunc->getValue(length + prevNode->fVel / F_HZ) /
                          F_HZ); // - rollFunc->getValue(i/1000.f));
         calcDirFromLast(i + 1);
+
+        if (parent->enforceMinRadius && parent->minRadius > 0.0f) {
+            double dotProd = glm::dot(curNode->vDir, prevNode->vDir);
+            double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
+            double ds = curNode->fDistFromLast;
+            if (deltaThetaRad > 1e-7) {
+                double physicalRadius = ds / deltaThetaRad;
+                if (physicalRadius < parent->minRadius) {
+                    restricted = true;
+                }
+            }
+        }
+
         if (bOrientation == EULER) {
             curNode->setRoll(glm::dot(curNode->vDir, glm::dvec3(0.0, -1.0, 0.0)) *
                              curNode->fYawFromLast);
@@ -546,10 +563,16 @@ bool secforced::isInFunction(int index, subfunc* func) {
     if (func == NULL)
         return false;
     if (bArgument == DISTANCE) {
-        if (index >= (int)lNodes.size())
+        if (index >= (int)lNodes.size() || lNodes.size() <= 1)
             return false;
-        float dist = lNodes[index].fTotalHeartLength - lNodes[0].fTotalHeartLength;
-        if (dist >= func->minArgument && dist <= func->maxArgument) {
+        double h_offset = lNodes[index].fTotalHeartLength - lNodes[0].fTotalHeartLength;
+        double h_total = lNodes.back().fTotalHeartLength - lNodes[0].fTotalHeartLength;
+        double r_total = this->length;
+        double dist_projected = h_offset;
+        if (h_total > 1e-6) {
+            dist_projected = h_offset * (r_total / h_total);
+        }
+        if (dist_projected >= func->minArgument && dist_projected <= func->maxArgument) {
             return true;
         }
         return false;

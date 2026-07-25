@@ -20,6 +20,7 @@
 */
 
 #include <string>
+#include <cmath>
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "dummies.h"
@@ -33,13 +34,13 @@ inline bool ValueScroll(float* v, float step = 1.0f, float ctrlStep = 0.1f) {
     if (ImGui::IsItemHovered()) {
         ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
         if (ImGui::GetIO().MouseWheel != 0.0f) {
-            float s = gloParent->mOptions->scrollIncrement;
+            float multiplier = gloParent->mOptions->scrollIncrement;
             if (ImGui::GetIO().KeyCtrl) {
-                s = gloParent->mOptions->scrollCtrlIncrement;
+                multiplier = gloParent->mOptions->scrollCtrlIncrement;
             } else if (ImGui::GetIO().KeyShift) {
-                s = gloParent->mOptions->scrollShiftIncrement;
+                multiplier = gloParent->mOptions->scrollShiftIncrement;
             }
-            *v += ImGui::GetIO().MouseWheel * s;
+            *v += ImGui::GetIO().MouseWheel * step * multiplier;
             return true;
         }
     }
@@ -50,17 +51,43 @@ inline bool ValueScrollInt(int* v, int step = 1, int ctrlStep = 1) {
     if (ImGui::IsItemHovered()) {
         ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
         if (ImGui::GetIO().MouseWheel != 0.0f) {
-            int s = std::max(1, (int)gloParent->mOptions->scrollIncrement);
+            float multiplier = gloParent->mOptions->scrollIncrement;
             if (ImGui::GetIO().KeyCtrl) {
-                s = std::max(1, (int)gloParent->mOptions->scrollCtrlIncrement);
+                multiplier = gloParent->mOptions->scrollCtrlIncrement;
             } else if (ImGui::GetIO().KeyShift) {
-                s = std::max(1, (int)gloParent->mOptions->scrollShiftIncrement);
+                multiplier = gloParent->mOptions->scrollShiftIncrement;
             }
-            *v += (int)ImGui::GetIO().MouseWheel * s;
+            *v += static_cast<int>(std::round(ImGui::GetIO().MouseWheel * step * multiplier));
             return true;
         }
     }
     return false;
+}
+
+inline double softLimit(double x, double minL, double maxL, double m = 0.2) {
+    double range = maxL - minL;
+    double activeMargin = m;
+    if (activeMargin * 2.0 > range) {
+        activeMargin = range * 0.49;
+    }
+
+    if (x > maxL - activeMargin) {
+        if (x > maxL + activeMargin) {
+            x = maxL;
+        } else {
+            double diff = x - (maxL + activeMargin);
+            x = maxL - (diff * diff) / (4.0 * activeMargin);
+        }
+    }
+    if (x < minL + activeMargin) {
+        if (x < minL - activeMargin) {
+            x = minL;
+        } else {
+            double diff = x - (minL - activeMargin);
+            x = minL + (diff * diff) / (4.0 * activeMargin);
+        }
+    }
+    return x;
 }
 } // namespace common
 

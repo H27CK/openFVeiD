@@ -67,8 +67,10 @@ struct DummyOptions {
     bool skyboxEnabled = true;
     bool strictCustomStyleLock = true;
     bool editShadows = true;
-    bool stlShadowsEnabled = false; // Experimental
-    float sunPitch = -90.0f;        // Directly above
+    bool glbShadowsEnabled = false;  // Experimental
+    bool graphOverlayEnabled = true; // Telemetry overlay
+    bool relativeExport = false;     // Relative NoLimits 2 export coordinate behaviour
+    float sunPitch = -90.0f;         // Directly above
     float sunYaw = 0.0f;
     float stallSpeed = 0.1f;
     float graphSpacingLimit = 0.1f;
@@ -105,6 +107,8 @@ struct DummyOptions {
                 << floorColor.x << " " << floorColor.y << " " << floorColor.z << " "
                 << fontSize << " "
                 << fov << " "
+                << glbShadowsEnabled << " "
+                << graphOverlayEnabled << " "
                 << keyBackward << " "
                 << keyForward << " "
                 << keyLeft << " "
@@ -119,6 +123,7 @@ struct DummyOptions {
                 << mistNear << " "
                 << mouseSensitivity << " "
                 << msaaSamples << " "
+                << relativeExport << " "
                 << screenshotMultiplier << " "
                 << scrollCtrlIncrement << " "
                 << scrollIncrement << " "
@@ -128,7 +133,6 @@ struct DummyOptions {
                 << skyboxEnabled << " "
                 << sprintMultiplier << " "
                 << stallSpeed << " "
-                << stlShadowsEnabled << " "
                 << strictCustomStyleLock << " "
                 << sunPitch << " "
                 << sunYaw << " "
@@ -151,7 +155,7 @@ struct DummyOptions {
                 return;
 
             if (version == "FVD_OPT_V1") {
-                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> keyBackward >> keyForward >> keyLeft >> keyRight >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> screenshotMultiplier >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> stlShadowsEnabled >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
+                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> glbShadowsEnabled >> graphOverlayEnabled >> keyBackward >> keyForward >> keyLeft >> keyRight >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> relativeExport >> screenshotMultiplier >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
 
                 for (int i = 0; i < 14; ++i) {
                     if (!(in >> graphColors[i].x >> graphColors[i].y >> graphColors[i].z))
@@ -198,18 +202,16 @@ struct DummyGlobal {
     float projectGrdTexSize = 440.0f;
     std::string projectGroundTex = "";
     bool skyboxAvailable = false;
-    struct StlSettings {
+    struct GlbSettings {
         std::string path;
-        glm::vec3 color = glm::vec3(0.7f, 0.7f, 0.7f);
         bool visible = true;
-        bool showWireframe = false;
     };
-    std::vector<StlSettings> projectStls;
+    std::vector<GlbSettings> projectGlbs;
 
     void resetEnvironment() {
         projectGrdTexSize = 440.0f;
         projectGroundTex = "";
-        projectStls.clear();
+        projectGlbs.clear();
     }
 
     void updateInfoPanel() {}

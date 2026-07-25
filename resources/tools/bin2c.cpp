@@ -40,7 +40,12 @@ int main(int argc, char** argv) {
 
     std::vector<std::string> assetPaths;
     for (int argumentIndex = 2; argumentIndex < argc; ++argumentIndex) {
-        const std::string assetPath = argv[argumentIndex];
+        std::string assetPath = argv[argumentIndex];
+        for (char& c : assetPath) {
+            if (c == '\\') {
+                c = '/';
+            }
+        }
         std::ifstream input(assetPath, std::ios::binary);
         if (!input) {
             std::fprintf(stderr, "bin2c: cannot open %s\n", assetPath.c_str());
@@ -52,10 +57,12 @@ int main(int argc, char** argv) {
         const size_t assetIndex = assetPaths.size();
         output << "static const unsigned char assetBytes" << assetIndex << "[] = {";
         for (size_t byteIndex = 0; byteIndex < bytes.size(); ++byteIndex) {
-            if (byteIndex % 20 == 0) output << "\n    ";
+            if (byteIndex % 20 == 0)
+                output << "\n    ";
             output << static_cast<unsigned>(bytes[byteIndex]) << ",";
         }
-        if (bytes.empty()) output << "0";
+        if (bytes.empty())
+            output << "0";
         output << "\n};\n";
         output << "static const size_t assetSize" << assetIndex << " = " << bytes.size() << ";\n\n";
         assetPaths.push_back(assetPath);

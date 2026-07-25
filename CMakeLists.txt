@@ -105,8 +105,8 @@ endforeach()
 add_custom_target(vulkan_shaders DEPENDS ${VULKAN_SHADER_OUTPUTS})
 
 # --- Embedded Assets ---
-add_executable(bin2c tools/bin2c.cpp)
-file(GLOB ASSETS_FONTS RELATIVE ${CMAKE_SOURCE_DIR} "fonts/*")
+add_executable(bin2c resources/tools/bin2c.cpp)
+file(GLOB ASSETS_FONTS RELATIVE ${CMAKE_SOURCE_DIR} "resources/fonts/*")
 set(ASSETS ${ASSETS_FONTS})
 
 add_custom_command(
@@ -131,13 +131,14 @@ set(RENDERER_SOURCES
 )
 
 if(WIN32)
-    set(RES_FILE resources.rc)
+    set(RES_FILE resources/platform/resources.rc)
 endif()
 
 add_executable(fvd
     main.cpp
     ${CORE_SOURCES}
     ${RENDERER_SOURCES}
+    ext/tinyexpr.c
     ui/graphview.cpp
     ui/resultinggraphprocessor.cpp
     ui/measurementgraphprocessor.cpp
@@ -204,19 +205,19 @@ elseif(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.openfvd.fvdplusplus"
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
-        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Info.plist.in
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/resources/platform/Info.plist.in
         BUILD_RPATH "@loader_path/../Frameworks"
         INSTALL_RPATH "@loader_path/../Frameworks"
     )
     add_custom_command(TARGET fvd POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/track_styles
+            ${CMAKE_SOURCE_DIR}/community/track_styles
             $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/track_styles
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_BINARY_DIR}/shaders_vulkan
             $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/shaders_vulkan
         COMMAND ${CMAKE_COMMAND} -E copy
-            ${CMAKE_SOURCE_DIR}/icons/fvd_orig.icns
+            ${CMAKE_SOURCE_DIR}/resources/icons/fvd_orig.icns
             $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/fvd.icns
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Frameworks

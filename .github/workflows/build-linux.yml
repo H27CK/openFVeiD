@@ -31,7 +31,7 @@ jobs:
           cp build/fvd dist/
           strip dist/fvd
           cp -r build/shaders_vulkan dist/
-          cp -r track_styles dist/
+          cp -r community/track_styles dist/track_styles
           zip -r fvd-linux-x64.zip dist/*
 
       - name: Upload Linux Artifact

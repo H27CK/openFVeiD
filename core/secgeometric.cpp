@@ -18,6 +18,7 @@
 */
 
 #include "secgeometric.h"
+#include "common.h"
 #include "exportfuncs.h"
 #include "dummies.h"
 #include <algorithm>
@@ -47,6 +48,7 @@ secgeometric::secgeometric(track* getParent, mnode* first, float gettime)
 
 int secgeometric::updateSection(int node) {
     bool stalled = false;
+    bool restricted = false;
     if (rollFunc->lockedFunc() != -1) {
         if (fabs(rollFunc->funcList.back()->symArg) > 0.00001f &&
             rollFunc->funcList.back()->minArgument * F_HZ < node)
@@ -145,8 +147,17 @@ int secgeometric::updateSection(int node) {
         curNode->fVel = prevNode->fVel;
         curNode->fEnergy = prevNode->fEnergy;
 
-        float pitchChange = normForce->getValue((float)(i + 1) / F_HZ) / F_HZ;
-        float yawChange = latForce->getValue((float)(i + 1) / F_HZ) / F_HZ;
+        double requestedPitchForce = normForce->getValue((float)(i + 1) / F_HZ);
+        double requestedYawForce = latForce->getValue((float)(i + 1) / F_HZ);
+
+        if (parent->enableForceLimits) {
+            if (requestedPitchForce > parent->fMaxPosNormal || requestedPitchForce < parent->fMaxNegNormal || requestedYawForce > parent->fMaxLateral || requestedYawForce < parent->fMinLateral) {
+                restricted = true;
+            }
+        }
+
+        float pitchChange = requestedPitchForce / F_HZ;
+        float yawChange = requestedYawForce / F_HZ;
         int sign = 1;
         if (fabs(artificialRoll) >= 90.f) {
             sign = -1;
@@ -236,6 +247,19 @@ int secgeometric::updateSection(int node) {
         }
 
         calcDirFromLast(i + 1);
+
+        if (parent->enforceMinRadius && parent->minRadius > 0.0f) {
+            double dotProd = glm::dot(curNode->vDir, prevNode->vDir);
+            double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
+            double ds = curNode->fDistFromLast;
+            if (deltaThetaRad > 1e-7) {
+                double physicalRadius = ds / deltaThetaRad;
+                if (physicalRadius < parent->minRadius) {
+                    restricted = true;
+                }
+            }
+        }
+
         float temp = cos(fabs(curNode->getPitch()) * F_PI / 180.f);
         float forceAngle =
             sqrt(temp * temp * curNode->fYawFromLast * curNode->fYawFromLast +
@@ -271,11 +295,13 @@ int secgeometric::updateSection(int node) {
     } else
         length = 0;
     this->isStalled = stalled;
+    this->isRestricted = restricted;
     return node;
 }
 
 int secgeometric::updateDistanceSection(int node) {
     bool stalled = false;
+    bool restricted = false;
     node = node < 0 ? 0 : node;
 
     int i = 0;
@@ -362,10 +388,17 @@ int secgeometric::updateDistanceSection(int node) {
         curNode->fVel = prevNode->fVel;
         curNode->fEnergy = prevNode->fEnergy;
 
-        float pitchChange = normForce->getValue(length + curNode->fVel / F_HZ) *
-                            (curNode->fVel / F_HZ);
-        float yawChange = latForce->getValue(length + curNode->fVel / F_HZ) *
-                          (curNode->fVel / F_HZ);
+        double requestedPitchForce = normForce->getValue(length + curNode->fVel / F_HZ);
+        double requestedYawForce = latForce->getValue(length + curNode->fVel / F_HZ);
+
+        if (parent->enableForceLimits) {
+            if (requestedPitchForce > parent->fMaxPosNormal || requestedPitchForce < parent->fMaxNegNormal || requestedYawForce > parent->fMaxLateral || requestedYawForce < parent->fMinLateral) {
+                restricted = true;
+            }
+        }
+
+        float pitchChange = requestedPitchForce * (curNode->fVel / F_HZ);
+        float yawChange = requestedYawForce * (curNode->fVel / F_HZ);
         int sign = 1;
         if (fabs(artificialRoll) >= 90.f) {
             sign = -1;
@@ -455,6 +488,19 @@ int secgeometric::updateDistanceSection(int node) {
         }
 
         calcDirFromLast(i + 1);
+
+        if (parent->enforceMinRadius && parent->minRadius > 0.0f) {
+            double dotProd = glm::dot(curNode->vDir, prevNode->vDir);
+            double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
+            double ds = curNode->fDistFromLast;
+            if (deltaThetaRad > 1e-7) {
+                double physicalRadius = ds / deltaThetaRad;
+                if (physicalRadius < parent->minRadius) {
+                    restricted = true;
+                }
+            }
+        }
+
         float temp = cos(fabs(curNode->getPitch()) * F_PI / 180.f);
         float forceAngle =
             sqrt(temp * temp * curNode->fYawFromLast * curNode->fYawFromLast +
@@ -493,6 +539,7 @@ int secgeometric::updateDistanceSection(int node) {
     } else
         length = 0;
     this->isStalled = stalled;
+    this->isRestricted = restricted;
     return node;
 }
 
@@ -560,10 +607,16 @@ bool secgeometric::isInFunction(int index, subfunc* func) {
     if (func == NULL)
         return false;
     if (bArgument == DISTANCE) {
-        if (index >= (int)lNodes.size())
+        if (index >= (int)lNodes.size() || lNodes.size() <= 1)
             return false;
-        float dist = lNodes[index].fTotalHeartLength - lNodes[0].fTotalHeartLength;
-        if (dist >= func->minArgument && dist <= func->maxArgument) {
+        double h_offset = lNodes[index].fTotalHeartLength - lNodes[0].fTotalHeartLength;
+        double h_total = lNodes.back().fTotalHeartLength - lNodes[0].fTotalHeartLength;
+        double r_total = this->length;
+        double dist_projected = h_offset;
+        if (h_total > 1e-6) {
+            dist_projected = h_offset * (r_total / h_total);
+        }
+        if (dist_projected >= func->minArgument && dist_projected <= func->maxArgument) {
             return true;
         }
         return false;

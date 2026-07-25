@@ -18,6 +18,7 @@
 */
 
 #include "track.h"
+#include "dummies.h"
 #include <chrono>
 #include "exportfuncs.h"
 #include <algorithm>
@@ -55,7 +56,15 @@ struct DummyGlobalTrack {
     }* mOptions = new Options();
 }* gloParentTrack = new DummyGlobalTrack();
 
-track::track() {}
+track::track() {
+    enableForceLimits = false;
+    fMaxPosNormal = 4.5;
+    fMaxNegNormal = -1.5;
+    fMaxLateral = 1.0;
+    fMinLateral = -1.0;
+    enforceMinRadius = false;
+    minRadius = 5.0;
+}
 
 track::track(trackHandler* _parent, glm::dvec3 startPos, double startYaw,
              double heartLine) {
@@ -72,6 +81,13 @@ track::track(trackHandler* _parent, glm::dvec3 startPos, double startYaw,
     this->fHeart = heartLine;
     fFriction = 0.03;
     fResistance = 2e-5;
+    enableForceLimits = false;
+    fMaxPosNormal = 4.5;
+    fMaxNegNormal = -1.5;
+    fMaxLateral = 1.0;
+    fMinLateral = -1.0;
+    enforceMinRadius = false;
+    minRadius = 5.0;
     hasChanged = true;
     graphChanged = true;
     drawHeartline = 0;
@@ -95,8 +111,6 @@ track::track(trackHandler* _parent, glm::dvec3 startPos, double startYaw,
     railR.size = glm::vec2(0.14f);
     railR.offset = glm::vec2(0.5f, 0.0f);
     customExtrusions.push_back(railR);
-
-    // testing backtrace
 }
 
 track::~track() {
@@ -291,8 +305,9 @@ void track::updateTrack(int index, int iNode) {
         lSections.at(i)->updateSection(0);
     }
 
-    // Check for gimbal lock on all updated nodes (only standard geometric sections can trigger it)
-    for (int i = index; i < (int)lSections.size(); ++i) {
+    // Check for gimbal lock on all nodes across all sections (only standard world geometric sections can trigger it)
+    this->isAnyNodeNearGimbalLock = false;
+    for (size_t i = 0; i < lSections.size(); ++i) {
         bool canGimbalLock = (lSections[i]->type == geometric);
         for (auto& node : lSections[i]->lNodes) {
             if (canGimbalLock && std::abs(node.vDir.y) > gimbalThreshold) {
@@ -372,9 +387,6 @@ void track::newSection(enum secType type, int index, bool deferUpdate) {
         newSection = new secbezier(this, startNode);
         break;
     case 6:
-        newSection = new secnlcsv(this, startNode);
-        break;
-    case 7:
         newSection = new secgeometricriderlocal(this, startNode, 1000);
         break;
     default:
@@ -966,9 +978,15 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
     std::vector<double> c(size);
     std::vector<glm::dvec3> d(size);
 
+    double fHeart = this->fHeart;
+    bool relativeExport = gloParent && gloParent->mOptions->relativeExport;
     for (size_t i = 0; i < size; ++i) {
         mnode* curNode = &exportNodes[i].node;
-        d[i] = curNode->vPos;
+        if (relativeExport) {
+            d[i] = curNode->vPosHeart(fHeart) - anchor->vPosHeart(fHeart);
+        } else {
+            d[i] = curNode->vPosHeart(fHeart);
+        }
         if (i == 0 || i == size - 1 || exportNodes[i].isBoundary) {
             a[i] = 0.0;
             b[i] = 1.0;
@@ -1012,7 +1030,7 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
 
             if (strict == 1) {
                 glm::dvec3 dir = exportNodes[i - 1].node.vDir;
-                glm::dvec3 nP = exportNodes[i + 1].node.vPos;
+                glm::dvec3 nP = exportNodes[i + 1].node.vPosHeart(fHeart);
                 double a = glm::length(nP - d[i - 1]);
                 double cosa = glm::dot(glm::normalize(nP - d[i - 1]), dir);
                 e.push_back(glm::dvec4(d[i - 1] + dir * a / (2.0 * cosa), 0.0));
@@ -1022,12 +1040,12 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
                 e.push_back(glm::dvec4(d[i], 1.0));
             } else if (strict == 4) {
                 glm::dvec3 dir = exportNodes[i + 1].node.vDir;
-                glm::dvec3 pP = exportNodes[i - 1].node.vPos;
+                glm::dvec3 pP = exportNodes[i - 1].node.vPosHeart(fHeart);
                 double a = glm::length(d[i + 1] - pP);
                 double cosa = glm::dot(glm::normalize(d[i + 1] - pP), dir);
                 e.push_back(glm::dvec4(d[i + 1] - dir * a / (2.0 * cosa), 0.0));
             } else if (strict == 5) {
-                glm::dvec3 dp = exportNodes[i + 1].node.vPos - exportNodes[i - 1].node.vPos;
+                glm::dvec3 dp = exportNodes[i + 1].node.vPosHeart(fHeart) - exportNodes[i - 1].node.vPosHeart(fHeart);
                 glm::dvec3 dv = exportNodes[i + 1].node.vDir + exportNodes[i - 1].node.vDir;
 
                 double a = glm::length2(dv) - 1.0;
@@ -1041,9 +1059,9 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
                 double x0 = -p + sqrt(p * p - c);
 
                 e.push_back(glm::dvec4(
-                    exportNodes[i - 1].node.vPos - x0 * exportNodes[i - 1].node.vDir, 0.0));
+                    exportNodes[i - 1].node.vPosHeart(fHeart) - x0 * exportNodes[i - 1].node.vDir, 0.0));
                 e.push_back(glm::dvec4(
-                    exportNodes[i + 1].node.vPos + x0 * exportNodes[i + 1].node.vDir, 0.0));
+                    exportNodes[i + 1].node.vPosHeart(fHeart) + x0 * exportNodes[i + 1].node.vDir, 0.0));
 
             } else if (strict == 6) {
                 e.push_back(glm::dvec4(d[i], 1.0));
@@ -1062,25 +1080,38 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
     glm::dmat4 anchorBase = glm::translate(glm::dmat4(1.0), this->startPos) *
                             glm::rotate(glm::dmat4(1.0), (double)TO_RAD(this->startYaw - 90.0), glm::dvec3(0.0, 1.0, 0.0));
 
-    for (int i = 0; i < (int)e.size(); ++i) {
-        transformed[i] = glm::dvec3(anchorBase * glm::dvec4(glm::dvec3(e[i]), 1.0));
+    glm::dmat3 anchorBaseRelative(1.0);
+    if (relativeExport) {
+        double temp = glm::length(glm::dvec3(anchor->vDir.x, 0.0, anchor->vDir.z));
+        anchorBaseRelative = glm::transpose(
+            glm::dmat3(-anchor->vDir.z / temp, 0.0, anchor->vDir.x / temp, 0.0, 1.0,
+                       0.0, -anchor->vDir.x / temp, 0.0, -anchor->vDir.z / temp));
     }
 
-    // bounding box centering
-    glm::dvec3 bboxMin = transformed[0];
-    glm::dvec3 bboxMax = transformed[0];
-    for (int i = 1; i < (int)transformed.size(); ++i) {
-        glm::dvec3 p = transformed[i];
-        bboxMin = glm::min(bboxMin, p);
-        bboxMax = glm::max(bboxMax, p);
+    for (int i = 0; i < (int)e.size(); ++i) {
+        if (relativeExport) {
+            transformed[i] = anchorBaseRelative * glm::dvec3(e[i]);
+        } else {
+            transformed[i] = glm::dvec3(anchorBase * glm::dvec4(glm::dvec3(e[i]), 1.0));
+        }
     }
 
     glm::dvec3 cancellationOffset(0.0);
-    glm::dvec3 bboxCenter = (bboxMin + bboxMax) * 0.5;
+    if (!relativeExport) {
+        glm::dvec3 bboxMin = transformed[0];
+        glm::dvec3 bboxMax = transformed[0];
+        for (int i = 1; i < (int)transformed.size(); ++i) {
+            glm::dvec3 p = transformed[i];
+            bboxMin = glm::min(bboxMin, p);
+            bboxMax = glm::max(bboxMax, p);
+        }
 
-    cancellationOffset.x = bboxCenter.x - transformed[0].x;
-    cancellationOffset.z = bboxCenter.z - transformed[0].z;
-    cancellationOffset.y = (bboxMin.y - transformed[0].y) - 1.5;
+        glm::dvec3 bboxCenter = (bboxMin + bboxMax) * 0.5;
+
+        cancellationOffset.x = bboxCenter.x - transformed[0].x;
+        cancellationOffset.z = bboxCenter.z - transformed[0].z;
+        cancellationOffset.y = (bboxMin.y - transformed[0].y) - 1.5;
+    }
 
     for (int i = 0; i < (int)e.size(); ++i) {
         glm::dvec3 ex = transformed[i] + cancellationOffset;
@@ -1100,8 +1131,14 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
     for (size_t i = 0; i < size; ++i) {
         mnode* curNode = &exportNodes[i].node;
 
-        glm::dvec3 up = glm::dvec3(anchorBase * glm::dvec4(-curNode->vNorm, 0.0));
-        glm::dvec3 right = glm::dvec3(anchorBase * glm::dvec4(curNode->vLat, 0.0));
+        glm::dvec3 up, right;
+        if (relativeExport) {
+            up = anchorBaseRelative * (-curNode->vNorm);
+            right = anchorBaseRelative * (curNode->vLat);
+        } else {
+            up = glm::dvec3(anchorBase * glm::dvec4(-curNode->vNorm, 0.0));
+            right = glm::dvec3(anchorBase * glm::dvec4(curNode->vLat, 0.0));
+        }
         double coord =
             (curNode->fTotalHeartLength - startLen) / (endLen - startLen);
 
@@ -1138,9 +1175,15 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
     std::vector<double> c(size);
     std::vector<glm::dvec3> d(size);
 
+    double fHeart = this->fHeart;
+    bool relativeExport = gloParent && gloParent->mOptions->relativeExport;
     for (size_t i = 0; i < size; ++i) {
         mnode* curNode = &exportNodes[i].node;
-        d[i] = curNode->vPos;
+        if (relativeExport) {
+            d[i] = curNode->vPosHeart(fHeart) - anchor->vPosHeart(fHeart);
+        } else {
+            d[i] = curNode->vPosHeart(fHeart);
+        }
         if (i == 0 || i == size - 1 || exportNodes[i].isBoundary) {
             a[i] = 0.0;
             b[i] = 1.0;
@@ -1189,7 +1232,7 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
 
             if (strict == 1) {
                 glm::dvec3 dir = exportNodes[i - 1].node.vDir;
-                glm::dvec3 nP = exportNodes[i + 1].node.vPos;
+                glm::dvec3 nP = exportNodes[i + 1].node.vPosHeart(fHeart);
                 double a = glm::length(nP - d[i - 1]);
                 double cosa = glm::dot(glm::normalize(nP - d[i - 1]), dir);
                 e.push_back(glm::dvec4(d[i - 1] + dir * a / (2.0 * cosa), 0.0));
@@ -1199,13 +1242,13 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
                 e.push_back(glm::dvec4(d[i], 1.0));
             } else if (strict == 4) {
                 glm::dvec3 dir = exportNodes[i + 1].node.vDir;
-                glm::dvec3 pP = exportNodes[i - 1].node.vPos;
+                glm::dvec3 pP = exportNodes[i - 1].node.vPosHeart(fHeart);
                 double a = glm::length(d[i + 1] - pP);
                 double cosa = glm::dot(glm::normalize(d[i + 1] - pP), dir);
                 e.push_back(glm::dvec4(d[i + 1] - dir * a / (2.0 * cosa), 0.0));
             } else if (strict == 5) {
                 glm::dvec3 dp =
-                    exportNodes[i + 1].node.vPos - exportNodes[i - 1].node.vPos;
+                    exportNodes[i + 1].node.vPosHeart(fHeart) - exportNodes[i - 1].node.vPosHeart(fHeart);
                 glm::dvec3 dv =
                     exportNodes[i + 1].node.vDir + exportNodes[i - 1].node.vDir;
 
@@ -1220,10 +1263,10 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
                 double x0 = -p + sqrt(p * p - c);
 
                 e.push_back(glm::dvec4(
-                    exportNodes[i - 1].node.vPos - x0 * exportNodes[i - 1].node.vDir,
+                    exportNodes[i - 1].node.vPosHeart(fHeart) - x0 * exportNodes[i - 1].node.vDir,
                     0.0));
                 e.push_back(glm::dvec4(
-                    exportNodes[i + 1].node.vPos + x0 * exportNodes[i + 1].node.vDir,
+                    exportNodes[i + 1].node.vPosHeart(fHeart) + x0 * exportNodes[i + 1].node.vDir,
                     0.0));
 
             } else if (strict == 6) {
@@ -1243,34 +1286,54 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
     glm::dmat4 anchorBase = glm::translate(glm::dmat4(1.0), this->startPos) *
                             glm::rotate(glm::dmat4(1.0), (double)TO_RAD(this->startYaw - 90.0), glm::dvec3(0.0, 1.0, 0.0));
 
-    for (int i = 0; i < (int)e.size(); ++i) {
-        transformed[i] = glm::dvec3(anchorBase * glm::dvec4(glm::dvec3(e[i]), 1.0));
+    glm::dmat3 anchorBaseRelative(1.0);
+    if (relativeExport) {
+        double temp = glm::length(glm::dvec3(anchor->vDir.x, 0.0, anchor->vDir.z));
+        anchorBaseRelative = glm::transpose(
+            glm::dmat3(-anchor->vDir.z / temp, 0.0, anchor->vDir.x / temp, 0.0, 1.0,
+                       0.0, -anchor->vDir.x / temp, 0.0, -anchor->vDir.z / temp));
     }
 
-    // bounding box centering
-    glm::dvec3 bboxMin = transformed[0];
-    glm::dvec3 bboxMax = transformed[0];
-    for (int i = 1; i < (int)transformed.size(); ++i) {
-        glm::dvec3 p = transformed[i];
-        bboxMin = glm::min(bboxMin, p);
-        bboxMax = glm::max(bboxMax, p);
+    for (int i = 0; i < (int)e.size(); ++i) {
+        if (relativeExport) {
+            transformed[i] = anchorBaseRelative * glm::dvec3(e[i]);
+        } else {
+            transformed[i] = glm::dvec3(anchorBase * glm::dvec4(glm::dvec3(e[i]), 1.0));
+        }
     }
 
     glm::dvec3 cancellationOffset(0.0);
-    glm::dvec3 bboxCenter = (bboxMin + bboxMax) * 0.5;
+    if (!relativeExport) {
+        glm::dvec3 bboxMin = transformed[0];
+        glm::dvec3 bboxMax = transformed[0];
+        for (int i = 1; i < (int)transformed.size(); ++i) {
+            glm::dvec3 p = transformed[i];
+            bboxMin = glm::min(bboxMin, p);
+            bboxMax = glm::max(bboxMax, p);
+        }
 
-    cancellationOffset.x = bboxCenter.x - transformed[0].x;
-    cancellationOffset.z = bboxCenter.z - transformed[0].z;
-    cancellationOffset.y = (bboxMin.y - transformed[0].y) - 1.5;
+        glm::dvec3 bboxCenter = (bboxMin + bboxMax) * 0.5;
+
+        cancellationOffset.x = bboxCenter.x - transformed[0].x;
+        cancellationOffset.z = bboxCenter.z - transformed[0].z;
+        cancellationOffset.y = (bboxMin.y - transformed[0].y) - 1.5;
+    }
 
     for (int i = 0; i < (int)e.size(); ++i) {
         glm::dvec3 ex = transformed[i] + cancellationOffset;
 
         mnode* curNode = &exportNodes[i].node;
 
-        glm::dvec3 front = glm::dvec3(anchorBase * glm::dvec4(curNode->vDir, 0.0));
-        glm::dvec3 left = glm::dvec3(anchorBase * glm::dvec4(-curNode->vLat, 0.0));
-        glm::dvec3 up = glm::dvec3(anchorBase * glm::dvec4(-curNode->vNorm, 0.0));
+        glm::dvec3 front, left, up;
+        if (relativeExport) {
+            front = anchorBaseRelative * curNode->vDir;
+            left = anchorBaseRelative * (-curNode->vLat);
+            up = anchorBaseRelative * (-curNode->vNorm);
+        } else {
+            front = glm::dvec3(anchorBase * glm::dvec4(curNode->vDir, 0.0));
+            left = glm::dvec3(anchorBase * glm::dvec4(-curNode->vLat, 0.0));
+            up = glm::dvec3(anchorBase * glm::dvec4(-curNode->vNorm, 0.0));
+        }
 
         fprintf(file, "%d\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\n", i + 1,
                 ex.x, ex.y, ex.z, front.x, front.y, front.z, left.x, left.y, left.z,
@@ -1461,10 +1524,6 @@ std::string track::loadTrack(istream& file) {
                 activeSection->loadSection(file);
         } else if (temp == "BEZ") {
             newSection(bezier, -1, true);
-            if (activeSection)
-                activeSection->loadSection(file);
-        } else if (temp == "NLC") {
-            newSection(nolimitscsv, -1, true);
             if (activeSection)
                 activeSection->loadSection(file);
         } else if (temp == "GRL") {
@@ -1958,6 +2017,25 @@ void track::saveTrackChunk(std::ostream& file) {
     std::string offsData = offsStream.str();
     writeChunkHeader(file, "OFFS", 1, offsData.length());
     file.write(offsData.data(), offsData.length());
+
+    // 6. Write LIM  chunk (Safety limits)
+    std::stringstream limStream;
+    writeBytes(&limStream, (const char*)&enableForceLimits, sizeof(bool));
+    float posN = (float)fMaxPosNormal;
+    writeBytes(&limStream, (const char*)&posN, sizeof(float));
+    float negN = (float)fMaxNegNormal;
+    writeBytes(&limStream, (const char*)&negN, sizeof(float));
+    float latMax = (float)fMaxLateral;
+    writeBytes(&limStream, (const char*)&latMax, sizeof(float));
+    float latMin = (float)fMinLateral;
+    writeBytes(&limStream, (const char*)&latMin, sizeof(float));
+    writeBytes(&limStream, (const char*)&enforceMinRadius, sizeof(bool));
+    float rad = (float)minRadius;
+    writeBytes(&limStream, (const char*)&rad, sizeof(float));
+
+    std::string limData = limStream.str();
+    writeChunkHeader(file, "LIM ", 1, limData.length());
+    file.write(limData.data(), limData.length());
 }
 
 void track::loadTrackChunk(std::istream& file, uint8_t version, uint32_t length) {
@@ -1977,6 +2055,8 @@ void track::loadTrackChunk(std::istream& file, uint8_t version, uint32_t length)
             loadAsstChunk(file, header.version, header.length);
         } else if (tag == "OFFS") {
             loadOffsChunk(file, header.version, header.length);
+        } else if (tag == "LIM ") {
+            loadLimChunk(file, header.version, header.length);
         } else {
             LOG_INFO("Skipping unknown sub-chunk of TRK: %s", tag.c_str());
         }
@@ -2042,8 +2122,6 @@ void track::loadSecsChunk(std::istream& file, uint8_t version, uint32_t length) 
             newSection(geometric, -1, true);
         } else if (payloadTag == "BEZ") {
             newSection(bezier, -1, true);
-        } else if (payloadTag == "NLC") {
-            newSection(nolimitscsv, -1, true);
         } else if (payloadTag == "GRL") {
             newSection(geometricriderlocal, -1, true);
         } else {
@@ -2120,4 +2198,14 @@ void track::loadOffsChunk(std::istream& file, uint8_t version, uint32_t length) 
         o.color.z = readFloat(&file);
         trainOffsets.push_back(o);
     }
+}
+
+void track::loadLimChunk(std::istream& file, uint8_t version, uint32_t length) {
+    enableForceLimits = readBool(&file);
+    fMaxPosNormal = (double)readFloat(&file);
+    fMaxNegNormal = (double)readFloat(&file);
+    fMaxLateral = (double)readFloat(&file);
+    fMinLateral = (double)readFloat(&file);
+    enforceMinRadius = readBool(&file);
+    minRadius = (double)readFloat(&file);
 }

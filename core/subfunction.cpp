@@ -18,6 +18,7 @@
 */
 
 #include "subfunction.h"
+#include "tinyexpr.h"
 #include "function.h"
 #include "mnode.h"
 #include "section.h"
@@ -44,10 +45,16 @@ double interpolate(double t, double x1, double x2, double x3, double x4) {
            t * t * t * x4;
 }
 
-subfunc::subfunc() {}
+subfunc::subfunc() {
+    compiledExpr = nullptr;
+    customVarX = 0.0;
+}
 
 subfunc::subfunc(double min, double max, double start, double diff,
                  func* getparent) {
+    compiledExpr = nullptr;
+    customVarX = 0.0;
+
     minArgument = min;
     maxArgument = max;
 
@@ -65,6 +72,37 @@ subfunc::subfunc(double min, double max, double start, double diff,
         changeDegree(quartic);
     }
     locked = false;
+}
+
+subfunc::~subfunc() {
+    if (compiledExpr) {
+        te_free(static_cast<te_expr*>(compiledExpr));
+        compiledExpr = nullptr;
+    }
+}
+
+bool subfunc::compileExpr() {
+    if (compiledExpr) {
+        te_free(static_cast<te_expr*>(compiledExpr));
+        compiledExpr = nullptr;
+    }
+    compileError.clear();
+
+    if (customExpr.empty()) {
+        compileError = "Expression is empty";
+        return false;
+    }
+
+    te_variable vars[] = {
+        {"x", &customVarX, TE_VARIABLE, 0}};
+
+    int err = 0;
+    compiledExpr = te_compile(customExpr.c_str(), vars, 1, &err);
+    if (!compiledExpr) {
+        compileError = "Syntax error near index " + to_string(err);
+        return false;
+    }
+    return true;
 }
 
 void subfunc::update(double min, double max, double diff) {
@@ -133,6 +171,10 @@ void subfunc::changeDegree(enum eDegree newDegree) {
         centerArg = 0.0;
         tensionArg = 0.0;
         symArg = -startValue;
+        break;
+    case custom_math:
+        customExpr = "sin(x * pi())";
+        compileExpr();
         break;
     default:
         lenAssert(0 && "unknown degree");
@@ -285,6 +327,15 @@ double subfunc::getValue(double x, bool skipUpdate) {
         b = 6.0 * d + 32.0 * e - 60.0 * arg1;
         c = -d * 4.5 - 18.0 * e + 30.0 * arg1;
         return x * (d + x * (c + x * (b + x * a))) + e;
+    case custom_math:
+        if (!compiledExpr) {
+            compileExpr();
+        }
+        if (compiledExpr) {
+            customVarX = x;
+            return te_eval(static_cast<const te_expr*>(compiledExpr)) + startValue;
+        }
+        return startValue;
     default:
         std::cerr << "unknown degree" << std::endl;
     }
@@ -337,6 +388,11 @@ void subfunc::saveSubFunc(std::ostream& file) {
     f = (float)tensionArg;
     writeBytes(&file, (const char*)&f, sizeof(float));
     writeBytes(&file, (const char*)&locked, sizeof(bool));
+    if (degree == custom_math) {
+        int len = (int)customExpr.length();
+        writeBytes(&file, (const char*)&len, sizeof(int));
+        file << customExpr;
+    }
 }
 
 void subfunc::loadSubFunc(std::istream& file) {
@@ -356,6 +412,13 @@ void subfunc::loadSubFunc(std::istream& file) {
     centerArg = readFloat(&file);
     tensionArg = readFloat(&file);
     locked = readBool(&file);
+    if (degree == custom_math) {
+        int len = readInt(&file);
+        customExpr = readString(&file, len);
+        compileExpr();
+    } else {
+        customExpr = "";
+    }
 }
 
 double subfunc::applyTension(double x) {

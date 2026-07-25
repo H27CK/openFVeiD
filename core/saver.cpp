@@ -43,20 +43,16 @@ void saver::saveEnvironmentChunk(std::ostream& out) {
     }
 }
 
-void saver::saveStlsChunk(std::ostream& out) {
-    int numStls = gloParent->projectStls.size();
-    writeBytes(&out, (const char*)&numStls, sizeof(int));
-    for (size_t i = 0; i < gloParent->projectStls.size(); ++i) {
-        int pathLen = gloParent->projectStls[i].path.length();
+void saver::saveGlbsChunk(std::ostream& out) {
+    int numGlbs = gloParent->projectGlbs.size();
+    writeBytes(&out, (const char*)&numGlbs, sizeof(int));
+    for (size_t i = 0; i < gloParent->projectGlbs.size(); ++i) {
+        int pathLen = gloParent->projectGlbs[i].path.length();
         writeBytes(&out, (const char*)&pathLen, sizeof(int));
         if (pathLen > 0) {
-            out.write(gloParent->projectStls[i].path.data(), pathLen);
+            out.write(gloParent->projectGlbs[i].path.data(), pathLen);
         }
-        writeBytes(&out, (const char*)&gloParent->projectStls[i].color.x, sizeof(float));
-        writeBytes(&out, (const char*)&gloParent->projectStls[i].color.y, sizeof(float));
-        writeBytes(&out, (const char*)&gloParent->projectStls[i].color.z, sizeof(float));
-        writeBytes(&out, (const char*)&gloParent->projectStls[i].visible, sizeof(bool));
-        writeBytes(&out, (const char*)&gloParent->projectStls[i].showWireframe, sizeof(bool));
+        writeBytes(&out, (const char*)&gloParent->projectGlbs[i].visible, sizeof(bool));
     }
 }
 
@@ -87,10 +83,10 @@ void saver::doSaveToStream(std::ostream& fout) {
     saveTracksChunk(trksStream);
     chunks["TRKS"] = trksStream.str();
 
-    // 3. Prepare STLS chunk
-    std::stringstream stlsStream;
-    saveStlsChunk(stlsStream);
-    chunks["STLS"] = stlsStream.str();
+    // 3. Prepare GLBS chunk
+    std::stringstream glbsStream;
+    saveGlbsChunk(glbsStream);
+    chunks["GLBS"] = glbsStream.str();
 
     // Write all prepared chunks sorted alphabetically by tag
     for (const auto& pair : chunks) {
@@ -117,11 +113,11 @@ void saver::loadEnvironmentChunk(std::istream& fin, uint8_t version, uint32_t le
     }
 }
 
-void saver::loadStlsChunk(std::istream& fin, uint8_t version, uint32_t length) {
-    gloParent->projectStls.clear();
+void saver::loadGlbsChunk(std::istream& fin, uint8_t version, uint32_t length) {
+    gloParent->projectGlbs.clear();
     int size = readInt(&fin);
     for (int i = 0; i < size; ++i) {
-        DummyGlobal::StlSettings stl;
+        DummyGlobal::GlbSettings glb;
         int pLen = 0;
         readBytes(&fin, &pLen, sizeof(int));
         if (pLen > 0) {
@@ -130,14 +126,10 @@ void saver::loadStlsChunk(std::istream& fin, uint8_t version, uint32_t length) {
             pBuf[pLen] = '\0';
             std::string pPath(pBuf);
             delete[] pBuf;
-            stl.path = common::normalizeAssetPath(pPath);
+            glb.path = common::normalizeAssetPath(pPath);
         }
-        stl.color.x = readFloat(&fin);
-        stl.color.y = readFloat(&fin);
-        stl.color.z = readFloat(&fin);
-        readBytes(&fin, &stl.visible, sizeof(bool));
-        readBytes(&fin, &stl.showWireframe, sizeof(bool));
-        gloParent->projectStls.push_back(stl);
+        readBytes(&fin, &glb.visible, sizeof(bool));
+        gloParent->projectGlbs.push_back(glb);
     }
 }
 
@@ -228,8 +220,8 @@ void saver::doLoadFromStream(std::istream& fin) {
                 loadEnvironmentChunk(fin, header.version, header.length);
             } else if (tag == "TRKS") {
                 loadTracksChunk(fin, header.version, header.length);
-            } else if (tag == "STLS") {
-                loadStlsChunk(fin, header.version, header.length);
+            } else if (tag == "GLBS") {
+                loadGlbsChunk(fin, header.version, header.length);
             } else {
                 LOG_INFO("Skipping unknown top-level chunk: %s", tag.c_str());
             }

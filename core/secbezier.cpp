@@ -126,31 +126,37 @@ int secbezier::updateSection(int node) {
                 curNode->fTotalLength = prevNode->fTotalLength + curNode->fDistFromLast;
             }
 
-            double vel = bezList[b]->fVel;
-            if (vel <= 0.1) {
-                // float heightDiff = curNode->vPosHeart(parent->fHeart*0.9f).y -
-                // prevNode->vPosHeart(parent->fHeart*0.9f).y; vel =
-                // = glm::sqrt(vel * vel - 2*curNode->fDistFromLast*parent->fFriction);
-                // // glm::length(forceVec + glm::vec3(0, 1.f, 0))
+            double vel = this->fVel;
+            if (this->bSpeed) {
                 curNode->fEnergy -= (curNode->fVel * curNode->fVel * curNode->fVel /
                                      F_HZ * parent->fResistance);
-                double eDiff = (curNode->fEnergy -
-                                9.80665 * (curNode->vPosHeart(parent->fHeart * 0.9).y +
-                                           curNode->fTotalLength * parent->fFriction));
+                double energyValue = curNode->fEnergy -
+                                     F_G * (curNode->vPosHeart(parent->fHeart * 0.9f).y +
+                                            curNode->fTotalLength * parent->fFriction);
                 double minSpeed = (double)gloParent->mOptions->stallSpeed;
-                if (eDiff <= 0.0) {
+                if (energyValue <= 0.0) {
                     vel = minSpeed;
                     stalled = true;
                 } else {
-                    vel = sqrt(2.0 * eDiff);
+                    vel = sqrt(2.f * energyValue);
                     if (vel < minSpeed) {
                         vel = minSpeed;
                         stalled = true;
                     }
                 }
             } else {
+                if (this->fAccel == 0.0) {
+                    if (bezList[b]->fVel > 0.1 && bezList[b]->fVel != 20.0) {
+                        vel = bezList[b]->fVel;
+                    } else {
+                        vel = this->fVel;
+                    }
+                } else {
+                    double minSpeed = (double)gloParent->mOptions->stallSpeed;
+                    vel = std::max(minSpeed, prevNode->fVel + this->fAccel / F_HZ);
+                }
                 curNode->fEnergy = 0.5 * vel * vel +
-                                   F_G * (curNode->vPosHeart(parent->fHeart * 0.9).y +
+                                   F_G * (curNode->vPosHeart(parent->fHeart * 0.9f).y +
                                           curNode->fTotalLength * parent->fFriction);
             }
             curNode->fVel = vel;

@@ -34,6 +34,9 @@ public:
     virtual double getMaxArgument();
     virtual bool isLockable(func* _func);
     virtual bool isInFunction(int index, subfunc* func);
+    const std::vector<float>& getAngles() const {
+        return lAngles;
+    }
 
 private:
     std::vector<float> lAngles;

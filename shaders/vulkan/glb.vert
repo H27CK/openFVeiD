@@ -2,12 +2,14 @@
 
 layout(location = 0) in vec3 aPosition;
 layout(location = 7) in vec3 aNormal;
+layout(location = 8) in vec2 aUV;
 
 layout(location = 0) out vec4 bPosition;
 layout(location = 1) out vec3 bNormal;
 layout(location = 2) out vec3 baryCoord;
+layout(location = 3) out vec2 bUv;
 
-layout(set = 0, binding = 0) uniform StlUniforms {
+layout(set = 0, binding = 0) uniform GlbUniforms {
     mat4 projectionMatrix;
     mat4 modelMatrix;
     mat4 anchorBase;
@@ -41,4 +43,6 @@ void main(void) {
     bNormal = vec3(u.anchorBase * vec4(aNormal, 0.f));
     if (length(bNormal) < 0.5f)
         bNormal = vec3(0.f, 1.f, 0.f);
+    
+    bUv = aUV;
 }

@@ -298,7 +298,7 @@ std::vector<uint8_t> VulkanFramebuffer::readPixels() {
         .allocationSize = requirements.size,
         .memoryTypeIndex = context->findMemoryType(requirements.memoryTypeBits,
                                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+                                                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
     vkAllocateMemory(device, &allocateInfo, nullptr, &stagingMemory);
     vkBindBufferMemory(device, staging, stagingMemory, 0);
