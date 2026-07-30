@@ -549,7 +549,10 @@ void Viewport::initPipelines() {
     VulkanPipelineConfig markerConfig = {
         .vertexSpirvPath = locateSpirvShader("glb.vert"),
         .fragmentSpirvPath = locateSpirvShader("glb.frag"),
-        .vertexBindings = {{0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX}},
+        .vertexBindings = {
+            {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
+            {zeroBinding, 0, VK_VERTEX_INPUT_RATE_VERTEX},
+        },
         .vertexAttributes = {
             {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
             {7, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
@@ -1165,8 +1168,9 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
         .mistFar = gloParent->mOptions->mistFar,
     };
 
-    VkDeviceSize zeroOffset = 0;
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &markerMesh.vertexBuffer.buffer, &zeroOffset);
+    VkBuffer buffers[2] = {markerMesh.vertexBuffer.buffer, zeroAttributeBuffer.buffer};
+    VkDeviceSize offsets[2] = {0, 0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 2, buffers, offsets);
     vkCmdBindIndexBuffer(commandBuffer, markerMesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     for (size_t i = 0; i < myTrack->trainOffsets.size(); ++i) {
