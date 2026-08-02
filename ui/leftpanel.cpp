@@ -30,7 +30,6 @@
 #include "core/application.h"
 #include "core/globalundohandler.h"
 #include "dummies.h"
-#include "nolimitsimporter.h"
 #include "portable-file-dialogs.h"
 #include "common.h"
 #include <iostream>
@@ -141,6 +140,8 @@ void LeftPanel::render(Application* app) {
     if (ImGui::Begin("Sections", nullptr, 0)) {
         if (!hasActiveTrack) {
             ImGui::TextDisabled("Please select or create a track first.");
+        } else if (trackList[activeTrackIdx]->trackData->isReferenceTrack()) {
+            ImGui::TextDisabled("Reference Track (Editing Disabled)");
         } else {
             renderTrackTab(trackList[activeTrackIdx], app);
         }
@@ -259,6 +260,10 @@ void LeftPanel::renderProjectTab(Application* app) {
 
 void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
     track* myTrack = hTrack->trackData;
+    bool isRef = myTrack->isReferenceTrack();
+    if (isRef) {
+        ImGui::BeginDisabled();
+    }
 
     if (ImGui::TreeNodeEx("General", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("TrackPropsGeneral")
@@ -337,6 +342,10 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
             currentStyleLabel = getStyleDisplayName(myTrack->customStyleFile);
         }
 
+        if (isRef) {
+            ImGui::EndDisabled();
+        }
+
         PROP_ROW(
             "Style",
             if (ImGui::BeginCombo("##StyleDropdown", currentStyleLabel.c_str())) {
@@ -365,6 +374,10 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
                 }
                 ImGui::EndCombo();
             })
+
+        if (isRef) {
+            ImGui::BeginDisabled();
+        }
 
         END_PROP_TABLE()
         ImGui::TreePop();
@@ -441,6 +454,10 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
         END_PROP_TABLE()
         ImGui::TreePop();
     }
+
+    if (isRef) {
+        ImGui::EndDisabled();
+    }
 }
 
 void LeftPanel::renderTrackSmoothing(trackHandler* track, Application* app) {
@@ -504,8 +521,8 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
             case geometricriderlocal:
                 typeStr = "Geometric Rider-Local";
                 break;
-            case bezier:
-                typeStr = "Bezier";
+            case static_spline:
+                typeStr = "Static Spline";
                 break;
             default:
                 break;
@@ -521,7 +538,9 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
     bool styleIsLocked = false;
     if (styleIsLocked)
         ImGui::BeginDisabled();
-    if (ImGui::Button("Add Section"))
+
+    // 1. "Add" Button
+    if (ImGui::Button("Add"))
         ImGui::OpenPopup("AddSectionPopup");
     if (ImGui::BeginPopup("AddSectionPopup")) {
         bool added = false;
@@ -546,9 +565,46 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
             myTrack->newSection(geometricriderlocal, insertIdx);
             added = true;
         }
-        if (ImGui::MenuItem("Bezier")) {
-            myTrack->newSection(bezier, insertIdx);
-            added = true;
+
+        if (ImGui::BeginMenu("Templates")) {
+            static std::vector<std::pair<std::string, std::string>> cachedTemplates;
+            static double lastScanTime = -10.0;
+            double currentTime = ImGui::GetTime();
+            if (cachedTemplates.empty() || currentTime - lastScanTime > 2.0) {
+                cachedTemplates.clear();
+                try {
+                    if (std::filesystem::exists("templates")) {
+                        for (const auto& entry : std::filesystem::recursive_directory_iterator("templates")) {
+                            if (entry.is_regular_file() && entry.path().extension() == ".fvdtpl") {
+                                cachedTemplates.push_back({entry.path().stem().string(), entry.path().string()});
+                            }
+                        }
+                    }
+                } catch (...) {
+                }
+                std::sort(cachedTemplates.begin(), cachedTemplates.end());
+                lastScanTime = currentTime;
+            }
+
+            if (cachedTemplates.empty()) {
+                ImGui::TextDisabled("No templates found");
+            } else {
+                for (const auto& tpl : cachedTemplates) {
+                    if (ImGui::MenuItem(tpl.first.c_str())) {
+                        if (myTrack->loadTemplate(tpl.second, insertIdx)) {
+                            if (insertIdx == -1)
+                                selectedSectionIdx = static_cast<int>(myTrack->lSections.size()) - 1;
+                            else
+                                selectedSectionIdx = insertIdx;
+                            myTrack->activeSection = myTrack->lSections[selectedSectionIdx];
+                            gloParent->selectedFunc = nullptr;
+                            app->pushUndo();
+                            added = true;
+                        }
+                    }
+                }
+            }
+            ImGui::EndMenu();
         }
         if (added) {
             if (insertIdx == -1)
@@ -564,8 +620,35 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
         }
         ImGui::EndPopup();
     }
+
     ImGui::SameLine();
-    if (ImGui::Button("Prepend Section"))
+
+    // 2. "Delete" Button
+    bool canDelete = (selectedSectionIdx >= 0) && !styleIsLocked;
+    if (!canDelete)
+        ImGui::BeginDisabled();
+    if (ImGui::Button("Delete")) {
+        myTrack->removeSection(selectedSectionIdx);
+        selectedSectionIdx--;
+        if (selectedSectionIdx < -1)
+            selectedSectionIdx = -1;
+        if (selectedSectionIdx >= 0)
+            myTrack->activeSection = myTrack->lSections.at(selectedSectionIdx);
+        else
+            myTrack->activeSection = nullptr;
+        myTrack->requestUpdateTrack(0, 0);
+        gloParent->selectedFunc = nullptr;
+        if (gViewport && gloParent->mOptions->autoFocusOnSelection)
+            gViewport->focusOnSection(selectedSectionIdx);
+        app->pushUndo();
+    }
+    if (!canDelete)
+        ImGui::EndDisabled();
+
+    ImGui::SameLine();
+
+    // 3. "Prepend" Button
+    if (ImGui::Button("Prepend"))
         ImGui::OpenPopup("PrependSectionPopup");
     if (ImGui::BeginPopup("PrependSectionPopup")) {
         bool added = false;
@@ -590,9 +673,46 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
             myTrack->newSection(geometricriderlocal, insertIdx);
             added = true;
         }
-        if (ImGui::MenuItem("Bezier")) {
-            myTrack->newSection(bezier, insertIdx);
-            added = true;
+
+        if (ImGui::BeginMenu("Templates")) {
+            static std::vector<std::pair<std::string, std::string>> cachedTemplates;
+            static double lastScanTime = -10.0;
+            double currentTime = ImGui::GetTime();
+            if (cachedTemplates.empty() || currentTime - lastScanTime > 2.0) {
+                cachedTemplates.clear();
+                try {
+                    if (std::filesystem::exists("templates")) {
+                        for (const auto& entry : std::filesystem::recursive_directory_iterator("templates")) {
+                            if (entry.is_regular_file() && entry.path().extension() == ".fvdtpl") {
+                                cachedTemplates.push_back({entry.path().stem().string(), entry.path().string()});
+                            }
+                        }
+                    }
+                } catch (...) {
+                }
+                std::sort(cachedTemplates.begin(), cachedTemplates.end());
+                lastScanTime = currentTime;
+            }
+
+            if (cachedTemplates.empty()) {
+                ImGui::TextDisabled("No templates found");
+            } else {
+                for (const auto& tpl : cachedTemplates) {
+                    if (ImGui::MenuItem(tpl.first.c_str())) {
+                        if (myTrack->loadTemplate(tpl.second, insertIdx)) {
+                            if (insertIdx == -1)
+                                selectedSectionIdx = static_cast<int>(myTrack->lSections.size()) - 1;
+                            else
+                                selectedSectionIdx = insertIdx;
+                            myTrack->activeSection = myTrack->lSections[selectedSectionIdx];
+                            gloParent->selectedFunc = nullptr;
+                            app->pushUndo();
+                            added = true;
+                        }
+                    }
+                }
+            }
+            ImGui::EndMenu();
         }
         if (added) {
             selectedSectionIdx = insertIdx;
@@ -605,40 +725,6 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
         }
         ImGui::EndPopup();
     }
-    ImGui::SameLine();
-    bool canDelete = (selectedSectionIdx >= 0) && !styleIsLocked;
-    if (!canDelete)
-        ImGui::BeginDisabled();
-    if (ImGui::Button("Delete Section")) {
-        myTrack->removeSection(selectedSectionIdx);
-        selectedSectionIdx--;
-        if (selectedSectionIdx < -1)
-            selectedSectionIdx = -1;
-        if (selectedSectionIdx >= 0)
-            myTrack->activeSection = myTrack->lSections.at(selectedSectionIdx);
-        else
-            myTrack->activeSection = nullptr;
-        myTrack->requestUpdateTrack(0, 0);
-        gloParent->selectedFunc = nullptr;
-        if (gViewport && gloParent->mOptions->autoFocusOnSelection)
-            gViewport->focusOnSection(selectedSectionIdx);
-        app->pushUndo();
-    }
-    if (!canDelete)
-        ImGui::EndDisabled();
-
-    ImGui::SameLine();
-    extern Viewport* gViewport;
-    bool canFork = (gViewport && gViewport->getPOVNode() != nullptr);
-    if (!canFork)
-        ImGui::BeginDisabled();
-    if (ImGui::Button("Fork Track")) {
-        app->forkTrack(hTrack, gViewport->getPOVPos());
-        selectedSectionIdx = -1;
-        gloParent->selectedFunc = nullptr;
-    }
-    if (!canFork)
-        ImGui::EndDisabled();
 
     if (styleIsLocked)
         ImGui::EndDisabled();
@@ -673,7 +759,7 @@ void LeftPanel::renderSectionProperties(trackHandler* hTrack, section* sec, Appl
             PROP_ROW("Length", ImGui::Text("%.2f %s", sec->length * gloParent->mOptions->getLengthFactor(), gloParent->mOptions->getLengthString().c_str());)
             int orientation = sec->bOrientation ? 1 : 0;
             const char* orientations[] = {"Quaternion", "Euler"};
-            bool disableOrientation = (sec->type == straight || sec->type == bezier || sec->type == geometricriderlocal);
+            bool disableOrientation = (sec->type == straight || sec->type == geometricriderlocal || sec->type == static_spline);
             if (disableOrientation) {
                 sec->bOrientation = false;
                 orientation = 0;
@@ -685,7 +771,7 @@ void LeftPanel::renderSectionProperties(trackHandler* hTrack, section* sec, Appl
                 ImGui::EndDisabled();
             int argument = sec->bArgument ? 1 : 0;
             const char* arguments[] = {"Time", "Distance"};
-            bool disableArgument = (sec->type == straight || sec->type == curved || sec->type == bezier);
+            bool disableArgument = (sec->type == straight || sec->type == curved || sec->type == static_spline);
             if (disableArgument) {
                 sec->bArgument = 0;
                 argument = 0;
@@ -714,8 +800,8 @@ void LeftPanel::renderSectionProperties(trackHandler* hTrack, section* sec, Appl
         case geometricriderlocal:
             renderForcedProperties(hTrack, sec, app);
             break;
-        case bezier:
-            renderBezierProperties(hTrack, sec, app);
+        case static_spline:
+            renderStaticProperties(hTrack, sec, app);
             break;
         default:
             break;
@@ -725,6 +811,93 @@ void LeftPanel::renderSectionProperties(trackHandler* hTrack, section* sec, Appl
         ImGui::Separator();
         renderAnchorProperties(hTrack, nullptr, app);
     }
+
+    if (sec && sec->type != anchor) {
+        ImGui::Separator();
+        static bool initTemplateIndices = true;
+        if (ImGui::Button("Save Section as Template...")) {
+            ImGui::OpenPopup("SaveTemplatePopup");
+            initTemplateIndices = true;
+        }
+
+        if (ImGui::BeginPopupModal("SaveTemplatePopup", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            static char templateName[128] = "";
+            static int startNode = 0;
+            static int endNode = 0;
+
+            track* myTrack = hTrack->trackData;
+            int totalNodes = myTrack->getNumPoints();
+
+            auto getSectionStartNode = [](track* t, int secIdx) {
+                if (!t || secIdx < 0 || secIdx >= (int)t->lSections.size())
+                    return 0;
+                int currentPoints = 0;
+                for (int i = 0; i < secIdx; ++i) {
+                    currentPoints += (int)t->lSections[i]->lNodes.size() - 1;
+                }
+                return currentPoints;
+            };
+
+            auto getSectionEndNode = [](track* t, int secIdx) {
+                if (!t || secIdx < 0 || secIdx >= (int)t->lSections.size())
+                    return 0;
+                int currentPoints = 0;
+                for (int i = 0; i < secIdx; ++i) {
+                    currentPoints += (int)t->lSections[i]->lNodes.size() - 1;
+                }
+                currentPoints += (int)t->lSections[secIdx]->lNodes.size() - 1;
+                return currentPoints;
+            };
+
+            int selectedSectionIdx = myTrack->getSectionNumber(sec);
+
+            if (initTemplateIndices) {
+                extern Viewport* gViewport;
+                int playheadPos = (gViewport) ? gViewport->getPOVPos() : getSectionStartNode(myTrack, selectedSectionIdx);
+                startNode = std::clamp(playheadPos, 0, std::max(0, totalNodes - 1));
+                int defaultEndNode = getSectionEndNode(myTrack, selectedSectionIdx);
+                endNode = std::clamp(defaultEndNode, startNode, std::max(0, totalNodes - 1));
+                templateName[0] = '\0';
+                initTemplateIndices = false;
+            }
+
+            ImGui::Text("Save Precise Node Range as Template");
+            ImGui::Separator();
+
+            ImGui::InputText("Template Name", templateName, IM_ARRAYSIZE(templateName));
+
+            ImGui::SeparatorText("Select Precise Node Index Range");
+            ImGui::InputInt("Start Node", &startNode);
+            ImGui::InputInt("End Node", &endNode);
+
+            // Clamp inputs safely to valid track node ranges
+            startNode = std::clamp(startNode, 0, std::max(0, totalNodes - 1));
+            endNode = std::clamp(endNode, startNode, std::max(0, totalNodes - 1));
+
+            ImGui::SeparatorText("Template Geometry");
+            ImGui::Text("Nodes included: %d to %d (%d nodes)", startNode, endNode, endNode - startNode + 1);
+            ImGui::TextDisabled("Note: Selected nodes will be baked relative to the start node.");
+
+            ImGui::Separator();
+
+            if (ImGui::Button("Save", ImVec2(120, 0))) {
+                if (strlen(templateName) > 0) {
+                    std::string filepath = "templates/" + std::string(templateName) + ".fvdtpl";
+                    if (myTrack->saveTemplate(filepath, startNode, endNode)) {
+                        initTemplateIndices = true;
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+                initTemplateIndices = true;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }
+
     ImGui::EndChild();
 }
 
@@ -921,93 +1094,6 @@ void LeftPanel::renderCurvedProperties(trackHandler* hTrack, section* sec, Appli
         hTrack->trackData->requestUpdateTrack(sec, 0);
 }
 
-void LeftPanel::renderBezierProperties(trackHandler* hTrack, section* sec, Application* app) {
-    BEGIN_PROP_TABLE("BezierProps")
-    secbezier* bezSec = dynamic_cast<secbezier*>(sec);
-    if (bezSec) {
-        int speedModeRaw = bezSec->bSpeed ? 0 : (bezSec->fAccel == 0.0 ? 1 : 2);
-        static int speedMode = 0;
-        static section* lastSec = nullptr;
-        if (sec != lastSec || !ImGui::IsAnyItemActive()) {
-            lastSec = sec;
-            speedMode = speedModeRaw;
-        }
-
-        PROP_ROW(
-            "Motion Profile",
-            if (ImGui::Combo("##BezierSpeedMode", &speedMode, "Coasting\0Constant Velocity\0Constant Acceleration\0")) {
-                if (speedMode == 0) {
-                    bezSec->bSpeed = true;
-                } else if (speedMode == 1) {
-                    bezSec->bSpeed = false;
-                    bezSec->fAccel = 0.0;
-                } else if (speedMode == 2) {
-                    bezSec->bSpeed = false;
-                    if (bezSec->fAccel == 0.0)
-                        bezSec->fAccel = 1.0;
-                }
-                hTrack->trackData->requestUpdateTrack(bezSec, 0);
-            })
-
-        if (speedMode == 1) {
-            float displaySpeed = (float)bezSec->fVel * gloParent->mOptions->getSpeedFactor();
-            std::string spdFmt = "%.3f " + gloParent->mOptions->getSpeedString();
-            PROP_ROW(
-                "Speed",
-                if (ImGui::DragFloat("##BezierSpeed", &displaySpeed, 0.1f, 0.1f, 500.0f * gloParent->mOptions->getSpeedFactor(), spdFmt.c_str()) || common::ValueScroll(&displaySpeed, 1.0f, 0.1f)) {
-                    bezSec->fVel = (double)std::max(0.1f * (float)gloParent->mOptions->getSpeedFactor(), displaySpeed) / gloParent->mOptions->getSpeedFactor();
-                    hTrack->trackData->requestUpdateTrack(bezSec, 0);
-                })
-        } else if (speedMode == 2) {
-            float displayAccel = (float)(bezSec->fAccel / F_G);
-            PROP_ROW(
-                "Acceleration",
-                if (ImGui::DragFloat("##BezierAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f G") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
-                    bezSec->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
-                    hTrack->trackData->requestUpdateTrack(bezSec, 0);
-                })
-        }
-
-        if (!sec->bezList.empty()) {
-            float smoothing = bezSec->fSmoothing;
-            PROP_ROW(
-                "Smoothing", if (ImGui::SliderFloat("##Smoothing", &smoothing, 0.0f, 1.0f, "%.2f")) { bezSec->fSmoothing = smoothing; hTrack->trackData->requestUpdateTrack(sec, 0); } if (ImGui::IsItemHovered()) ImGui::SetTooltip("0.0 = Strict Bezier\n1.0 = Max relaxation");)
-        }
-    }
-    END_PROP_TABLE()
-
-    ImGui::Separator();
-    if (sec->type == bezier) {
-        ImGui::Text("Bezier Spline Data");
-        ImGui::TextDisabled("Bezier sections are defined by external spline geometry.");
-    } else {
-        ImGui::Text("NoLimits 2 CSV Data");
-        ImGui::TextDisabled("NL2 CSV sections accurately interpolate exact orientations.");
-    }
-    ImGui::Separator();
-
-    ImGui::BeginDisabled();
-    ImGui::Button("Import NL1 Track (.nltrack) [Deprecated]", ImVec2(-FLT_MIN, 0));
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("NL1 Track imports are deprecated. Please use NL2 CSV instead.");
-    ImGui::EndDisabled();
-    if (ImGui::Button("Import NoLimits 2 CSV (.csv)...", ImVec2(-FLT_MIN, 0))) {
-        auto f = pfd::open_file("Import NoLimits 2 CSV", ".", {"NoLimits 2 CSV Files", "*.csv *.txt", "All Files", "*"}).result();
-        if (!f.empty()) {
-            if (sec->type == bezier) {
-                noLimitsImporter importer(hTrack, f[0]);
-                if (importer.importAsCsv()) {
-                    sec->sName = "NL2 CSV Import";
-                    hTrack->trackData->requestUpdateTrack(sec, 0);
-                }
-            }
-        }
-    }
-    if (!sec->bezList.empty()) {
-        ImGui::Text("Imported Nodes: %zu", sec->bezList.size());
-    }
-}
-
 void LeftPanel::renderForcedProperties(trackHandler* hTrack, section* sec, Application* app) {
     bool changed = false;
     BEGIN_PROP_TABLE("ForcedProps")
@@ -1062,6 +1148,77 @@ void LeftPanel::renderForcedProperties(trackHandler* hTrack, section* sec, Appli
         hTrack->trackData->requestUpdateTrack(sec, 0);
 }
 
+void LeftPanel::renderStaticProperties(trackHandler* hTrack, section* sec, Application* app) {
+    bool changed = false;
+    BEGIN_PROP_TABLE("StaticProps")
+
+    int speedModeRaw = 0;
+    if (sec->bSpeed) {
+        speedModeRaw = 1;
+    } else if (sec->fAccel != 0.0) {
+        speedModeRaw = 3;
+    } else if (sec->fVel > 0.0) {
+        speedModeRaw = 2;
+    }
+
+    static int speedMode = 0;
+    static section* lastSec = nullptr;
+    if (sec != lastSec || !ImGui::IsAnyItemActive()) {
+        lastSec = sec;
+        speedMode = speedModeRaw;
+    }
+
+    PROP_ROW(
+        "Motion Profile",
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::Combo("##StaticSpeedMode", &speedMode, "Inherit Speed\0Coasting\0Constant Velocity\0Constant Acceleration\0")) {
+            if (speedMode == 0) {
+                sec->bSpeed = false;
+                sec->fAccel = 0.0;
+                sec->fVel = 0.0;
+            } else if (speedMode == 1) {
+                sec->bSpeed = true;
+                sec->fAccel = 0.0;
+            } else if (speedMode == 2) {
+                sec->bSpeed = false;
+                sec->fAccel = 0.0;
+                if (sec->fVel == 0.0)
+                    sec->fVel = 10.0;
+            } else {
+                sec->bSpeed = false;
+                if (sec->fAccel == 0.0)
+                    sec->fAccel = F_G;
+            }
+            changed = true;
+            app->pushUndo();
+        })
+
+    if (speedMode == 2) {
+        float displaySpeed = (float)sec->fVel * gloParent->mOptions->getSpeedFactor();
+        std::string spdFmt = "%.3f " + gloParent->mOptions->getSpeedString();
+        PROP_ROW(
+            "Speed",
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::DragFloat("##StaticSpeed", &displaySpeed, 0.1f, 0.1f, 500.0f * gloParent->mOptions->getSpeedFactor(), spdFmt.c_str()) || common::ValueScroll(&displaySpeed, 1.0f, 0.1f)) {
+                sec->fVel = (double)std::max(0.1f * (float)gloParent->mOptions->getSpeedFactor(), displaySpeed) / gloParent->mOptions->getSpeedFactor();
+                changed = true;
+            })
+    } else if (speedMode == 3) {
+        float displayAccel = (float)(sec->fAccel / F_G);
+        PROP_ROW(
+            "Acceleration",
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::DragFloat("##StaticAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f G") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
+                sec->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
+                changed = true;
+            })
+    }
+
+    END_PROP_TABLE()
+    if (changed)
+        hTrack->trackData->requestUpdateTrack(sec, 0);
+}
+
 void LeftPanel::renderColorsTab(trackHandler* hTrack, Application* app) {
     if (!hTrack)
         return;
@@ -1070,6 +1227,7 @@ void LeftPanel::renderColorsTab(trackHandler* hTrack, Application* app) {
         PROP_ROW("Default", ImGui::ColorEdit3("##TrkCol0", &hTrack->trackColors[0].x);)
         PROP_ROW("Section", ImGui::ColorEdit3("##TrkCol1", &hTrack->trackColors[1].x);)
         PROP_ROW("Transition", ImGui::ColorEdit3("##TrkCol2", &hTrack->trackColors[2].x);)
+        PROP_ROW("Heartline", ImGui::ColorEdit3("##TrkCol3", &hTrack->trackColors[3].x);)
         END_PROP_TABLE()
         ImGui::TreePop();
     }

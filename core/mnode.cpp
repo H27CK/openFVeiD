@@ -20,6 +20,7 @@
 #include "mnode.h"
 #include "exportfuncs.h"
 #include "lenassert.h"
+#include "dummies.h"
 #include <cmath>
 #include <limits>
 
@@ -106,103 +107,69 @@ void mnode::changeYaw(double dAngle) {
 }
 
 glm::dvec3 mnode::vLatHeart(double fHeart) {
-    double estimated;
-    double estDistFromLast = 0.7 * fHeartDistFromLast + 0.3 * fDistFromLast;
+    if (gloParent && gloParent->mOptions && gloParent->mOptions->useLegacyHeartline) {
+        double estimated;
+        double estDistFromLast = 0.7 * fHeartDistFromLast + 0.3 * fDistFromLast;
 
-    if (fAngleFromLast < 0.001) {
-        estimated = fHeartDistFromLast;
-    } else {
-        estimated = fVel / F_HZ;
+        if (fAngleFromLast < 0.001) {
+            estimated = fHeartDistFromLast;
+        } else {
+            estimated = fVel / F_HZ;
+        }
+        double fRollSpeedPerMeter =
+            estDistFromLast > 0.0 ? (fRollSpeed + fSmoothSpeed) / F_HZ / estimated
+                                  : 0.0;
+        return glm::normalize(glm::normalize(vLat) -
+                              glm::normalize(vDir) * (double)(fRollSpeedPerMeter *
+                                                              F_PI * fHeart / 180.0));
     }
-    double fRollSpeedPerMeter =
-        estDistFromLast > 0.0 ? (fRollSpeed + fSmoothSpeed) / F_HZ / estimated
-                              : 0.0;
-    return glm::normalize(glm::normalize(vLat) -
-                          glm::normalize(vDir) * (double)(fRollSpeedPerMeter *
-                                                          F_PI * fHeart / 180.0));
+    return glm::normalize(glm::cross(vNorm, vDirHeart(fHeart)));
 }
 
 glm::dvec3 mnode::vDirHeart(double fHeart) {
+    if (gloParent && gloParent->mOptions && gloParent->mOptions->useLegacyHeartline) {
+        double estimated;
+        if (fAngleFromLast < 0.001) {
+            estimated = fHeartDistFromLast;
+        } else {
+            estimated = fVel / F_HZ;
+        }
+        double fRollSpeedPerMeter =
+            fHeartDistFromLast > 0.0 ? (fRollSpeed + fSmoothSpeed) / F_HZ / estimated
+                                     : 0.0;
+        if (fRollSpeedPerMeter != fRollSpeedPerMeter)
+            fRollSpeedPerMeter = 0.0;
+        return glm::normalize(
+            vDir + vLat * (double)(fRollSpeedPerMeter * F_PI * fHeart / 180.0));
+    }
+
     double estimated;
     if (fAngleFromLast < 0.001) {
         estimated = fHeartDistFromLast;
     } else {
         estimated = fVel / F_HZ;
     }
+
+    // Roll rate per meter (omega)
     double fRollSpeedPerMeter =
         fHeartDistFromLast > 0.0 ? (fRollSpeed + fSmoothSpeed) / F_HZ / estimated
                                  : 0.0;
     if (fRollSpeedPerMeter != fRollSpeedPerMeter)
         fRollSpeedPerMeter = 0.0;
-    return glm::normalize(
-        vDir + vLat * (double)(fRollSpeedPerMeter * F_PI * fHeart / 180.0));
-}
 
-void mnode::exportNode(std::vector<bezier_t*>& bezList, mnode* last, mnode*,
-                       mnode* anchor, double fHeart, double fRollThresh) {
-#define SCALING 3.0
+    // Pitch rate per meter (vertical curvature, kappa_y)
+    double fPitchSpeedPerMeter =
+        estimated > 0.0 ? fPitchFromLast / estimated : 0.0;
+    if (fPitchSpeedPerMeter != fPitchSpeedPerMeter)
+        fPitchSpeedPerMeter = 0.0;
 
-    bezList.push_back(new bezier_t);
+    // Convert both rotation rates to radians per meter multiplied by the heartline height
+    double rollCorr = fRollSpeedPerMeter * F_PI * fHeart / 180.0;
+    double pitchCorr = fPitchSpeedPerMeter * F_PI * fHeart / 180.0;
 
-    double realDist = this->fTotalLength - last->fTotalLength;
-
-    double fThreshold =
-        this->fTotalLength - last->fTotalLength; // glm::distance(last->fPosHeart(fHeart),
-                                                 // this->fPosHeart(fHeart));
-    double temp = glm::length(glm::dvec3(anchor->vDir.x, 0.0, anchor->vDir.z));
-    glm::dmat3 anchorBase =
-        glm::dmat3(-anchor->vDir.z / temp, 0.0, -anchor->vDir.x / temp, 0.0, 1.0,
-                   0.0, anchor->vDir.x / temp, 0.0, -anchor->vDir.z / temp);
-
-    double radius = this->fVel / (this->fTrackAngleFromLast * F_PI / 180.0) / F_HZ;
-    double angle =
-        (F_HZ * this->fTrackAngleFromLast * F_PI / 180.0) / this->fVel * realDist;
-
-    fThreshold = 0.998 * 2.0 / 3.0 * radius * tan(angle / 2.0);
-
-    if (fThreshold != fThreshold) {
-        fThreshold = 0.998 * 2.0 / 3.0 * realDist / 2.0;
-    }
-
-    bezList.back()->P1 =
-        anchorBase * (this->vPosHeart(fHeart) - anchor->vPosHeart(fHeart));
-
-    if (bezList.size() > 1) {
-        bezList.back()->Kp1 = bezList[bezList.size() - 2]->P1 +
-                              anchorBase * (fThreshold * last->vDirHeart(fHeart));
-    } else {
-        bezList.back()->Kp1 =
-            anchorBase * (last->vPosHeart(fHeart) - anchor->vPosHeart(fHeart) +
-                          fThreshold * last->vDirHeart(fHeart));
-    }
-    bezList.back()->Kp2 =
-        bezList.back()->P1 - anchorBase * (fThreshold * this->vDirHeart(fHeart));
-
-    temp = 0.0;
-
-    if (fabs(this->vDirHeart(fHeart).y) < fRollThresh) {
-        temp = glm::atan(this->vLatHeart(fHeart).y, -this->vNorm.y);
-    } else {
-        glm::dvec3 rotateAxis =
-            glm::cross(last->vDirHeart(fHeart), this->vDirHeart(fHeart));
-        glm::dvec3 rotated =
-            glm::dvec3(glm::rotate(glm::angle(last->vDirHeart(fHeart),
-                                              this->vDirHeart(fHeart)),
-                                   rotateAxis) *
-                       glm::dvec4(last->vLatHeart(fHeart), 0.0));
-        temp = glm::angle(rotated, this->vLatHeart(fHeart)) * F_PI / 180.0;
-        if (temp != temp) {
-            temp = 0.0;
-        }
-    }
-
-    bezList.back()->roll = temp;
-
-    if (fabs(this->vDirHeart(fHeart).y) < fRollThresh) {
-        bezList.back()->relRoll = false;
-    } else {
-        bezList.back()->relRoll = true;
-    }
+    // Mathematically exact tangent: C'(s) = (1 + h * kappa_y) * vDir + (h * omega) * vLat
+    // Since vNorm points downward, the offset is -fHeart, making the vertical correction (1.0 + pitchCorr)
+    return glm::normalize(vDir * (1.0 + pitchCorr) + vLat * rollCorr);
 }
 
 void mnode::calcSmoothForces() {

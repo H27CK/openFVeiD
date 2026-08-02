@@ -27,22 +27,6 @@
 
 #define F_HZ (1000.0)
 
-typedef struct bezier_s {
-    glm::dvec3 Kp1;
-    glm::dvec3 Kp2;
-    glm::dvec3 P1;
-    double roll;
-    bool contRoll;
-    bool equalDist;
-    bool relRoll;
-
-    double ptf;
-    double fvdRoll;
-    double length;
-    int numNodes;
-    double fVel;
-} bezier_t;
-
 class mnode {
 public:
     mnode();
@@ -79,9 +63,6 @@ public:
     glm::dvec3 vRelPos(double y, double x, double z = 0.0) {
         return vPos - y * vNorm + x * vLatHeart(-y) + z * vDirHeart(-y);
     }
-
-    void exportNode(std::vector<bezier_t*>& bezList, mnode* last, mnode* mid,
-                    mnode* anchor, double fHeart, double fRollThresh);
 
     double getPitch() {
         return glm::atan(vDir.y, glm::sqrt(vDir.x * vDir.x + vDir.z * vDir.z)) *

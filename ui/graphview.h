@@ -60,6 +60,7 @@ enum class GraphType {
 struct SectionGraphData {
     std::vector<double> x;
     std::vector<double> y;
+    std::vector<int> nodes;
     bool isActive;
 };
 
@@ -92,7 +93,7 @@ public:
     void renderTimeline(trackHandler* track);
     void renderMeasurementPlot(trackHandler* track);
     void updateData(trackHandler* track);
-    void exportToCSV(const std::string& filepath, trackHandler* hTrack);
+    void exportToCSV(const std::string& filepath, trackHandler* hTrack, int startNodeIdx, int endNodeIdx);
 
     bool hasResultingGraphsVisible() const;
     bool hasMeasurementGraphsVisible(trackHandler* track) const;

@@ -22,6 +22,7 @@
 #include "core/workingdirectory.h"
 #include "customstyle.h"
 #include "smoothhandler.h"
+#include "core/secnlcsv.h"
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -62,6 +63,8 @@ bool Application::Initialize() {
     gloParent->mOptions->keyBackward = ImGuiKey_S;
     gloParent->mOptions->keyLeft = ImGuiKey_A;
     gloParent->mOptions->keyRight = ImGuiKey_D;
+    gloParent->mOptions->keyOverlayWarnings = ImGuiKey_X;
+    gloParent->mOptions->keyOverlayScenery = ImGuiKey_Z;
 
     if (!std::filesystem::exists("track_styles")) {
         std::filesystem::create_directory("track_styles");
@@ -69,6 +72,10 @@ bool Application::Initialize() {
 
     if (!std::filesystem::exists("skybox")) {
         std::filesystem::create_directory("skybox");
+    }
+
+    if (!std::filesystem::exists("templates")) {
+        std::filesystem::create_directory("templates");
     }
 
     gloParent->mOptions->load("options.cfg");
@@ -547,7 +554,7 @@ void Application::HandleShortcuts() {
                 pushUndo();
             }
         }
-        if ((ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) && !viewportActive) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !viewportActive) {
             bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
             if (hasActiveTrack) {
                 track* curTrack = trackList[activeTrackIdx]->trackData;
@@ -564,6 +571,31 @@ void Application::HandleShortcuts() {
                     viewport.markSceneDirty();
                     if (gloParent->mOptions->autoFocusOnSelection)
                         viewport.focusOnSection(leftPanel.selectedSectionIdx);
+                    pushUndo();
+                }
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) && !viewportActive) {
+            bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+            if (hasActiveTrack && gloParent->selectedFunc) {
+                subfunc* sf = gloParent->selectedFunc;
+                func* fParent = sf->parent;
+                if (fParent && fParent->funcList.size() > 1) {
+                    int idx = fParent->getSubfuncNumber(sf);
+                    fParent->removeSubFunction(idx);
+                    if (!fParent->funcList.empty()) {
+                        int newIdx = (idx > 0) ? idx - 1 : 0;
+                        if (newIdx < (int)fParent->funcList.size()) {
+                            gloParent->selectedFunc = fParent->funcList[newIdx];
+                        } else {
+                            gloParent->selectedFunc = nullptr;
+                        }
+                    } else {
+                        gloParent->selectedFunc = nullptr;
+                    }
+                    track* curTrack = trackList[activeTrackIdx]->trackData;
+                    curTrack->requestUpdateTrack(fParent->secParent, 0);
+                    viewport.markSceneDirty();
                     pushUndo();
                 }
             }
@@ -633,6 +665,7 @@ void Application::Render(float deltaTime) {
             ImGui::Separator();
             bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
             if (ImGui::BeginMenu("Import")) {
+                ImGui::SeparatorText("Geometry");
                 if (ImGui::MenuItem("Track(s)...")) {
                     exitViewport();
                     auto f = pfd::open_file("Choose project to import from", ".", {"FVD++ Projects", "*.fvd", "All Files", "*"}).result();
@@ -649,6 +682,16 @@ void Application::Render(float deltaTime) {
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Import one or more track designs from another FVD++ project file (.fvd) into the current workspace.");
                 }
+                if (ImGui::MenuItem("Reference Track (NoLimits 2 CSV)...")) {
+                    exitViewport();
+                    auto f = pfd::open_file("Import NoLimits 2 CSV as Reference Track", ".", {"NoLimits 2 CSV Files", "*.csv *.txt", "All Files", "*"}).result();
+                    if (!f.empty()) {
+                        importReferenceTrack(f[0]);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Import a NoLimits 2 CSV spline file as a read-only reference track with customizable track style.");
+                }
                 if (ImGui::MenuItem("Scenery...")) {
                     exitViewport();
                     auto f = pfd::open_file("Open .glb file", ".", {".glb Files", "*.glb", "All Files", "*"}).result();
@@ -660,7 +703,7 @@ void Application::Render(float deltaTime) {
                         pushUndo();
                     }
                 }
-                ImGui::Separator();
+                ImGui::SeparatorText("Reference");
                 if (ImGui::MenuItem("Measurement Points...", nullptr, false, hasActiveTrack)) {
                     exitViewport();
                     auto f = pfd::open_file("Import Measurement Points", ".", {"FVD Measurement Files", "*.fvdmeasure"}).result();
@@ -670,11 +713,12 @@ void Application::Render(float deltaTime) {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Export")) {
+                ImGui::SeparatorText("Geometry");
                 if (ImGui::MenuItem("Track...", "Ctrl+E", false, hasActiveTrack)) {
                     exitViewport();
                     showExportPopup = true;
                 }
-                ImGui::Separator();
+                ImGui::SeparatorText("Reference & Styles");
                 if (ImGui::MenuItem("Parametric Track Style...", nullptr, false, hasActiveTrack)) {
                     exitViewport();
                     auto f = pfd::save_file("Export Parametric Style", "custom.fvdstyle", {"FVD Style Files", "*.fvdstyle"}).result();
@@ -771,6 +815,7 @@ void Application::Render(float deltaTime) {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Edit")) {
+            ImGui::SeparatorText("History");
             if (ImGui::MenuItem("Undo", "Ctrl+Z", false, mUndoHandler && mUndoHandler->canUndo())) {
                 if (mUndoHandler)
                     mUndoHandler->doUndo();
@@ -779,7 +824,7 @@ void Application::Render(float deltaTime) {
                 if (mUndoHandler)
                     mUndoHandler->doRedo();
             }
-            ImGui::Separator();
+            ImGui::SeparatorText("Workspace Editors");
             bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
             if (ImGui::MenuItem("Environment...", nullptr, &showEnvironmentWindow)) {
                 exitViewport();
@@ -790,12 +835,24 @@ void Application::Render(float deltaTime) {
             if (ImGui::MenuItem("Parametric Track Editor...", nullptr, &showParametricTrackEditor, hasActiveTrack)) {
                 exitViewport();
             }
+            ImGui::SeparatorText("Track Operations");
+            extern Viewport* gViewport;
+            bool canFork = (hasActiveTrack && gViewport && gViewport->getPOVNode() != nullptr);
+            if (ImGui::MenuItem("Fork Track at Playhead", nullptr, false, canFork)) {
+                forkTrack(trackList[activeTrackIdx], gViewport->getPOVPos());
+                leftPanel.selectedSectionIdx = -1;
+                gloParent->selectedFunc = nullptr;
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("Fork the active track at the current playhead/POV position into a new, separate track branch.");
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
+            ImGui::SeparatorText("Window Layout");
             if (ImGui::MenuItem("Reset Layout"))
                 forceResetLayout = true;
-            ImGui::Separator();
+            ImGui::SeparatorText("Display & Analysis");
             if (ImGui::BeginMenu("Track Rendering")) {
                 int shaderMode = viewport.getTrackShaderMode();
                 if (ImGui::MenuItem("Nothing", "Ctrl+1", shaderMode == 0))
@@ -837,8 +894,17 @@ void Application::Render(float deltaTime) {
             }
             ImGui::EndMenu();
         }
-        /*
-        if (ImGui::BeginMenu("Developer", false)) {
+#if 0 // Disabled for public release
+        if (ImGui::BeginMenu("Developer")) {
+            if (ImGui::MenuItem("Use Legacy Heartline Math", nullptr, &gloParent->mOptions->useLegacyHeartline)) {
+                if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+                    track* activeTrack = trackList[activeTrackIdx]->trackData;
+                    if (activeTrack) {
+                        activeTrack->requestUpdateTrack(0, 0);
+                        activeTrack->processPendingUpdates();
+                    }
+                }
+            }
             if (ImGui::MenuItem("Test Crash (Null Pointer)")) {
                 LOG_INFO("Triggering intentional crash...");
                 int* p = nullptr;
@@ -846,7 +912,7 @@ void Application::Render(float deltaTime) {
             }
             ImGui::EndMenu();
         }
-        */
+#endif
         if (ImGui::BeginMenu("About")) {
             if (ImGui::MenuItem("Version")) {
                 exitViewport();
@@ -887,14 +953,14 @@ void Application::Render(float deltaTime) {
                 metrics_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
 
             ImGuiID dock_id_left_top, dock_id_viewport;
-            ImGui::DockBuilderSplitNode(dock_id_top_content, ImGuiDir_Left, 0.20f, &dock_id_left_top, &dock_id_viewport);
+            ImGui::DockBuilderSplitNode(dock_id_top_content, ImGuiDir_Left, 0.17f, &dock_id_left_top, &dock_id_viewport);
 
             ImGuiDockNode* viewport_node = ImGui::DockBuilderGetNode(dock_id_viewport);
             if (viewport_node)
                 viewport_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
 
             ImGuiID dock_id_left_bottom, dock_id_bottom_graphs;
-            ImGui::DockBuilderSplitNode(dock_id_bottom_half, ImGuiDir_Left, 0.20f, &dock_id_left_bottom, &dock_id_bottom_graphs);
+            ImGui::DockBuilderSplitNode(dock_id_bottom_half, ImGuiDir_Left, 0.17f, &dock_id_left_bottom, &dock_id_bottom_graphs);
 
             ImGui::DockBuilderDockWindow("Tracks", dock_id_left_top);
             ImGui::DockBuilderDockWindow("Sections", dock_id_left_top);
@@ -1313,6 +1379,8 @@ void Application::Render(float deltaTime) {
                 KeyBindButton("Move Backward", gloParent->mOptions->keyBackward);
                 KeyBindButton("Move Left", gloParent->mOptions->keyLeft);
                 KeyBindButton("Move Right", gloParent->mOptions->keyRight);
+                KeyBindButton("Warnings Overlay", gloParent->mOptions->keyOverlayWarnings);
+                KeyBindButton("Scenery Overlay", gloParent->mOptions->keyOverlayScenery);
                 ImGui::EndTable();
             }
         }
@@ -1350,19 +1418,51 @@ void Application::Render(float deltaTime) {
         if (exportFromSection > exportToSection)
             exportFromSection = exportToSection;
 
-        ImGui::Combo("Format", &exportFormat, "NoLimits 2 Element (*.nl2elem)\0NoLimits 2 CSV (*.csv)\0NoLimits 1 Element (Bezier) (*.nlelem)\0NoLimits 1 Element (Hermite) (*.nlelem)\0");
+        ImGui::Combo("Format", &exportFormat, "NoLimits 2 Element (*.nl2elem)\0NoLimits 2 CSV (*.csv)\0");
         ImGui::InputFloat("Dist. per Node (m)", &exportDistPerNode, 0.1f, 1.0f, "%.2f");
         if (exportDistPerNode < 0.1f)
             exportDistPerNode = 0.1f;
         ImGui::SliderInt("From Section", &exportFromSection, 0, numSections - 1);
         ImGui::SliderInt("To Section", &exportToSection, exportFromSection, numSections - 1);
-        if (exportFormat == 2 || exportFormat == 3)
-            ImGui::InputFloat("Roll Threshold (deg)", &exportRollThresh, 1.0f, 5.0f, "%.1f");
 
-        ImGui::Checkbox("No Heartline", &exportNoHeartline);
-        ImGui::Checkbox("Relative Export", &gloParent->mOptions->relativeExport);
+        // Custom Number Format Input (below To Section)
+        if (exportFormat == 0) {
+            ImGui::BeginDisabled();
+        }
+        static char numFormatBuf[32] = "";
+        static int lastExportFormat = -1;
+        if (lastExportFormat != exportFormat) {
+            lastExportFormat = exportFormat;
+            strncpy(numFormatBuf, exportNumFormat.c_str(), sizeof(numFormatBuf) - 1);
+        }
+        if (ImGui::InputText("Number Format", numFormatBuf, sizeof(numFormatBuf))) {
+            exportNumFormat = numFormatBuf;
+        }
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Export NoLimits 2 splines relative to the anchor node instead of absolute world space.");
+            ImGui::SetTooltip("%s", "Specify custom C format specifier for CSV numbers (e.g. %%.6f or %%e).");
+        }
+        if (exportFormat == 0) {
+            ImGui::EndDisabled();
+        }
+
+        // Heartline Checkbox and Local Space on the same line
+        if (exportFormat == 0) {
+            exportHeartline = false;
+            ImGui::BeginDisabled();
+        }
+        ImGui::Checkbox("Heartline", &exportHeartline);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Export coordinates relative to the rider's heartline instead of the rail center.");
+        }
+        if (exportFormat == 0) {
+            ImGui::EndDisabled();
+        }
+
+        ImGui::SameLine();
+
+        ImGui::Checkbox("Local Space", &gloParent->mOptions->relativeExport);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Export coordinates in local space starting at (0,0,0) instead of absolute world coordinates.");
         }
         ImGui::Separator();
         if (ImGui::Button("Export", ImVec2(120, 0))) {
@@ -1370,12 +1470,9 @@ void Application::Render(float deltaTime) {
             if (exportFormat == 0) {
                 filter = "NL2 Element (*.nl2elem)";
                 ext = ".nl2elem";
-            } else if (exportFormat == 1) {
+            } else {
                 filter = "NL2 CSV (*.csv)";
                 ext = ".csv";
-            } else {
-                filter = "NL Element (*.nlelem)";
-                ext = ".nlelem";
             }
             auto f = pfd::save_file("Export Track", ".", {filter, "*" + ext, "All Files", "*"}).result();
             if (!f.empty()) {
@@ -1440,38 +1537,42 @@ void Application::Render(float deltaTime) {
         ImGui::Begin("Transition Editor", nullptr, commonFlags);
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
             auto track = trackList[activeTrackIdx];
-            bool valid = false;
-            if (gloParent->selectedFunc) {
-                for (section* sec : track->trackData->lSections) {
-                    if (sec->rollFunc)
-                        for (subfunc* sf : sec->rollFunc->funcList)
-                            if (sf == gloParent->selectedFunc) {
-                                valid = true;
-                                break;
-                            }
-                    if (valid)
-                        break;
-                    if (sec->normForce)
-                        for (subfunc* sf : sec->normForce->funcList)
-                            if (sf == gloParent->selectedFunc) {
-                                valid = true;
-                                break;
-                            }
-                    if (valid)
-                        break;
-                    if (sec->latForce)
-                        for (subfunc* sf : sec->latForce->funcList)
-                            if (sf == gloParent->selectedFunc) {
-                                valid = true;
-                                break;
-                            }
-                    if (valid)
-                        break;
+            if (track->trackData->isReferenceTrack()) {
+                ImGui::Text("Reference Track (Transitions Disabled)");
+            } else {
+                bool valid = false;
+                if (gloParent->selectedFunc) {
+                    for (section* sec : track->trackData->lSections) {
+                        if (sec->rollFunc)
+                            for (subfunc* sf : sec->rollFunc->funcList)
+                                if (sf == gloParent->selectedFunc) {
+                                    valid = true;
+                                    break;
+                                }
+                        if (valid)
+                            break;
+                        if (sec->normForce)
+                            for (subfunc* sf : sec->normForce->funcList)
+                                if (sf == gloParent->selectedFunc) {
+                                    valid = true;
+                                    break;
+                                }
+                        if (valid)
+                            break;
+                        if (sec->latForce)
+                            for (subfunc* sf : sec->latForce->funcList)
+                                if (sf == gloParent->selectedFunc) {
+                                    valid = true;
+                                    break;
+                                }
+                        if (valid)
+                            break;
+                    }
+                    if (!valid)
+                        gloParent->selectedFunc = nullptr;
                 }
-                if (!valid)
-                    gloParent->selectedFunc = nullptr;
+                transitionView.render(track, gloParent->selectedFunc, this);
             }
-            transitionView.render(track, gloParent->selectedFunc, this);
         } else
             ImGui::Text("No active track.");
         ImGui::End();
@@ -1595,7 +1696,7 @@ void Application::Render(float deltaTime) {
         }
         ImGui::End();
 
-        if (viewportOverlayZTrigger && ImGui::IsKeyDown(ImGuiKey_Z)) {
+        if (viewportOverlayZTrigger && ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyOverlayScenery)) {
             int numMeshes = (int)viewport.glbMeshes.size();
             static int highlightIdx = 0;
             if (numMeshes > 0) {
@@ -1633,7 +1734,8 @@ void Application::Render(float deltaTime) {
                                      ImGuiWindowFlags_NoNav;
 
             if (ImGui::Begin("SceneryOverlay", nullptr, flags)) {
-                ImGui::Text("Scenery Meshes (Z Held)");
+                const char* sceneryKeyName = ImGui::GetKeyName((ImGuiKey)gloParent->mOptions->keyOverlayScenery);
+                ImGui::Text("Scenery Meshes (%s Held)", sceneryKeyName ? sceneryKeyName : "Key");
                 ImGui::TextDisabled("Up/Down: select; H: toggle; X: delete");
                 ImGui::Separator();
 
@@ -1667,7 +1769,7 @@ void Application::Render(float deltaTime) {
                 }
                 ImGui::End();
             }
-        } else if (viewportOverlayZTrigger && ImGui::IsKeyDown(ImGuiKey_X)) {
+        } else if (viewportOverlayZTrigger && ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyOverlayWarnings)) {
             // Render Track Safety Warnings overlay in the exact same top-left spot and with the same style as SceneryOverlay
             if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
                 track* curTrack = trackList[activeTrackIdx]->trackData;
@@ -1696,9 +1798,6 @@ void Application::Render(float deltaTime) {
                         break;
                     case geometricriderlocal:
                         secTypeStr = "Geometric Rider-Local";
-                        break;
-                    case bezier:
-                        secTypeStr = "Bezier";
                         break;
                     default:
                         secTypeStr = "Unknown";
@@ -1757,7 +1856,8 @@ void Application::Render(float deltaTime) {
                                          ImGuiWindowFlags_NoNav;
 
                 if (ImGui::Begin("WarningOverlay", nullptr, flags)) {
-                    ImGui::Text("Track State (X Held)");
+                    const char* warnKeyName = ImGui::GetKeyName((ImGuiKey)gloParent->mOptions->keyOverlayWarnings);
+                    ImGui::Text("Track State (%s Held)", warnKeyName ? warnKeyName : "Key");
                     ImGui::TextDisabled("Displays active safety warnings and constraints");
                     ImGui::Separator();
 
@@ -1776,130 +1876,152 @@ void Application::Render(float deltaTime) {
         }
 
         ImGui::Begin("Graph List", nullptr, commonFlags);
-        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size())
-            graphView.renderList(trackList[activeTrackIdx]);
-        else
+        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+            if (trackList[activeTrackIdx]->trackData->isReferenceTrack())
+                ImGui::Text("Reference Track (Graphs Disabled)");
+            else
+                graphView.renderList(trackList[activeTrackIdx]);
+        } else
             ImGui::Text("No active track.");
         ImGui::End();
 
         bool focusResulting = graphView.getAndClearSwitchToResultingTab();
 
         ImGui::Begin("Graphs", nullptr, commonFlags);
-        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size() && trackList[activeTrackIdx]->trackData->activeSection != nullptr)
-            graphView.renderPlot(trackList[activeTrackIdx]);
-        else
-            ImGui::Text("No data to plot.");
+        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+            if (trackList[activeTrackIdx]->trackData->isReferenceTrack())
+                ImGui::Text("Reference Track (Graphs Disabled)");
+            else if (trackList[activeTrackIdx]->trackData->activeSection != nullptr)
+                graphView.renderPlot(trackList[activeTrackIdx]);
+            else
+                ImGui::Text("No data to plot.");
+        } else
+            ImGui::Text("No active track.");
         ImGui::End();
 
         if (focusResulting)
             ImGui::SetNextWindowFocus();
         ImGui::Begin("Resulting Graphs", nullptr, commonFlags);
-        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size() && trackList[activeTrackIdx]->trackData->activeSection != nullptr)
-            graphView.renderResultingPlot(trackList[activeTrackIdx]);
-        else
-            ImGui::Text("No data to plot.");
+        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+            if (trackList[activeTrackIdx]->trackData->isReferenceTrack())
+                ImGui::Text("Reference Track (Graphs Disabled)");
+            else if (trackList[activeTrackIdx]->trackData->activeSection != nullptr)
+                graphView.renderResultingPlot(trackList[activeTrackIdx]);
+            else
+                ImGui::Text("No data to plot.");
+        } else
+            ImGui::Text("No active track.");
         ImGui::End();
 
         ImGui::Begin("Measurement Graphs", nullptr, commonFlags);
-        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size() && trackList[activeTrackIdx]->trackData->activeSection != nullptr) {
-            if (graphView.hasMeasurementGraphsVisible(trackList[activeTrackIdx]))
-                graphView.renderMeasurementPlot(trackList[activeTrackIdx]);
-            else
-                ImGui::TextDisabled("Add Measurement Points in the Graph List panel to view them here.");
+        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+            if (trackList[activeTrackIdx]->trackData->isReferenceTrack())
+                ImGui::Text("Reference Track (Graphs Disabled)");
+            else if (trackList[activeTrackIdx]->trackData->activeSection != nullptr) {
+                if (graphView.hasMeasurementGraphsVisible(trackList[activeTrackIdx]))
+                    graphView.renderMeasurementPlot(trackList[activeTrackIdx]);
+                else
+                    ImGui::TextDisabled("Add Measurement Points in the Graph List panel to view them here.");
+            } else
+                ImGui::Text("No data to plot.");
         } else
-            ImGui::Text("No data to plot.");
+            ImGui::Text("No active track.");
         ImGui::End();
 
         ImGui::Begin("Metrics", nullptr, commonFlags | ImGuiWindowFlags_NoTitleBar);
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
             trackHandler* hTrack = trackList[activeTrackIdx];
-            mnode* lastNode = nullptr;
-            if (viewport.getPOVNode())
-                lastNode = viewport.getPOVNode();
-            else if (!hTrack->trackData->lSections.empty() && hTrack->trackData->activeSection) {
-                if (!hTrack->trackData->activeSection->lNodes.empty())
-                    lastNode = &hTrack->trackData->activeSection->lNodes.back();
-            } else
-                lastNode = hTrack->trackData->anchorNode;
+            if (hTrack->trackData->isReferenceTrack()) {
+                ImGui::Text("Reference Track (Metrics Disabled)");
+            } else {
+                mnode* lastNode = nullptr;
+                if (viewport.getPOVNode())
+                    lastNode = viewport.getPOVNode();
+                else if (!hTrack->trackData->lSections.empty() && hTrack->trackData->activeSection) {
+                    if (!hTrack->trackData->activeSection->lNodes.empty())
+                        lastNode = &hTrack->trackData->activeSection->lNodes.back();
+                } else
+                    lastNode = hTrack->trackData->anchorNode;
 
-            if (lastNode) {
-                glm::mat4 anchorBase = glm::translate(glm::mat4(1.0f), (glm::vec3)hTrack->trackData->startPos) *
-                                       glm::rotate(glm::mat4(1.0f), glm::radians((float)hTrack->trackData->startYaw - 90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                glm::vec3 worldPos = glm::vec3(anchorBase * glm::vec4(lastNode->vPosHeart(hTrack->trackData->fHeart), 1.0f));
+                if (lastNode) {
+                    glm::mat4 anchorBase = glm::translate(glm::mat4(1.0f), (glm::vec3)hTrack->trackData->startPos) *
+                                           glm::rotate(glm::mat4(1.0f), glm::radians((float)hTrack->trackData->startYaw - 90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    glm::vec3 worldPos = glm::vec3(anchorBase * glm::vec4(lastNode->vPosHeart(hTrack->trackData->fHeart), 1.0f));
 
-                float lenFact = gloParent->mOptions->getLengthFactor();
-                std::string lenStr = gloParent->mOptions->getLengthString();
-                float spdFact = gloParent->mOptions->getSpeedFactor();
-                std::string spdStr = gloParent->mOptions->getSpeedString();
+                    float lenFact = gloParent->mOptions->getLengthFactor();
+                    std::string lenStr = gloParent->mOptions->getLengthString();
+                    float spdFact = gloParent->mOptions->getSpeedFactor();
+                    std::string spdStr = gloParent->mOptions->getSpeedString();
 
-                std::vector<std::string> groups;
-                char buf[256];
-                snprintf(buf, sizeof(buf), "X: %+.3f %s    Y: %+.3f %s    Z: %+.3f %s", worldPos.x * lenFact, lenStr.c_str(), worldPos.y * lenFact, lenStr.c_str(), worldPos.z * lenFact, lenStr.c_str());
-                groups.push_back(buf);
-                snprintf(buf, sizeof(buf), "Roll: %+.3f deg (%+.3f deg/s)    Pitch: %+.3f deg (%+.3f deg/s)    Yaw: %+.3f deg (%+.3f deg/s)", lastNode->fRoll, lastNode->fRollSpeed, lastNode->getPitch(), lastNode->getPitchChange(), lastNode->getDirection(), lastNode->getYawChange());
-                groups.push_back(buf);
-                snprintf(buf, sizeof(buf), "Y-Accel: %+.3f g    X-Accel: %+.3f g", lastNode->forceNormal, lastNode->forceLateral);
-                groups.push_back(buf);
+                    std::vector<std::string> groups;
+                    char buf[256];
+                    snprintf(buf, sizeof(buf), "X: %+.3f %s    Y: %+.3f %s    Z: %+.3f %s", worldPos.x * lenFact, lenStr.c_str(), worldPos.y * lenFact, lenStr.c_str(), worldPos.z * lenFact, lenStr.c_str());
+                    groups.push_back(buf);
+                    snprintf(buf, sizeof(buf), "Roll: %+.3f deg (%+.3f deg/s)    Pitch: %+.3f deg (%+.3f deg/s)    Yaw: %+.3f deg (%+.3f deg/s)", lastNode->fRoll, lastNode->fRollSpeed, lastNode->getPitch(), lastNode->getPitchChange(), lastNode->getDirection(), lastNode->getYawChange());
+                    groups.push_back(buf);
+                    snprintf(buf, sizeof(buf), "Y-Accel: %+.3f g    X-Accel: %+.3f g", lastNode->forceNormal, lastNode->forceLateral);
+                    groups.push_back(buf);
 
-                int lastNodeIndex = 0;
-                if (viewport.getPOVNode()) {
-                    lastNodeIndex = viewport.getPOVPos();
-                } else if (!hTrack->trackData->lSections.empty()) {
-                    section* activeSec = hTrack->trackData->activeSection;
-                    if (!activeSec) {
-                        activeSec = hTrack->trackData->lSections.back();
+                    int lastNodeIndex = 0;
+                    if (viewport.getPOVNode()) {
+                        lastNodeIndex = viewport.getPOVPos();
+                    } else if (!hTrack->trackData->lSections.empty()) {
+                        section* activeSec = hTrack->trackData->activeSection;
+                        if (!activeSec) {
+                            activeSec = hTrack->trackData->lSections.back();
+                        }
+                        lastNodeIndex = hTrack->trackData->getNumPoints(activeSec);
+                        if (!activeSec->lNodes.empty()) {
+                            lastNodeIndex += activeSec->lNodes.size() - 1;
+                        }
                     }
-                    lastNodeIndex = hTrack->trackData->getNumPoints(activeSec);
-                    if (!activeSec->lNodes.empty()) {
-                        lastNodeIndex += activeSec->lNodes.size() - 1;
+                    double timeVal = (double)lastNodeIndex / 1000.0;
+                    double distVal = lastNode->fTotalLength * lenFact;
+
+                    snprintf(buf, sizeof(buf), "Distance: %+.3f %s    Time: %+.3f s", distVal, lenStr.c_str(), timeVal);
+                    groups.push_back(buf);
+
+                    char speedBuf[128];
+                    snprintf(speedBuf, sizeof(speedBuf), "Speed: %+.3f %s", lastNode->fVel * spdFact, spdStr.c_str());
+                    std::string speedStr(speedBuf);
+
+                    float totalTextWidth = 0.0f;
+                    std::vector<float> textWidths;
+                    for (size_t i = 0; i < groups.size(); ++i) {
+                        float w = ImGui::CalcTextSize(groups[i].c_str()).x;
+                        if (i == groups.size() - 1) {
+                            w += ImGui::CalcTextSize("    ").x + ImGui::CalcTextSize(speedStr.c_str()).x;
+                        }
+                        textWidths.push_back(w);
+                        totalTextWidth += w;
                     }
-                }
-                double timeVal = (double)lastNodeIndex / 1000.0;
-                double distVal = lastNode->fTotalLength * lenFact;
 
-                snprintf(buf, sizeof(buf), "Distance: %+.3f %s    Time: %+.3f s", distVal, lenStr.c_str(), timeVal);
-                groups.push_back(buf);
+                    float availWidth = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
+                    float startX = ImGui::GetWindowContentRegionMin().x;
+                    float padding = 15.0f;
+                    if (groups.size() > 1 && availWidth > totalTextWidth)
+                        padding = (availWidth - totalTextWidth - 1.0f) / (groups.size() - 1);
 
-                char speedBuf[128];
-                snprintf(speedBuf, sizeof(speedBuf), "Speed: %+.3f %s", lastNode->fVel * spdFact, spdStr.c_str());
-                std::string speedStr(speedBuf);
-
-                float totalTextWidth = 0.0f;
-                std::vector<float> textWidths;
-                for (size_t i = 0; i < groups.size(); ++i) {
-                    float w = ImGui::CalcTextSize(groups[i].c_str()).x;
-                    if (i == groups.size() - 1) {
-                        w += ImGui::CalcTextSize("    ").x + ImGui::CalcTextSize(speedStr.c_str()).x;
+                    float currentX = startX;
+                    for (size_t i = 0; i < groups.size(); ++i) {
+                        if (i > 0)
+                            ImGui::SameLine();
+                        if (i > 0 && currentX + textWidths[i] > startX + availWidth + 1.0f) {
+                            ImGui::NewLine();
+                            currentX = startX;
+                        }
+                        ImGui::SetCursorPosX(currentX);
+                        if (i == groups.size() - 1) {
+                            ImGui::TextUnformatted(groups[i].c_str());
+                            ImGui::SameLine(0, 0);
+                            ImGui::TextUnformatted("    ");
+                            ImGui::SameLine(0, 0);
+                            ImGui::TextColored(ImVec4(0, 1, 0, 1), "%s", speedStr.c_str());
+                        } else {
+                            ImGui::TextUnformatted(groups[i].c_str());
+                        }
+                        currentX += textWidths[i] + padding;
                     }
-                    textWidths.push_back(w);
-                    totalTextWidth += w;
-                }
-
-                float availWidth = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
-                float startX = ImGui::GetWindowContentRegionMin().x;
-                float padding = 15.0f;
-                if (groups.size() > 1 && availWidth > totalTextWidth)
-                    padding = (availWidth - totalTextWidth - 1.0f) / (groups.size() - 1);
-
-                float currentX = startX;
-                for (size_t i = 0; i < groups.size(); ++i) {
-                    if (i > 0)
-                        ImGui::SameLine();
-                    if (i > 0 && currentX + textWidths[i] > startX + availWidth + 1.0f) {
-                        ImGui::NewLine();
-                        currentX = startX;
-                    }
-                    ImGui::SetCursorPosX(currentX);
-                    if (i == groups.size() - 1) {
-                        ImGui::TextUnformatted(groups[i].c_str());
-                        ImGui::SameLine(0, 0);
-                        ImGui::TextUnformatted("    ");
-                        ImGui::SameLine(0, 0);
-                        ImGui::TextColored(ImVec4(0, 1, 0, 1), "%s", speedStr.c_str());
-                    } else {
-                        ImGui::TextUnformatted(groups[i].c_str());
-                    }
-                    currentX += textWidths[i] + padding;
                 }
             }
         } else
@@ -1956,7 +2078,8 @@ void Application::Render(float deltaTime) {
                 }
 
                 if (hasWarnings) {
-                    ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.4f, 1.0f), "Warning: Safety warnings or issues detected (press X in viewport)");
+                    const char* warnKeyName = ImGui::GetKeyName((ImGuiKey)gloParent->mOptions->keyOverlayWarnings);
+                    ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.4f, 1.0f), "Warning: Safety warnings or issues detected (press %s in viewport)", warnKeyName ? warnKeyName : "Key");
                 } else {
                     ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "System Status: Ready");
                 }
@@ -2436,6 +2559,20 @@ void Application::RenderEnvironmentWindow() {
     ImGui::End();
 }
 
+static bool isValidDoubleFormatSpecifier(const std::string& fmt) {
+    if (fmt.empty() || fmt[0] != '%')
+        return false;
+    for (size_t i = 1; i < fmt.length(); ++i) {
+        char c = fmt[i];
+        if (i == fmt.length() - 1) {
+            return c == 'f' || c == 'F' || c == 'e' || c == 'E' || c == 'g' || c == 'G';
+        }
+        if (c != '.' && c != '+' && c != '-' && (c < '0' || c > '9'))
+            return false;
+    }
+    return false;
+}
+
 void Application::PerformExport(const std::string& path) {
     LOG_INFO("Exporting track to: %s (Format: %d)", path.c_str(), exportFormat);
     if (activeTrackIdx < 0 || activeTrackIdx >= (int)trackList.size())
@@ -2445,10 +2582,6 @@ void Application::PerformExport(const std::string& path) {
 
     int toSec = (exportToSection == -1 || exportToSection >= numSections) ? numSections - 1 : exportToSection;
     int fromSec = std::clamp(exportFromSection, 0, toSec);
-
-    float oldHeartLine = curTrack->fHeart;
-    if (exportNoHeartline)
-        curTrack->fHeart = 0.0f;
 
     if (exportFormat == 0) {
         FILE* fout = fopen(path.c_str(), "w");
@@ -2462,31 +2595,17 @@ void Application::PerformExport(const std::string& path) {
         FILE* fout = fopen(path.c_str(), "w");
         if (fout) {
             fprintf(fout, "\"No.\"\t\"PosX\"\t\"PosY\"\t\"PosZ\"\t\"FrontX\"\t\"FrontY\"\t\"FrontZ\"\t\"LeftX\"\t\"LeftY\"\t\"LeftZ\"\t\"UpX\"\t\"UpY\"\t\"UpZ\"\n");
-            curTrack->exportNL2TrackCSV(fout, exportDistPerNode, fromSec, toSec);
+
+            std::string fmt = exportNumFormat;
+            if (!isValidDoubleFormatSpecifier(fmt)) {
+                fmt = "%.6f";
+            }
+            double fHeartVal = exportHeartline ? 0.0 : curTrack->fHeart;
+            curTrack->exportNL2TrackCSV(fout, exportDistPerNode, fromSec, toSec, fHeartVal, fmt.c_str());
             fclose(fout);
-        }
-    } else if (exportFormat == 2 || exportFormat == 3) {
-        std::fstream fout(path.c_str(), std::ios::out | std::ios::binary);
-        if (fout.is_open()) {
-            writeBytes(&fout, (const char*)"MELE", 4);
-            writeNulls(&fout, 4);
-            writeNulls(&fout, 64);
-            writeNulls(&fout, 4);
-
-            float rollThreshRad = sin(exportRollThresh * F_PI / 180.f);
-            int iNodes = (exportFormat == 2) ? curTrack->exportTrack4(&fout, exportDistPerNode, fromSec, toSec, rollThreshRad) : curTrack->exportTrack3(&fout, exportDistPerNode, fromSec, toSec, rollThreshRad);
-
-            int iDataLength = iNodes * 50 + 132;
-            writeNulls(&fout, 69);
-            fout.seekp(4);
-            writeBytes(&fout, (const char*)&iDataLength, 4);
-            fout.seekp(72);
-            writeBytes(&fout, (const char*)&iNodes, 4);
-            fout.close();
         }
     }
 
-    curTrack->fHeart = oldHeartLine;
     lastExportPath = path;
 }
 
@@ -2697,6 +2816,49 @@ void Application::forkTrack(trackHandler* sourceTrack, int nodeIdx) {
 
     // Push snapshot to undo history
     pushUndo();
+}
+
+void Application::importReferenceTrack(const std::string& path) {
+    // 1. Get file name from path
+    std::string newName = path;
+    size_t lastSlash = newName.find_last_of("/\\");
+    if (lastSlash != std::string::npos) {
+        newName = newName.substr(lastSlash + 1);
+    }
+    // strip extension
+    size_t lastDot = newName.find_last_of(".");
+    if (lastDot != std::string::npos) {
+        newName = newName.substr(0, lastDot);
+    }
+    newName = "Ref: " + newName;
+
+    // 2. Create the new track handler with isReference = true (uses lightweight reftrack class)
+    trackHandler* newTrackHandler = new trackHandler(newName, static_cast<int>(trackList.size()) + 1, true);
+    track* newTrack = newTrackHandler->trackData;
+
+    // 3. Clear any existing sections and create a single secnlcsv section
+    for (auto sec : newTrack->lSections) {
+        delete sec;
+    }
+    newTrack->lSections.clear();
+
+    secnlcsv* csvSec = new secnlcsv(newTrack, newTrack->anchorNode);
+    newTrack->lSections.push_back(csvSec);
+    newTrack->activeSection = csvSec;
+
+    // 4. Load the CSV track
+    csvSec->loadTrack(path);
+
+    // 5. Rebuild meshes and add to trackList
+    if (newTrackHandler->mMesh) {
+        newTrackHandler->mMesh->buildMeshes(0);
+    }
+
+    trackList.push_back(newTrackHandler);
+    activeTrackIdx = static_cast<int>(trackList.size()) - 1;
+
+    pushUndo();
+    showInAppNotification("Imported Reference Track: " + newName);
 }
 
 void Application::loadRecentFiles() {

@@ -39,7 +39,4 @@ int readInt(std::istream* file);
 bool readBool(std::istream* file);
 void readBytes(std::istream* file, void* _ptr, size_t length);
 
-void writeToExportFile(std::ostream* file, std::vector<bezier_t*>& bezList);
-void writeToExportFileAscii(std::ostream* file, std::vector<bezier_t*>& bezList);
-
 #endif // EXPORTFUNCS_H

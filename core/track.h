@@ -21,12 +21,13 @@
 */
 
 #include "mnode.h"
-#include "secbezier.h"
 #include "seccurved.h"
 #include "secforced.h"
 #include "secgeometric.h"
 #include "secgeometricriderlocal.h"
 #include "secstraight.h"
+#include "secnlcsv.h"
+#include "secstatic.h"
 #include "sectionhandler.h"
 #include <vector>
 #include <string>
@@ -87,32 +88,29 @@ public:
     void removeSmooth(int fromNode = 0);
     void applySmooth(int fromNode = 0);
 
-    void updateTrack(int index, int iNode);
-    void updateTrack(section* fromSection, int iNode);
+    virtual void updateTrack(int index, int iNode);
+    virtual void updateTrack(section* fromSection, int iNode);
     void requestUpdateTrack(int index, int iNode);
     void requestUpdateTrack(section* fromSection, int iNode);
     void processPendingUpdates();
     void newSection(enum secType type, int index = -1, bool deferUpdate = false);
+    bool isReferenceTrack() const {
+        return lSections.size() == 1 && lSections[0]->type == nolimitscsv;
+    }
 
     void clearTrack();
 
     float getTotalLength() const;
 
-    int exportTrack(std::fstream* file, double mPerNode, int fromIndex,
-                    int toIndex, double fRollThresh);
-    int exportTrack2(std::fstream* file, double mPerNode, int fromIndex,
-                     int toIndex, double fRollThresh);
-    int exportTrack3(std::fstream* file, double mPerNode, int fromIndex,
-                     int toIndex, double fRollThresh);
-    int exportTrack4(std::fstream* file, double mPerNode, int fromIndex,
-                     int toIndex, double fRollThresh);
-
     void exportNL2Track(FILE* file, double mPerNode, int fromIndex, int toIndex);
     void exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
-                           int toIndex);
+                           int toIndex, double fHeart, const char* numFormat);
 
     std::string saveTrack(std::ostream& file);
     std::string loadTrack(std::istream& file);
+
+    bool saveTemplate(const std::string& filepath, int startNodeIdx, int endNodeIdx);
+    bool loadTemplate(const std::string& filepath, int insertIdx);
 
     void saveTrackChunk(std::ostream& file);
     void loadTrackChunk(std::istream& file, uint8_t version, uint32_t length);
@@ -200,6 +198,14 @@ public:
 
     std::vector<ParametricExtrusion> customExtrusions;
     std::vector<CustomAssetInstance> customAssets;
+};
+
+class reftrack : public track {
+public:
+    reftrack();
+    reftrack(trackHandler* _parent, glm::dvec3 startPos, double startYaw,
+             double heartLine = 0.0);
+    virtual void updateTrack(int index, int iNode) override;
 };
 
 #endif // TRACK_H

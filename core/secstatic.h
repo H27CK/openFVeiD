@@ -1,9 +1,8 @@
-#ifndef SECBEZIER_H
-#define SECBEZIER_H
+#ifndef SECSTATIC_H
+#define SECSTATIC_H
 
 /*
-#    FVD++, an advanced coaster design tool for NoLimits
-#    Copyright (C) 2012-2015, Stephan "Lenny" Alt <alt.stephan@web.de>
+#    FVD++, an advanced coaster design tool
 #    Copyright (C) 2026 Veia <h27ck@proton.me>
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -17,16 +16,16 @@
 #    GNU General Public License for more details.
 #
 #    You should have received a copy of the GNU General Public License
-#    along with this program. If not, see <http://www.gnu.org/licenses/>.
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 #include "section.h"
-#include "track.h"
+#include <vector>
 
-class secbezier : public section {
+class secstatic : public section {
 public:
-    secbezier(track* getParent, mnode* first);
-    ~secbezier();
+    ~secstatic();
+    secstatic(track* getParent, mnode* first);
     virtual int updateSection(int node = 0);
     virtual void saveSection(std::ostream& file);
     virtual void loadSection(std::istream& file);
@@ -34,9 +33,7 @@ public:
     virtual bool isLockable(func* _func);
     virtual bool isInFunction(int index, subfunc* func);
 
-    float fSmoothing; // 0.0f = strict bezier, 1.0f = max loosened B-spline approx
-
-private:
+    std::vector<mnode> staticNodes; // Stored relative to the start node
 };
 
-#endif // SECBEZIER_H
+#endif // SECSTATIC_H

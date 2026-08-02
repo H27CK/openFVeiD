@@ -30,6 +30,7 @@ class trackMesh;
 class trackHandler {
 public:
     trackHandler(std::string _name, int _id);
+    trackHandler(std::string _name, int _id, bool isReference);
     ~trackHandler();
     void changeID(int _id);
     int getID();
@@ -41,7 +42,7 @@ public:
     int tabId;
 
     trackMesh* mMesh;
-    glm::vec3 trackColors[3];
+    glm::vec3 trackColors[4];
 
 private:
     int id;

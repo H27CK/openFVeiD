@@ -371,23 +371,26 @@ void track::newSection(enum secType type, int index, bool deferUpdate) {
 
     section* newSection;
     switch (type) {
-    case 1:
+    case straight:
         newSection = new secstraight(this, startNode, 10);
         break;
-    case 2:
+    case curved:
         newSection = new seccurved(this, startNode, 90, 15);
         break;
-    case 3:
+    case forced:
         newSection = new secforced(this, startNode, 1000);
         break;
-    case 4:
+    case geometric:
         newSection = new secgeometric(this, startNode, 1000);
         break;
-    case 5:
-        newSection = new secbezier(this, startNode);
+    case static_spline:
+        newSection = new secstatic(this, startNode);
         break;
-    case 6:
+    case geometricriderlocal:
         newSection = new secgeometricriderlocal(this, startNode, 1000);
+        break;
+    case nolimitscsv:
+        newSection = new secnlcsv(this, startNode);
         break;
     default:
         newSection = NULL;
@@ -456,510 +459,6 @@ void track::clearTrack() {
     smoothedUntil = 0;
 }
 
-int track::exportTrack(fstream* file, double mPerNode, int fromIndex,
-                       int toIndex, double fRollThresh) {
-    std::vector<mnode> exportNodes;
-    mnode anchor = lSections.at(fromIndex)->lNodes[0];
-    for (int i = fromIndex; i <= toIndex; ++i) {
-        lSections.at(i)->fillNodeList(exportNodes, mPerNode);
-    }
-
-    mnode lastP = anchor;
-    std::vector<bezier_t*> bezList;
-
-    for (int i = 0; i < (int)exportNodes.size(); ++i) {
-        mnode* curP = &exportNodes[i];
-
-        curP->exportNode(bezList, &lastP, NULL, &anchor, fHeart, fRollThresh);
-
-        lastP = *curP;
-    }
-
-    if (exportNodes.size() <= 1) {
-        return 0;
-    }
-
-    size_t size = (exportNodes.size() - 1);
-    double* a = new double[size];
-    double* b = new double[size];
-    double* c = new double[size];
-    glm::dvec3* d = new glm::dvec3[size]();
-
-    for (size_t i = 0; i < size; ++i) {
-        if (i == 0) {
-            b[i] = 2.0;
-            a[i] = 0.0;
-            c[i] = 1.0;
-            d[i] = bezList[i]->P1 + 2.0 * bezList[i + 1]->P1;
-        } else if (i == size - 1) {
-            b[i] = 7.0;
-            a[i] = 2.0;
-            c[i] = 0.0;
-            d[i] = 8.0 * bezList[i]->P1 + bezList[i + 1]->P1;
-        } else {
-            a[i] = 1.0;
-            b[i] = 4.0;
-            c[i] = 1.0;
-            d[i] = 4.0 * bezList[i]->P1 + 2.0 * bezList[i + 1]->P1;
-        }
-    }
-
-    // solve that shit
-
-    c[0] = c[0] / b[0];
-    d[0] = d[0] / b[0];
-
-    for (size_t i = 1; i < size; ++i) {
-        double m = 1.0 / (b[i] - a[i] * c[i - 1]);
-        c[i] = c[i] * m;
-        d[i] = m * (d[i] - a[i] * d[i - 1]);
-    }
-
-    for (size_t i = size - 1; i-- > 0;) {
-        d[i] = d[i] - c[i] * d[i + 1];
-        bezList[i + 1]->Kp1 = d[i];
-        bezList[i + 1]->Kp2 = (bezList[i]->P1 - bezList[i]->Kp1) + bezList[i]->P1;
-    }
-
-    bezList.back()->Kp1 = 0.5 * (bezList.back()->P1 + bezList[size - 2]->Kp2);
-    bezList.back()->Kp2 =
-        (bezList.back()->P1 - bezList.back()->Kp1) + bezList.back()->P1;
-
-    writeToExportFile(file, bezList);
-
-    delete[] a;
-    delete[] b;
-    delete[] c;
-    delete[] d;
-
-    return exportNodes.size();
-}
-
-int track::exportTrack2(fstream* file, double mPerNode, int fromIndex,
-                        int toIndex, double fRollThresh) {
-    std::vector<mnode> exportNodes;
-    mnode* anchor = &lSections.at(fromIndex)->lNodes[0];
-    glm::dvec3 anchorPos = anchor->vPosHeart(fHeart);
-    for (int i = fromIndex; i <= toIndex; ++i) {
-        lSections.at(i)->fillNodeList(exportNodes, mPerNode);
-    }
-
-    glm::dvec3 KP1_this, P, KP2_this;
-
-    KP2_this = anchor->vDirHeart(fHeart) *
-               glm::distance(anchor->vPosHeart(fHeart),
-                             exportNodes[0].vPosHeart(fHeart)) /
-               3.0;
-
-    float fval;
-    fval = (float)KP2_this.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP2_this.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP2_this.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    glm::dvec3 startPoint =
-        exportNodes[0].vPosHeart(fHeart) +
-        (KP2_this + anchorPos - exportNodes[0].vPosHeart(fHeart)) /
-            2.0 * 3.0;
-
-    P = glm::dvec3((1 / 6.0) *
-                   (startPoint +
-                    4.0 * exportNodes[0].vPosHeart(fHeart) +
-                    exportNodes[1].vPosHeart(fHeart))) -
-        anchorPos;
-    KP1_this = glm::dvec3((1 / 3.0) *
-                          (startPoint +
-                           2.0 * exportNodes[0].vPosHeart(fHeart))) -
-               anchorPos;
-    KP2_this = glm::dvec3((1 / 3.0) *
-                          (2.0 * exportNodes[0].vPosHeart(fHeart) +
-                           exportNodes[1].vPosHeart(fHeart))) -
-               anchorPos;
-
-    fval = (float)KP1_this.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP1_this.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP1_this.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    fval = (float)P.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)P.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)P.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    glm::dvec3 V = glm::normalize(P - KP1_this);
-
-    glm::dvec3 vHeartLat =
-        glm::normalize(glm::cross(exportNodes[0].vNorm, V));
-    float temp = (float)glm::atan(vHeartLat.y, -exportNodes[0].vNorm.y);
-    if (fabs(V.y) > fRollThresh) {
-        glm::dvec3 vLastLat = anchor->vLatHeart(fHeart);
-
-        glm::dvec3 rotateAxis = glm::cross(anchor->vDirHeart(fHeart), V);
-        glm::dvec3 rotated = glm::dvec3(
-            glm::rotate(glm::angle(anchor->vDirHeart(fHeart), V), rotateAxis) *
-            glm::dvec4(vLastLat, 0.0));
-        temp = (float)(glm::angle(rotated, vHeartLat) * F_PI / 180.0);
-        if (glm::dot(glm::cross(rotated, vHeartLat), V) > 0) {
-            temp *= -1.0f;
-        }
-        if (temp != temp) {
-            temp = 0.0f;
-        }
-    }
-    writeBytes(file, (const char*)&(temp), 4);
-
-    char cTemp;
-
-    cTemp = (char)0xFF;
-    writeBytes(file, &cTemp, 1); // CONT ROLL
-    cTemp = (char)0x00;
-    if (fabs(V.y) > fRollThresh) {
-        cTemp = (char)0xFF;
-    }
-    writeBytes(file, &cTemp, 1); // equalDistanceCP
-    cTemp = (char)0x00;
-    writeBytes(file, &cTemp, 1); // REL ROLL
-    writeNulls(file, 7);         // were 5
-
-    int i = 0;
-    for (i = 1; i < (int)exportNodes.size() - 2; ++i) {
-        fval = (float)KP2_this.x;
-        writeBytes(file, (const char*)&fval, 4);
-        fval = (float)KP2_this.y;
-        writeBytes(file, (const char*)&fval, 4);
-        fval = (float)KP2_this.z;
-        writeBytes(file, (const char*)&fval, 4);
-
-        P = glm::dvec3((1 / 6.0) *
-                       (exportNodes[i - 1].vPosHeart(fHeart) +
-                        4.0 * exportNodes[i].vPosHeart(fHeart) +
-                        exportNodes[i + 1].vPosHeart(fHeart))) -
-            anchorPos;
-        KP1_this = glm::dvec3((1 / 3.0) *
-                              (exportNodes[i - 1].vPosHeart(fHeart) +
-                               2.0 * exportNodes[i].vPosHeart(fHeart))) -
-                   anchorPos;
-        KP2_this = glm::dvec3((1 / 3.0) *
-                              (2.0 * exportNodes[i].vPosHeart(fHeart) +
-                               exportNodes[i + 1].vPosHeart(fHeart))) -
-                   anchorPos;
-
-        fval = (float)KP1_this.x;
-        writeBytes(file, (const char*)&fval, 4);
-        fval = (float)KP1_this.y;
-        writeBytes(file, (const char*)&fval, 4);
-        fval = (float)KP1_this.z;
-        writeBytes(file, (const char*)&fval, 4);
-
-        fval = (float)P.x;
-        writeBytes(file, (const char*)&fval, 4);
-        fval = (float)P.y;
-        writeBytes(file, (const char*)&fval, 4);
-        fval = (float)P.z;
-        writeBytes(file, (const char*)&fval, 4);
-
-        glm::dvec3 V = glm::normalize(P - KP1_this);
-
-        glm::dvec3 vHeartLat =
-            glm::normalize(glm::cross(exportNodes[i].vNorm, V));
-        float temp = (float)glm::atan(vHeartLat.y, -exportNodes[i].vNorm.y);
-        if (fabs(V.y) > fRollThresh) {
-            glm::dvec3 vLastLat = exportNodes[i - 1].vLatHeart(fHeart);
-
-            glm::dvec3 rotateAxis =
-                glm::cross(exportNodes[i - 1].vDirHeart(fHeart), V);
-            glm::dvec3 rotated = glm::dvec3(
-                glm::rotate(
-                    glm::angle(exportNodes[i - 1].vDirHeart(fHeart), V),
-                    rotateAxis) *
-                glm::dvec4(vLastLat, 0.0));
-            temp = (float)(glm::angle(rotated, vHeartLat) * F_PI / 180.0);
-            if (glm::dot(glm::cross(rotated, vHeartLat), V) > 0) {
-                temp *= -1.0f;
-            }
-            if (temp != temp) {
-                temp = 0.0f;
-            }
-        }
-        writeBytes(file, (const char*)&(temp), 4);
-
-        char cTemp;
-
-        cTemp = (char)0xFF;
-        writeBytes(file, &cTemp, 1); // CONT ROLL
-        cTemp = (char)0x00;
-        if (fabs(V.y) > fRollThresh) {
-            cTemp = (char)0xFF;
-        }
-        writeBytes(file, &cTemp, 1); // equalDistanceCP
-        cTemp = (char)0x00;
-        writeBytes(file, &cTemp, 1); // REL ROLL
-        writeNulls(file, 7);         // were 5
-    }
-
-    fval = (float)KP2_this.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP2_this.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP2_this.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    glm::dvec3 endPoint =
-        exportNodes.back().vPosHeart(fHeart) -
-        exportNodes.back().vDirHeart(fHeart) *
-            glm::distance(exportNodes.back()
-                              .vPosHeart(fHeart),
-                          exportNodes[exportNodes.size() - 2]
-                              .vPosHeart(fHeart));
-
-    P = glm::dvec3((1 / 6.0) *
-                   (exportNodes[i - 1].vPosHeart(fHeart) +
-                    4.0 * endPoint +
-                    exportNodes[i + 1].vPosHeart(fHeart))) -
-        anchorPos;
-    KP1_this =
-        glm::dvec3((1 / 3.0) * (exportNodes[i - 1].vPosHeart(fHeart) +
-                                2.0 * endPoint)) -
-        anchorPos;
-    KP2_this = glm::dvec3((1 / 3.0) *
-                          (2.0 * endPoint +
-                           exportNodes[i + 1].vPosHeart(fHeart))) -
-               anchorPos;
-
-    fval = (float)KP1_this.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP1_this.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP1_this.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    fval = (float)P.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)P.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)P.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    V = glm::normalize(P - KP1_this);
-
-    vHeartLat = glm::normalize(glm::cross(exportNodes[i].vNorm, V));
-    temp = (float)glm::atan(vHeartLat.y, -exportNodes[i].vNorm.y);
-    if (fabs(V.y) > fRollThresh) {
-        glm::dvec3 vLastLat = exportNodes[i - 1].vLatHeart(fHeart);
-
-        glm::dvec3 rotateAxis =
-            glm::cross(exportNodes[i - 1].vDirHeart(fHeart), V);
-        glm::dvec3 rotated = glm::dvec3(
-            glm::rotate(
-                glm::angle(exportNodes[i - 1].vDirHeart(fHeart), V),
-                rotateAxis) *
-            glm::dvec4(vLastLat, 0.0));
-        temp = (float)(glm::angle(rotated, vHeartLat) * F_PI / 180.0);
-        if (glm::dot(glm::cross(rotated, vHeartLat), V) > 0) {
-            temp *= -1.0f;
-        }
-        if (temp != temp) {
-            temp = 0.0f;
-        }
-    }
-    writeBytes(file, (const char*)&(temp), 4);
-
-    cTemp = (char)0xFF;
-    writeBytes(file, &cTemp, 1); // CONT ROLL
-    cTemp = (char)0x00;
-    if (fabs(V.y) > fRollThresh) {
-        cTemp = (char)0xFF;
-    }
-    writeBytes(file, &cTemp, 1); // equalDistanceCP
-    cTemp = (char)0x00;
-    writeBytes(file, &cTemp, 1); // REL ROLL
-    writeNulls(file, 7);         // were 5
-
-    ++i;
-
-    fval = (float)KP2_this.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP2_this.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP2_this.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    P = exportNodes.back().vPosHeart(fHeart) -
-        anchorPos;
-    KP1_this =
-        P - exportNodes.back().vDirHeart(fHeart) *
-                glm::distance(exportNodes.back()
-                                  .vPosHeart(fHeart),
-                              exportNodes[exportNodes.size() - 2]
-                                  .vPosHeart(fHeart)) /
-                3.0;
-
-    fval = (float)KP1_this.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP1_this.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)KP1_this.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    fval = (float)P.x;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)P.y;
-    writeBytes(file, (const char*)&fval, 4);
-    fval = (float)P.z;
-    writeBytes(file, (const char*)&fval, 4);
-
-    V = glm::normalize(P - KP1_this);
-
-    vHeartLat = glm::normalize(glm::cross(exportNodes[i].vNorm, V));
-    temp = (float)glm::atan(vHeartLat.y, -exportNodes[i].vNorm.y);
-    if (fabs(V.y) > fRollThresh) {
-        glm::dvec3 vLastLat = exportNodes[i - 1].vLatHeart(fHeart);
-
-        glm::dvec3 rotateAxis =
-            glm::cross(exportNodes[i - 1].vDirHeart(fHeart), V);
-        glm::dvec3 rotated = glm::dvec3(
-            glm::rotate(
-                glm::angle(exportNodes[i - 1].vDirHeart(fHeart), V),
-                rotateAxis) *
-            glm::dvec4(vLastLat, 0.0));
-        temp = (float)(glm::angle(rotated, vHeartLat) * F_PI / 180.0);
-        if (glm::dot(glm::cross(rotated, vHeartLat), V) > 0) {
-            temp *= -1.0f;
-        }
-        if (temp != temp) {
-            temp = 0.0f;
-        }
-    }
-    writeBytes(file, (const char*)&(temp), 4);
-
-    cTemp = (char)0xFF;
-    writeBytes(file, &cTemp, 1); // CONT ROLL
-    cTemp = (char)0x00;
-    if (fabs(V.y) > fRollThresh) {
-        cTemp = (char)0xFF;
-    }
-    writeBytes(file, &cTemp, 1); // equalDistanceCP
-    cTemp = (char)0x00;
-    writeBytes(file, &cTemp, 1); // REL ROLL
-    writeNulls(file, 7);         // were 5
-
-    return exportNodes.size();
-}
-
-// spline export
-int track::exportTrack3(fstream* file, double mPerNode, int fromIndex,
-                        int toIndex, double fRollThresh) {
-    std::vector<mnode> exportNodes;
-    mnode* anchor = &lSections.at(fromIndex)->lNodes[0];
-    for (int i = fromIndex; i <= toIndex; ++i) {
-        lSections.at(i)->fillNodeList(exportNodes, mPerNode);
-    }
-
-    mnode *lastP = anchor, *curP = &exportNodes[0];
-    std::vector<bezier_t*> bezList;
-
-    bezList.push_back(new bezier_t);
-    bezList[0]->P1 = glm::dvec3(0.0, 0.0, 0.0);
-
-    for (int i = 0; i < (int)exportNodes.size(); ++i) {
-        curP = &exportNodes[i];
-
-        curP->exportNode(bezList, lastP, NULL, anchor, fHeart, fRollThresh);
-
-        lastP = curP;
-    }
-
-    size_t size = bezList.size();
-    std::vector<double> a(size);
-    std::vector<double> b(size);
-    std::vector<double> c(size);
-    std::vector<glm::dvec3> d(size);
-
-    for (size_t i = 0; i < size; ++i) {
-        d[i] = bezList[i]->P1;
-        if (i == 0) {
-            a[i] = 0.0;
-            b[i] = 1.0;
-            c[i] = 0.0;
-        } else if (i == size - 1) {
-            a[i] = 0.0;
-            b[i] = 1.0;
-            c[i] = 0.0;
-        } else {
-            a[i] = 1.0 / 6.0;
-            b[i] = 4.0 / 6.0;
-            c[i] = 1.0 / 6.0;
-        }
-    }
-
-    // solve that shit
-
-    c[0] = c[0] / b[0];
-    d[0] = d[0] / b[0];
-
-    for (size_t i = 1; i < size; ++i) {
-        double m = 1.0 / (b[i] - a[i] * c[i - 1]);
-        c[i] = c[i] * m;
-        d[i] = m * (d[i] - a[i] * d[i - 1]);
-    }
-
-    for (size_t i = size - 1; i-- > 0;) {
-        d[i] = d[i] - c[i] * d[i + 1];
-    }
-
-    int i;
-    for (i = 1; i < (int)bezList.size(); ++i) {
-        bezList[i]->Kp1 = 1.0 / 3.0 * (d[i] + 2.0 * d[i - 1]);
-        bezList[i]->Kp2 = 1.0 / 3.0 * (2.0 * d[i] + d[i - 1]);
-        bezList[i - 1]->P1 = 0.5 * (bezList[i - 1]->Kp2 + bezList[i]->Kp1);
-    }
-    delete bezList[0];
-
-    bezList.erase(bezList.begin());
-
-    writeToExportFile(file, bezList);
-
-    for (int i = 0; i < (int)bezList.size(); ++i) {
-        delete bezList[i];
-    }
-
-    return exportNodes.size();
-}
-
-// tangent export
-int track::exportTrack4(fstream* file, double mPerNode, int fromIndex,
-                        int toIndex, double fRollThresh) {
-    std::vector<mnode> exportNodes;
-    mnode* anchor = &lSections.at(fromIndex)->lNodes[0];
-    for (int i = fromIndex; i <= toIndex; ++i) {
-        lSections.at(i)->fillNodeList(exportNodes, mPerNode);
-    }
-
-    mnode *last = anchor, *current = &exportNodes[0],
-          *mid = NULL;
-    std::vector<bezier_t*> bezList;
-
-    for (int i = 0; i < (int)exportNodes.size(); ++i) {
-        current = &exportNodes[i];
-
-        mid = NULL;
-
-        current->exportNode(bezList, last, mid, anchor, fHeart, fRollThresh);
-
-        last = current;
-    }
-
-    writeToExportFile(file, bezList);
-
-    return exportNodes.size();
-}
-
 void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
                            int toIndex) {
     std::vector<ExportNode> exportNodes;
@@ -983,9 +482,9 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
     for (size_t i = 0; i < size; ++i) {
         mnode* curNode = &exportNodes[i].node;
         if (relativeExport) {
-            d[i] = curNode->vPosHeart(fHeart) - anchor->vPosHeart(fHeart);
+            d[i] = curNode->vPos - anchor->vPos;
         } else {
-            d[i] = curNode->vPosHeart(fHeart);
+            d[i] = curNode->vPos;
         }
         if (i == 0 || i == size - 1 || exportNodes[i].isBoundary) {
             a[i] = 0.0;
@@ -1016,7 +515,7 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
     std::vector<glm::dvec4> e;
     e.push_back(glm::dvec4(d[0], 1.0));
     for (size_t i = 1; i < size - 1; ++i) {
-        if (lSections[0]->type != 6) {
+        if (true) {
             int strict = 0;
             if (exportNodes[i - 1].isBoundary || (i == 1 && fromIndex == 0)) {
                 strict |= 1;
@@ -1030,7 +529,7 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
 
             if (strict == 1) {
                 glm::dvec3 dir = exportNodes[i - 1].node.vDir;
-                glm::dvec3 nP = exportNodes[i + 1].node.vPosHeart(fHeart);
+                glm::dvec3 nP = exportNodes[i + 1].node.vPos;
                 double a = glm::length(nP - d[i - 1]);
                 double cosa = glm::dot(glm::normalize(nP - d[i - 1]), dir);
                 e.push_back(glm::dvec4(d[i - 1] + dir * a / (2.0 * cosa), 0.0));
@@ -1040,12 +539,12 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
                 e.push_back(glm::dvec4(d[i], 1.0));
             } else if (strict == 4) {
                 glm::dvec3 dir = exportNodes[i + 1].node.vDir;
-                glm::dvec3 pP = exportNodes[i - 1].node.vPosHeart(fHeart);
+                glm::dvec3 pP = exportNodes[i - 1].node.vPos;
                 double a = glm::length(d[i + 1] - pP);
                 double cosa = glm::dot(glm::normalize(d[i + 1] - pP), dir);
                 e.push_back(glm::dvec4(d[i + 1] - dir * a / (2.0 * cosa), 0.0));
             } else if (strict == 5) {
-                glm::dvec3 dp = exportNodes[i + 1].node.vPosHeart(fHeart) - exportNodes[i - 1].node.vPosHeart(fHeart);
+                glm::dvec3 dp = exportNodes[i + 1].node.vPos - exportNodes[i - 1].node.vPos;
                 glm::dvec3 dv = exportNodes[i + 1].node.vDir + exportNodes[i - 1].node.vDir;
 
                 double a = glm::length2(dv) - 1.0;
@@ -1059,9 +558,9 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
                 double x0 = -p + sqrt(p * p - c);
 
                 e.push_back(glm::dvec4(
-                    exportNodes[i - 1].node.vPosHeart(fHeart) - x0 * exportNodes[i - 1].node.vDir, 0.0));
+                    exportNodes[i - 1].node.vPos - x0 * exportNodes[i - 1].node.vDir, 0.0));
                 e.push_back(glm::dvec4(
-                    exportNodes[i + 1].node.vPosHeart(fHeart) + x0 * exportNodes[i + 1].node.vDir, 0.0));
+                    exportNodes[i + 1].node.vPos + x0 * exportNodes[i + 1].node.vDir, 0.0));
 
             } else if (strict == 6) {
                 e.push_back(glm::dvec4(d[i], 1.0));
@@ -1158,7 +657,7 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
 }
 
 void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
-                              int toIndex) {
+                              int toIndex, double fHeart, const char* numFormat) {
     std::vector<ExportNode> exportNodes;
     mnode* anchor = &lSections.at(fromIndex)->lNodes[0];
     ExportNode first;
@@ -1170,119 +669,12 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
     }
 
     size_t size = exportNodes.size();
-    std::vector<double> a(size);
-    std::vector<double> b(size);
-    std::vector<double> c(size);
-    std::vector<glm::dvec3> d(size);
+    if (size == 0) {
+        return;
+    }
 
-    double fHeart = this->fHeart;
     bool relativeExport = gloParent && gloParent->mOptions->relativeExport;
-    for (size_t i = 0; i < size; ++i) {
-        mnode* curNode = &exportNodes[i].node;
-        if (relativeExport) {
-            d[i] = curNode->vPosHeart(fHeart) - anchor->vPosHeart(fHeart);
-        } else {
-            d[i] = curNode->vPosHeart(fHeart);
-        }
-        if (i == 0 || i == size - 1 || exportNodes[i].isBoundary) {
-            a[i] = 0.0;
-            b[i] = 1.0;
-            c[i] = 0.0;
-        } else {
-            a[i] = 1.0 / 6.0;
-            b[i] = 4.0 / 6.0;
-            c[i] = 1.0 / 6.0;
-        }
-    }
 
-    // tridiagonal solver
-    c[0] = c[0] / b[0];
-    d[0] = d[0] / b[0];
-
-    for (size_t i = 1; i < size; ++i) {
-        double m = 1.0 / (b[i] - a[i] * c[i - 1]);
-        c[i] = c[i] * m;
-        d[i] = m * (d[i] - a[i] * d[i - 1]);
-    }
-
-    for (size_t i = size - 1; i-- > 0;) {
-        d[i] = d[i] - c[i] * d[i + 1];
-    }
-
-    // resolve strictness
-    std::vector<glm::dvec4> e;
-    e.push_back(glm::dvec4(d[0], 1.0));
-    for (size_t i = 1; i < size - 1; ++i) {
-        // is this a csv import?
-        // if not, treat normally
-        if (lSections[0]->type != 6) {
-            int strict = 0;
-            if (exportNodes[i - 1].isBoundary || (i == 1 && fromIndex == 0)) {
-                strict |= 1;
-            }
-            if (exportNodes[i].isBoundary) {
-                strict |= 2;
-            }
-            if (exportNodes[i + 1].isBoundary ||
-                (i == size - 2 && exportNodes.size() > 1 &&
-                 exportNodes.back().node.fTotalLength ==
-                     lSections[0]->lNodes[0].fTotalLength)) {
-                strict |= 4;
-            }
-
-            if (strict == 1) {
-                glm::dvec3 dir = exportNodes[i - 1].node.vDir;
-                glm::dvec3 nP = exportNodes[i + 1].node.vPosHeart(fHeart);
-                double a = glm::length(nP - d[i - 1]);
-                double cosa = glm::dot(glm::normalize(nP - d[i - 1]), dir);
-                e.push_back(glm::dvec4(d[i - 1] + dir * a / (2.0 * cosa), 0.0));
-            } else if (strict == 2) {
-                // bad export status
-            } else if (strict == 3) {
-                e.push_back(glm::dvec4(d[i], 1.0));
-            } else if (strict == 4) {
-                glm::dvec3 dir = exportNodes[i + 1].node.vDir;
-                glm::dvec3 pP = exportNodes[i - 1].node.vPosHeart(fHeart);
-                double a = glm::length(d[i + 1] - pP);
-                double cosa = glm::dot(glm::normalize(d[i + 1] - pP), dir);
-                e.push_back(glm::dvec4(d[i + 1] - dir * a / (2.0 * cosa), 0.0));
-            } else if (strict == 5) {
-                glm::dvec3 dp =
-                    exportNodes[i + 1].node.vPosHeart(fHeart) - exportNodes[i - 1].node.vPosHeart(fHeart);
-                glm::dvec3 dv =
-                    exportNodes[i + 1].node.vDir + exportNodes[i - 1].node.vDir;
-
-                double a = glm::length2(dv) - 1.0;
-                double b = glm::dot(dv, dp) * 2.0;
-                double c = glm::length2(dp);
-
-                b /= a;
-                c /= a;
-
-                double p = b / 2.0;
-                double x0 = -p + sqrt(p * p - c);
-
-                e.push_back(glm::dvec4(
-                    exportNodes[i - 1].node.vPosHeart(fHeart) - x0 * exportNodes[i - 1].node.vDir,
-                    0.0));
-                e.push_back(glm::dvec4(
-                    exportNodes[i + 1].node.vPosHeart(fHeart) + x0 * exportNodes[i + 1].node.vDir,
-                    0.0));
-
-            } else if (strict == 6) {
-                e.push_back(glm::dvec4(d[i], 1.0));
-            } else if (strict == 7) {
-                e.push_back(glm::dvec4(d[i], 1.0));
-            } else {
-                e.push_back(glm::dvec4(d[i], 0.0));
-            }
-        } else {
-            e.push_back(glm::dvec4(d[i], 0.0));
-        }
-    }
-    e.push_back(glm::dvec4(d[size - 1], 1.0));
-
-    std::vector<glm::dvec3> transformed(e.size());
     glm::dmat4 anchorBase = glm::translate(glm::dmat4(1.0), this->startPos) *
                             glm::rotate(glm::dmat4(1.0), (double)TO_RAD(this->startYaw - 90.0), glm::dvec3(0.0, 1.0, 0.0));
 
@@ -1294,48 +686,48 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
                        0.0, -anchor->vDir.x / temp, 0.0, -anchor->vDir.z / temp));
     }
 
-    for (int i = 0; i < (int)e.size(); ++i) {
+    std::vector<glm::dvec3> transformed(size);
+    for (size_t i = 0; i < size; ++i) {
+        mnode* curNode = &exportNodes[i].node;
+        glm::dvec3 rawPos = curNode->vPosHeart(fHeart);
         if (relativeExport) {
-            transformed[i] = anchorBaseRelative * glm::dvec3(e[i]);
+            glm::dvec3 diff = rawPos - anchor->vPosHeart(fHeart);
+            transformed[i] = anchorBaseRelative * diff;
         } else {
-            transformed[i] = glm::dvec3(anchorBase * glm::dvec4(glm::dvec3(e[i]), 1.0));
+            transformed[i] = glm::dvec3(anchorBase * glm::dvec4(rawPos, 1.0));
         }
     }
 
     glm::dvec3 cancellationOffset(0.0);
-    if (!relativeExport) {
-        glm::dvec3 bboxMin = transformed[0];
-        glm::dvec3 bboxMax = transformed[0];
-        for (int i = 1; i < (int)transformed.size(); ++i) {
-            glm::dvec3 p = transformed[i];
-            bboxMin = glm::min(bboxMin, p);
-            bboxMax = glm::max(bboxMax, p);
-        }
 
-        glm::dvec3 bboxCenter = (bboxMin + bboxMax) * 0.5;
-
-        cancellationOffset.x = bboxCenter.x - transformed[0].x;
-        cancellationOffset.z = bboxCenter.z - transformed[0].z;
-        cancellationOffset.y = (bboxMin.y - transformed[0].y) - 1.5;
-    }
-
-    for (int i = 0; i < (int)e.size(); ++i) {
+    for (size_t i = 0; i < size; ++i) {
         glm::dvec3 ex = transformed[i] + cancellationOffset;
 
         mnode* curNode = &exportNodes[i].node;
 
+        glm::dvec3 baseFront = (fHeart != 0.0) ? curNode->vDirHeart(fHeart) : curNode->vDir;
+        glm::dvec3 baseLeft = (fHeart != 0.0) ? curNode->vLatHeart(fHeart) : curNode->vLat;
+        glm::dvec3 baseUp = -curNode->vNorm;
+
         glm::dvec3 front, left, up;
         if (relativeExport) {
-            front = anchorBaseRelative * curNode->vDir;
-            left = anchorBaseRelative * (-curNode->vLat);
-            up = anchorBaseRelative * (-curNode->vNorm);
+            front = anchorBaseRelative * baseFront;
+            left = anchorBaseRelative * (-baseLeft);
+            up = anchorBaseRelative * baseUp;
         } else {
-            front = glm::dvec3(anchorBase * glm::dvec4(curNode->vDir, 0.0));
-            left = glm::dvec3(anchorBase * glm::dvec4(-curNode->vLat, 0.0));
-            up = glm::dvec3(anchorBase * glm::dvec4(-curNode->vNorm, 0.0));
+            front = glm::dvec3(anchorBase * glm::dvec4(baseFront, 0.0));
+            left = glm::dvec3(anchorBase * glm::dvec4(-baseLeft, 0.0));
+            up = glm::dvec3(anchorBase * glm::dvec4(baseUp, 0.0));
         }
 
-        fprintf(file, "%d\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\n", i + 1,
+        std::string lineFormat = "%d";
+        for (int k = 0; k < 12; ++k) {
+            lineFormat += "\t";
+            lineFormat += numFormat;
+        }
+        lineFormat += "\n";
+
+        fprintf(file, lineFormat.c_str(), (int)(i + 1),
                 ex.x, ex.y, ex.z, front.x, front.y, front.z, left.x, left.y, left.z,
                 up.x, up.y, up.z);
     }
@@ -1522,12 +914,12 @@ std::string track::loadTrack(istream& file) {
             newSection(forced, -1, true);
             if (activeSection)
                 activeSection->loadSection(file);
-        } else if (temp == "BEZ") {
-            newSection(bezier, -1, true);
-            if (activeSection)
-                activeSection->loadSection(file);
         } else if (temp == "GRL") {
             newSection(geometricriderlocal, -1, true);
+            if (activeSection)
+                activeSection->loadSection(file);
+        } else if (temp == "NLC") {
+            newSection(nolimitscsv, -1, true);
             if (activeSection)
                 activeSection->loadSection(file);
         } else {
@@ -1905,6 +1297,163 @@ bool track::importMeasurementPoints(const std::string& filepath) {
     return true;
 }
 
+bool track::saveTemplate(const std::string& filepath, int startNodeIdx, int endNodeIdx) {
+    int totalNodes = getNumPoints();
+    if (startNodeIdx < 0 || endNodeIdx >= totalNodes || startNodeIdx > endNodeIdx) {
+        return false;
+    }
+
+    std::ofstream file(filepath, std::ios::out | std::ios::binary);
+    if (!file) {
+        return false;
+    }
+
+    // 1. Write Template Header
+    file.write("FVDT", 4);
+    uint8_t version = 1;
+    writeBytes(&file, (const char*)&version, sizeof(uint8_t));
+
+    // 2. Extract and relative-ize all nodes precisely from startNodeIdx to endNodeIdx
+    mnode* rangeStartNode = getPoint(startNodeIdx);
+    if (!rangeStartNode)
+        return false;
+
+    glm::dvec3 startPos = rangeStartNode->vPos;
+    glm::dvec3 startDir = glm::normalize(rangeStartNode->vDir);
+    glm::dvec3 startNorm = glm::normalize(glm::cross(startDir, rangeStartNode->vLat));
+    glm::dvec3 startLat = glm::normalize(glm::cross(startNorm, startDir));
+    double startRoll = rangeStartNode->fRoll;
+
+    std::vector<mnode> relativeNodes;
+
+    for (int j = startNodeIdx + 1; j <= endNodeIdx; ++j) {
+        mnode* curNode = getPoint(j);
+        if (!curNode)
+            continue;
+
+        mnode relNode;
+
+        glm::dvec3 diffPos = curNode->vPos - startPos;
+        relNode.vPos.x = glm::dot(diffPos, startDir);
+        relNode.vPos.y = glm::dot(diffPos, startLat);
+        relNode.vPos.z = glm::dot(diffPos, startNorm);
+
+        relNode.vDir.x = glm::dot(curNode->vDir, startDir);
+        relNode.vDir.y = glm::dot(curNode->vDir, startLat);
+        relNode.vDir.z = glm::dot(curNode->vDir, startNorm);
+
+        relNode.vLat.x = glm::dot(curNode->vLat, startDir);
+        relNode.vLat.y = glm::dot(curNode->vLat, startLat);
+        relNode.vLat.z = glm::dot(curNode->vLat, startNorm);
+
+        relNode.fRoll = curNode->fRoll - startRoll;
+
+        relativeNodes.push_back(relNode);
+    }
+
+    // 3. Serialize as a single SECS chunk containing one "STA" section
+    std::stringstream secsStream;
+    int numSecs = 1;
+    writeBytes(&secsStream, (const char*)&numSecs, sizeof(int));
+
+    std::stringstream secStream;
+    int size = relativeNodes.size();
+    secStream << "STA";
+    writeBytes(&secStream, (const char*)&size, sizeof(int));
+    for (int i = 0; i < size; ++i) {
+        writeVec3(&secStream, relativeNodes[i].vPos);
+        writeVec3(&secStream, relativeNodes[i].vDir);
+        writeVec3(&secStream, relativeNodes[i].vLat);
+        float r = (float)relativeNodes[i].fRoll;
+        writeBytes(&secStream, (const char*)&r, sizeof(float));
+    }
+
+    std::string secData = secStream.str();
+    std::string tag = "STA ";
+    std::string payload = secData.substr(3);
+
+    writeChunkHeader(secsStream, tag.c_str(), 1, payload.length());
+    secsStream.write(payload.data(), payload.length());
+
+    std::string secsData = secsStream.str();
+    writeChunkHeader(file, "SECS", 1, secsData.length());
+    file.write(secsData.data(), secsData.length());
+
+    return true;
+}
+
+bool track::loadTemplate(const std::string& filepath, int insertIdx) {
+    std::ifstream file(filepath, std::ios::in | std::ios::binary);
+    if (!file) {
+        return false;
+    }
+
+    char magic[4];
+    file.read(magic, 4);
+    if (strncmp(magic, "FVDT", 4) != 0) {
+        return false;
+    }
+
+    uint8_t version;
+    file.read((char*)&version, sizeof(uint8_t));
+    if (version != 1) {
+        return false;
+    }
+
+    ChunkHeader header = readChunkHeader(file);
+    std::string tag(header.tag, 4);
+    if (tag != "SECS") {
+        return false;
+    }
+
+    std::streampos endPos = file.tellg() + (std::streamoff)header.length;
+    int numSecs = readInt(&file);
+
+    int currentInsertIdx = insertIdx;
+    if (currentInsertIdx < 0) {
+        currentInsertIdx = lSections.size();
+    }
+
+    while (file.tellg() < endPos) {
+        ChunkHeader secHeader = readChunkHeader(file);
+        std::string secTag(secHeader.tag, 4);
+        std::streampos chunkEnd = file.tellg() + (std::streamoff)secHeader.length;
+
+        std::string payloadTag = secTag.substr(0, 3);
+        if (payloadTag == "STR") {
+            newSection(straight, currentInsertIdx, true);
+        } else if (payloadTag == "CUR") {
+            newSection(curved, currentInsertIdx, true);
+        } else if (payloadTag == "FRC") {
+            newSection(forced, currentInsertIdx, true);
+        } else if (payloadTag == "GEO") {
+            newSection(geometric, currentInsertIdx, true);
+        } else if (payloadTag == "STA") {
+            newSection(static_spline, currentInsertIdx, true);
+        } else if (payloadTag == "GRL") {
+            newSection(geometricriderlocal, currentInsertIdx, true);
+        } else {
+            LOG_INFO("Unknown section chunk in template: %s", secTag.c_str());
+            file.seekg(chunkEnd, ios::beg);
+            continue;
+        }
+
+        if (activeSection) {
+            std::string payload(secHeader.length, '\0');
+            file.read(&payload[0], secHeader.length);
+
+            std::stringstream secStream(payload);
+            activeSection->loadSection(secStream);
+        }
+
+        file.seekg(chunkEnd, ios::beg);
+        currentInsertIdx++;
+    }
+
+    requestUpdateTrack(insertIdx < 0 ? 0 : insertIdx, 0);
+    return true;
+}
+
 void track::saveTrackChunk(std::ostream& file) {
     // 1. Write PROP chunk
     std::stringstream propStream;
@@ -2120,10 +1669,12 @@ void track::loadSecsChunk(std::istream& file, uint8_t version, uint32_t length) 
             newSection(forced, -1, true);
         } else if (payloadTag == "GEO") {
             newSection(geometric, -1, true);
-        } else if (payloadTag == "BEZ") {
-            newSection(bezier, -1, true);
+        } else if (payloadTag == "STA") {
+            newSection(static_spline, -1, true);
         } else if (payloadTag == "GRL") {
             newSection(geometricriderlocal, -1, true);
+        } else if (payloadTag == "NLC") {
+            newSection(nolimitscsv, -1, true);
         } else {
             LOG_INFO("Unknown section chunk: %s", tag.c_str());
             file.seekg(chunkEnd, ios::beg);
@@ -2208,4 +1759,34 @@ void track::loadLimChunk(std::istream& file, uint8_t version, uint32_t length) {
     fMinLateral = (double)readFloat(&file);
     enforceMinRadius = readBool(&file);
     minRadius = (double)readFloat(&file);
+}
+
+reftrack::reftrack()
+    : track() {}
+
+reftrack::reftrack(trackHandler* _parent, glm::dvec3 startPos, double startYaw, double heartLine)
+    : track(_parent, startPos, startYaw, heartLine) {}
+
+void reftrack::updateTrack(int index, int iNode) {
+    (void)index;
+    (void)iNode;
+    auto startTime = std::chrono::high_resolution_clock::now();
+    if (lSections.empty()) {
+        hasChanged = true;
+        if (mParent && mParent->mMesh != NULL)
+            mParent->mMesh->buildMeshes(0);
+        graphChanged = true;
+        return;
+    }
+
+    lSections[0]->updateSection(0);
+
+    if (mParent && mParent->mMesh != NULL)
+        mParent->mMesh->buildMeshes(0);
+
+    hasChanged = true;
+    graphChanged = true;
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    this->lastUpdateTimeMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
 }

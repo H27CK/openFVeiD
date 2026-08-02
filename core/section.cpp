@@ -37,11 +37,7 @@ section::section(track* getParent, enum secType _type, mnode* first) {
     parent = getParent;
     normForce = NULL;
     latForce = NULL;
-    if (_type != bezier) {
-        rollFunc = new func(0, 10, 0, 0, this, funcRoll);
-    } else {
-        rollFunc = NULL;
-    }
+    rollFunc = new func(0, 10, 0, 0, this, funcRoll);
     type = _type;
 }
 

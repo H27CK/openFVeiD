@@ -246,11 +246,46 @@ void GraphView::renderList(trackHandler* hTrack) {
     }
 
     ImGui::Separator();
+    static bool initExportNodes = true;
+    static int exportStartNode = 0;
+    static int exportEndNode = 0;
+
     if (ImGui::Button("Export Tab to CSV...##exportCsv", ImVec2(-1, 0))) {
-        auto selection = pfd::save_file("Export Plotted Curves as CSV", "graphs.csv", {"CSV Files", "*.csv"}).result();
-        if (!selection.empty()) {
-            exportToCSV(selection, hTrack);
+        ImGui::OpenPopup("ExportCSVSettingsPopup");
+        initExportNodes = true;
+    }
+
+    if (ImGui::BeginPopupModal("ExportCSVSettingsPopup", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        int totalNodes = hTrack->trackData->getNumPoints();
+        if (initExportNodes) {
+            exportStartNode = 0;
+            exportEndNode = std::max(0, totalNodes - 1);
+            initExportNodes = false;
         }
+
+        ImGui::Text("Select Node Index Range to Export");
+        ImGui::Separator();
+
+        ImGui::Text("Total track nodes: %d", totalNodes);
+        ImGui::SliderInt("Start Node", &exportStartNode, 0, std::max(0, totalNodes - 1));
+        ImGui::SliderInt("End Node", &exportEndNode, exportStartNode, std::max(0, totalNodes - 1));
+
+        ImGui::Separator();
+
+        if (ImGui::Button("Export...", ImVec2(120, 0))) {
+            auto selection = pfd::save_file("Export Plotted Curves as CSV", "graphs.csv", {"CSV Files", "*.csv"}).result();
+            if (!selection.empty()) {
+                exportToCSV(selection, hTrack, exportStartNode, exportEndNode);
+                initExportNodes = true;
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            initExportNodes = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 }
 
@@ -1222,6 +1257,7 @@ void GraphView::sampleGraph(trackHandler* hTrack, GraphType type) {
                     y = 0.0;
                 sData.x.push_back(x);
                 sData.y.push_back(y);
+                sData.nodes.push_back(j);
             }
         }
 
@@ -2121,7 +2157,7 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
     }
 }
 
-void GraphView::exportToCSV(const std::string& filepath, trackHandler* hTrack) {
+void GraphView::exportToCSV(const std::string& filepath, trackHandler* hTrack, int startNodeIdx, int endNodeIdx) {
     if (!hTrack || !hTrack->trackData)
         return;
 
@@ -2188,8 +2224,13 @@ void GraphView::exportToCSV(const std::string& filepath, trackHandler* hTrack) {
         std::vector<double> x_vals;
         std::vector<double> y_vals;
         for (const auto& secData : graphs[idx].sections) {
-            x_vals.insert(x_vals.end(), secData.x.begin(), secData.x.end());
-            y_vals.insert(y_vals.end(), secData.y.begin(), secData.y.end());
+            for (size_t p = 0; p < secData.x.size(); ++p) {
+                int nIdx = secData.nodes[p];
+                if (nIdx >= startNodeIdx && nIdx <= endNodeIdx) {
+                    x_vals.push_back(secData.x[p]);
+                    y_vals.push_back(secData.y[p]);
+                }
+            }
         }
         maxRows = std::max(maxRows, x_vals.size());
         col_X.push_back(x_vals);
@@ -2210,8 +2251,13 @@ void GraphView::exportToCSV(const std::string& filepath, trackHandler* hTrack) {
                 }
             }
             if (editType == idx) {
-                x_vals.insert(x_vals.end(), eg.x.begin(), eg.x.end());
-                y_vals.insert(y_vals.end(), eg.y.begin(), eg.y.end());
+                for (size_t p = 0; p < eg.x.size(); ++p) {
+                    int nIdx = eg.nodes[p];
+                    if (nIdx >= startNodeIdx && nIdx <= endNodeIdx) {
+                        x_vals.push_back(eg.x[p]);
+                        y_vals.push_back(eg.y[p]);
+                    }
+                }
             }
         }
         maxRows = std::max(maxRows, x_vals.size());

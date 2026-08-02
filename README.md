@@ -22,6 +22,10 @@ Special thanks to:
 - TheTalbotHound (`thetalbothound`)
 - xwaldo (`xwaldo`)
 
+## Community & Discord
+
+To submit feature requests, report issues, and keep track of development, with notifications on new releases, etc., [join the Discord server](https://discord.gg/CH7CdnVZe).
+
 ## Key Features
 
 - **User Interface:** Dear ImGui integration with custom style controls, UI scaling, and status bar.
@@ -35,7 +39,7 @@ Special thanks to:
 - **Viewport Navigation:** Automatic zoom-to-selection and immediate rendering updates on parameter changes.
 - **Data Import/Export:**
   - Track export to NoLimits 2 (`.nl2elem`) and CSV.
-  - Track import from CSV with automated Bezier generation and geometric smoothing.
+  - Track import from CSV with linear/cubic spline orientation interpolation and filtering.
   - Multi-STL 3D environment loading integrated with project files.
 - **Renderer:** Vulkan viewport rendering (MoltenVK on macOS) with floor grid and shadow projection.
 

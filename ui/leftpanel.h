@@ -54,7 +54,7 @@ private:
     void renderStraightProperties(trackHandler* hTrack, section* sec, Application* app);
     void renderCurvedProperties(trackHandler* hTrack, section* sec, Application* app);
     void renderForcedProperties(trackHandler* hTrack, section* sec, Application* app);
-    void renderBezierProperties(trackHandler* hTrack, section* sec, Application* app);
+    void renderStaticProperties(trackHandler* hTrack, section* sec, Application* app);
 
     void syncAnchorNode(trackHandler* hTrack);
 

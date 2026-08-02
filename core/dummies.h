@@ -42,6 +42,7 @@ struct DummyOptions {
     int theme = 0; // 0: Dark, 1: Light, 2: Classic
     bool shadowsEnabled = true;
     bool transparentGraphs = false;
+    bool useLegacyHeartline = false;
     float fov = 90.0f;
     float mouseSensitivity = 1.0f;
     float sprintMultiplier = 2.0f;
@@ -49,6 +50,8 @@ struct DummyOptions {
     int keyBackward = 0;
     int keyLeft = 0;
     int keyRight = 0;
+    int keyOverlayWarnings = 0;
+    int keyOverlayScenery = 0;
     bool autoFocusOnSelection = false;
     float fontSize = 15.0f;
     int screenshotMultiplier = 2;
@@ -113,6 +116,8 @@ struct DummyOptions {
                 << keyForward << " "
                 << keyLeft << " "
                 << keyRight << " "
+                << keyOverlayWarnings << " "
+                << keyOverlayScenery << " "
                 << maxUndoChanges << " "
                 << measures << " "
                 << meshQuality << " "
@@ -155,7 +160,7 @@ struct DummyOptions {
                 return;
 
             if (version == "FVD_OPT_V1") {
-                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> glbShadowsEnabled >> graphOverlayEnabled >> keyBackward >> keyForward >> keyLeft >> keyRight >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> relativeExport >> screenshotMultiplier >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
+                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> glbShadowsEnabled >> graphOverlayEnabled >> keyBackward >> keyForward >> keyLeft >> keyRight >> keyOverlayWarnings >> keyOverlayScenery >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> relativeExport >> screenshotMultiplier >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
 
                 for (int i = 0; i < 14; ++i) {
                     if (!(in >> graphColors[i].x >> graphColors[i].y >> graphColors[i].z))

@@ -128,24 +128,14 @@ public:
     int getPOVPos() const {
         return povPos;
     }
-    void setPOVMode(bool enabled) {
-        if (povMode != enabled) {
-            povMode = enabled;
-            sceneDirty = true;
-        }
-    }
+    void setPOVMode(bool enabled);
     void setPOVPos(int pos) {
         if (povPos != pos) {
             povPos = pos;
             sceneDirty = true;
         }
     }
-    void setActiveTrack(trackHandler* track) {
-        if (activeTrack != track) {
-            activeTrack = track;
-            sceneDirty = true;
-        }
-    }
+    void setActiveTrack(trackHandler* track);
     void movePOVCamera(float deltaZ, float deltaTime);
     void adjustPOVHeight(float delta) {
         if (delta != 0.0f) {

@@ -555,7 +555,7 @@ void Viewport::initPipelines() {
         },
         .vertexAttributes = {
             {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-            {7, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+            {7, zeroBinding, VK_FORMAT_R32G32B32_SFLOAT, 0},
             {8, zeroBinding, VK_FORMAT_R32G32_SFLOAT, 0},
         },
         .alphaBlend = true,
@@ -1389,7 +1389,7 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
             .anchorBase = anchorBase,
             .eyePos = glm::vec4(cameraPos, 1.0f),
             .lightDir = glm::vec4(lightDir, 0.0f),
-            .defaultColor = glm::vec4(0.9f, 0.9f, 0.4f, 1.0f),
+            .defaultColor = glm::vec4(hTrack->trackColors[3], 1.0f),
             .sectionColor = glm::vec4(hTrack->trackColors[1], 1.0f),
             .transitionColor = glm::vec4(hTrack->trackColors[2], 1.0f),
             .mistColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
@@ -1528,4 +1528,25 @@ void Viewport::drawOrthoGrid(VkCommandBuffer commandBuffer) {
     drawLineBatch(xAxisVertices, glm::vec3(0.70f, 0.20f, 0.20f));
     drawLineBatch(yAxisVertices, glm::vec3(0.20f, 0.70f, 0.20f));
     drawLineBatch(zAxisVertices, glm::vec3(0.20f, 0.20f, 0.70f));
+}
+
+void Viewport::setPOVMode(bool enabled) {
+    if (enabled && activeTrack && activeTrack->trackData && activeTrack->trackData->isReferenceTrack()) {
+        enabled = false;
+    }
+    if (povMode != enabled) {
+        povMode = enabled;
+        sceneDirty = true;
+    }
+}
+
+void Viewport::setActiveTrack(trackHandler* track) {
+    if (activeTrack != track) {
+        activeTrack = track;
+        if (activeTrack && activeTrack->trackData && activeTrack->trackData->isReferenceTrack()) {
+            povMode = false;
+            povNode = nullptr;
+        }
+        sceneDirty = true;
+    }
 }
