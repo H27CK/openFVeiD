@@ -79,21 +79,22 @@ bool VulkanPipeline::create(VulkanContext& contextRef, const VulkanPipelineConfi
     if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
         return false;
 
-    const uint32_t frameCount = VulkanContext::maxFramesInFlight;
+    const uint32_t poolMaxSets = 4096;
     std::vector<VkDescriptorPoolSize> poolSizes = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, frameCount},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, poolMaxSets},
     };
     if (config.sampledImageCount > 0)
-        poolSizes.push_back({VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, frameCount * config.sampledImageCount});
+        poolSizes.push_back({VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, poolMaxSets * config.sampledImageCount});
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = frameCount,
+        .maxSets = poolMaxSets,
         .poolSizeCount = (uint32_t)poolSizes.size(),
         .pPoolSizes = poolSizes.data(),
     };
     if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
         return false;
 
+    const uint32_t frameCount = VulkanContext::maxFramesInFlight;
     std::vector<VkDescriptorSetLayout> setLayouts(frameCount, descriptorSetLayout);
     VkDescriptorSetAllocateInfo setAllocate = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -279,6 +280,61 @@ void VulkanPipeline::bindWithUniforms(VkCommandBuffer commandBuffer, const void*
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
                             &descriptorSets[context->currentFrameIndex()], 1, &dynamicOffset);
+}
+
+void VulkanPipeline::bindWithUniformsAndSet(VkCommandBuffer commandBuffer, VkDescriptorSet descriptorSet, const void* data, size_t bytes) {
+    uint32_t dynamicOffset = context->pushUniformData(data, bytes);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
+                            &descriptorSet, 1, &dynamicOffset);
+}
+
+std::vector<VkDescriptorSet> VulkanPipeline::createDescriptorSets(VkImageView imageView, VkSampler sampler) {
+    const uint32_t frameCount = VulkanContext::maxFramesInFlight;
+    std::vector<VkDescriptorSetLayout> setLayouts(frameCount, descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptorPool,
+        .descriptorSetCount = frameCount,
+        .pSetLayouts = setLayouts.data(),
+    };
+    std::vector<VkDescriptorSet> sets(frameCount);
+    if (vkAllocateDescriptorSets(context->device, &allocInfo, sets.data()) != VK_SUCCESS) {
+        fprintf(stderr, "[vulkan] failed to allocate descriptor sets for primitive\n");
+        return {};
+    }
+
+    for (uint32_t frame = 0; frame < frameCount; ++frame) {
+        VkDescriptorBufferInfo descriptorBuffer = {
+            .buffer = context->frameUniformRingBuffer(frame),
+            .offset = 0,
+            .range = config.uniformBufferSize,
+        };
+        VkDescriptorImageInfo imageInfo = {
+            .sampler = sampler,
+            .imageView = imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+        VkWriteDescriptorSet writes[2] = {
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = sets[frame],
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                .pBufferInfo = &descriptorBuffer,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = sets[frame],
+                .dstBinding = 1,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &imageInfo,
+            }};
+        vkUpdateDescriptorSets(context->device, 2, writes, 0, nullptr);
+    }
+    return sets;
 }
 
 void VulkanPipeline::bindTexture(uint32_t imageIndex, VkImageView imageView, VkSampler sampler) {

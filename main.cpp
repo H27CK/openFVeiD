@@ -8,9 +8,11 @@
 DummyGlobal* gloParent = new DummyGlobal();
 DummyGLView* glView = new DummyGLView();
 Viewport* gViewport = nullptr;
+Application* gApplication = nullptr;
 
 int main(int, char**) {
     Application app;
+    gApplication = &app;
     if (!app.Initialize()) {
         return 1;
     }

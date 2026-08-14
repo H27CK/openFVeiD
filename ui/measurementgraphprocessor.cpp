@@ -101,7 +101,7 @@ void MeasurementGraphProcessor::update(trackHandler* track, const ResultingGraph
                 }
 
                 // Calculate angular velocities (rad/s) and scale by velocity ratio
-                double w_roll = (processedTrack.rollSpeed[searchIdx] * F_PI / 180.0) * v_ratio;
+                double w_roll = (processedTrack.rollRate[searchIdx] * F_PI / 180.0) * v_ratio;
                 double w_pitch = (processedTrack.pitchChange[searchIdx] * F_PI / 180.0) * v_ratio;
                 double w_yaw = (processedTrack.yawChange[searchIdx] * F_PI / 180.0) * v_ratio;
 

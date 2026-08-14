@@ -47,6 +47,7 @@ struct GlbPrimitive {
     glm::vec4 baseColorFactor = glm::vec4(1.0f);
     bool hasTexture = false;
     VulkanTexture texture;
+    std::vector<VkDescriptorSet> descriptorSets;
 };
 
 struct GlbMesh {
@@ -97,6 +98,12 @@ public:
     void setGroundTextureSize(float size) {
         if (grdTexSize != size) {
             grdTexSize = size;
+            sceneDirty = true;
+        }
+    }
+    void setGroundHeight(float height) {
+        if (grdHeight != height) {
+            grdHeight = height;
             sceneDirty = true;
         }
     }
@@ -249,6 +256,7 @@ private:
     float fov;
     glm::vec3 mistColor;
     float grdTexSize = 440.0f;
+    float grdHeight = 0.0f;
     int viewPortWidth, viewPortHeight;
 
     bool povMode;

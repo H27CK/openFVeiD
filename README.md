@@ -24,7 +24,7 @@ Special thanks to:
 
 ## Community & Discord
 
-To submit feature requests, report issues, and keep track of development, with notifications on new releases, etc., [join the Discord server](https://discord.gg/CH7CdnVZe).
+To submit feature requests, report issues, and keep track of development, with notifications on new releases, etc., [join the Discord server](https://discord.gg/Sq7QmsmfrC).
 
 ## Key Features
 

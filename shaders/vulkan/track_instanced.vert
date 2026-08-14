@@ -193,6 +193,6 @@ void main() {
     bNormal = mat3(u.anchorBase) * warpedNormal;
 
     bPosition = worldPos - vec4(u.eyePos.xyz, 0.0);
-    
+
     gl_Position = u.projectionMatrix * u.modelMatrix * worldPos;
 }

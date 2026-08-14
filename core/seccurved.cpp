@@ -50,7 +50,8 @@ void seccurved::changecurve(float newAngle, float newRadius,
     updateSection();
 }
 
-int seccurved::updateSection(int) {
+int seccurved::updateSection(int node) {
+    chaseCurves();
     bool stalled = false;
     length = 0.0;
     int numNodes = 1;

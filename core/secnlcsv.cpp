@@ -35,6 +35,7 @@ void secnlcsv::applyFiltering() {
 }
 
 int secnlcsv::updateSection(int node) {
+    chaseCurves();
     (void)node;
 
     initDistances();

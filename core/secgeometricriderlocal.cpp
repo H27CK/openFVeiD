@@ -65,6 +65,7 @@ secgeometricriderlocal::secgeometricriderlocal(track* getParent, mnode* first, f
 }
 
 int secgeometricriderlocal::updateSection(int node) {
+    chaseCurves();
     bool stalled = false;
     if (rollFunc->lockedFunc() != -1) {
         if (fabs(rollFunc->funcList.back()->symArg) > 0.00001f &&

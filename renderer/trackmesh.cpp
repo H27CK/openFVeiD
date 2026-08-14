@@ -656,3 +656,26 @@ void trackMesh::generatePrimitives() {
     }
     primitiveBox->isValid = true;
 }
+
+size_t trackMesh::getTotalRenderedVertices() const {
+    size_t total = 0;
+
+    auto countInstanced = [&](const track_asset_mesh_t& am) {
+        if (am.instances.empty() || am.sourceModel == nullptr)
+            return (size_t)0;
+        return am.sourceModel->vertices.size() * am.instances.size();
+    };
+
+    // Sum up rails, crossties, and custom style extrusions
+    for (const auto& am : instancedAssets)
+        total += countInstanced(am);
+    for (const auto& am : instancedExtrusions)
+        total += countInstanced(am);
+
+    // Add heartline spline reference points
+    if (heartlineSize > 0) {
+        total += (size_t)heartlineSize;
+    }
+
+    return total;
+}

@@ -39,6 +39,16 @@ extern DummyGlobal* gloParent;
 extern DummyGLView* glView;
 extern Viewport* gViewport;
 
+static std::string formatWithCommas(size_t val) {
+    std::string s = std::to_string(val);
+    int n = s.length() - 3;
+    while (n > 0) {
+        s.insert(n, ",");
+        n -= 3;
+    }
+    return s;
+}
+
 static int pendingDeleteSceneryIdx = -1;
 
 Application::Application() {
@@ -213,6 +223,7 @@ bool Application::Initialize() {
         viewport.loadGroundTexture(gloParent->projectGroundTex);
     }
     viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
+    viewport.setGroundHeight(gloParent->projectGrdHeight);
 
     viewport.setMistColor(gloParent->mOptions->mistColor);
     viewport.setShadowMode(gloParent->mOptions->shadowsEnabled ? 1 : 0);
@@ -521,6 +532,18 @@ void Application::HandleShortcuts() {
     }
 
     if (!ImGui::GetIO().WantTextInput) {
+        if (gloParent->mOptions->keyViewPerspective != ImGuiKey_None && ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyViewPerspective, false)) {
+            viewport.setViewMode(Viewport::ViewMode::Perspective);
+        }
+        if (gloParent->mOptions->keyViewTop != ImGuiKey_None && ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyViewTop, false)) {
+            viewport.setViewMode(Viewport::ViewMode::Top);
+        }
+        if (gloParent->mOptions->keyViewSide != ImGuiKey_None && ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyViewSide, false)) {
+            viewport.setViewMode(Viewport::ViewMode::Side);
+        }
+        if (gloParent->mOptions->keyViewFront != ImGuiKey_None && ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyViewFront, false)) {
+            viewport.setViewMode(Viewport::ViewMode::Front);
+        }
         if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) {
             exitViewport();
             auto f = pfd::save_file("Save screenshot", "screenshot.png", {"Image Files", "*.png", "All Files", "*"}).result();
@@ -600,6 +623,37 @@ void Application::HandleShortcuts() {
                 }
             }
         }
+        if (gloParent->selectedFunc && !viewportActive) {
+            bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+            if (hasActiveTrack) {
+                if (ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyPrependTransition, false)) {
+                    subfunc* sf = gloParent->selectedFunc;
+                    func* fParent = sf->parent;
+                    if (fParent) {
+                        int idx = fParent->getSubfuncNumber(sf);
+                        fParent->appendSubFunction(1.0f, idx - 1);
+                        gloParent->selectedFunc = fParent->funcList[idx];
+                        track* curTrack = trackList[activeTrackIdx]->trackData;
+                        curTrack->requestUpdateTrack(fParent->secParent, 0);
+                        viewport.markSceneDirty();
+                        pushUndo();
+                    }
+                }
+                if (ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyAppendTransition, false)) {
+                    subfunc* sf = gloParent->selectedFunc;
+                    func* fParent = sf->parent;
+                    if (fParent) {
+                        int idx = fParent->getSubfuncNumber(sf);
+                        fParent->appendSubFunction(1.0f, idx);
+                        gloParent->selectedFunc = fParent->funcList[idx + 1];
+                        track* curTrack = trackList[activeTrackIdx]->trackData;
+                        curTrack->requestUpdateTrack(fParent->secParent, 0);
+                        viewport.markSceneDirty();
+                        pushUndo();
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -625,6 +679,7 @@ void Application::Render(float deltaTime) {
                 currentFilePath = "";
                 gloParent->resetEnvironment();
                 viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
+                viewport.setGroundHeight(gloParent->projectGrdHeight);
                 viewport.loadGroundTexture(gloParent->projectGroundTex);
                 while (!viewport.glbMeshes.empty())
                     viewport.removeGlbMesh(0);
@@ -1180,6 +1235,19 @@ void Application::Render(float deltaTime) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::AlignTextToFramePadding();
+                ImGui::Text("Look-ahead Smoothing");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Smooths out camera when in POV mode. Turn off to match the behaviour of old FVD.");
+                }
+                ImGui::TableNextColumn();
+                ImGui::Checkbox("##LookAheadSmoothing", &gloParent->mOptions->lookAheadPovSmoothing);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Smooths out camera when in POV mode. Turn off to match the behaviour of old FVD.");
+                }
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
                 ImGui::Text("Mesh Quality");
                 ImGui::TableNextColumn();
                 ImGui::SetNextItemWidth(-FLT_MIN);
@@ -1381,6 +1449,12 @@ void Application::Render(float deltaTime) {
                 KeyBindButton("Move Right", gloParent->mOptions->keyRight);
                 KeyBindButton("Warnings Overlay", gloParent->mOptions->keyOverlayWarnings);
                 KeyBindButton("Scenery Overlay", gloParent->mOptions->keyOverlayScenery);
+                KeyBindButton("Prepend Transition", gloParent->mOptions->keyPrependTransition);
+                KeyBindButton("Append Transition", gloParent->mOptions->keyAppendTransition);
+                KeyBindButton("View: Perspective", gloParent->mOptions->keyViewPerspective);
+                KeyBindButton("View: Top Ortho", gloParent->mOptions->keyViewTop);
+                KeyBindButton("View: Side Ortho", gloParent->mOptions->keyViewSide);
+                KeyBindButton("View: Front Ortho", gloParent->mOptions->keyViewFront);
                 ImGui::EndTable();
             }
         }
@@ -2087,14 +2161,26 @@ void Application::Render(float deltaTime) {
                 // Align other elements to the right side of the status bar
                 ImGui::SameLine();
 
+                trackHandler* activeHandler = trackList[activeTrackIdx];
+                size_t trackVertices = activeHandler->mMesh ? activeHandler->mMesh->getTotalRenderedVertices() : 0;
+                size_t glbVertices = 0;
+                for (const auto& sm : viewport.glbMeshes) {
+                    if (sm.visible) {
+                        for (const auto& prim : sm.primitives) {
+                            glbVertices += (size_t)prim.vertexCount;
+                        }
+                    }
+                }
+
                 int totalPoints = curTrack->getNumPoints();
                 int currentSectionNodes = curTrack->activeSection ? (int)curTrack->activeSection->lNodes.size() : 0;
                 double updateTime = curTrack->lastUpdateTimeMs;
                 int totalPlotted = graphView.getTotalPlottedPoints();
                 double spacingLimit = (double)gloParent->mOptions->graphSpacingLimit;
 
-                char statBuf[256];
-                snprintf(statBuf, sizeof(statBuf), "Total Nodes: %d   |   Section Nodes: %d   |   Down-sampling Spacing: %.3f m (Plotted: %d)   |   Layout Update: %.2f ms",
+                char statBuf[384];
+                snprintf(statBuf, sizeof(statBuf), "Track Verts: %s   |   Scenery Verts: %s   |   Total Nodes: %d   |   Section Nodes: %d   |   Down-sampling Spacing: %.3f m (Plotted: %d)   |   Layout Update: %.2f ms",
+                         formatWithCommas(trackVertices).c_str(), formatWithCommas(glbVertices).c_str(),
                          totalPoints, currentSectionNodes, spacingLimit, totalPlotted, updateTime);
 
                 float textWidth = ImGui::CalcTextSize(statBuf).x;
@@ -2923,6 +3009,7 @@ void Application::loadProjectFile(const std::string& path) {
     LOG_INFO("Loaded project: %s", currentFilePath.c_str());
 
     viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
+    viewport.setGroundHeight(gloParent->projectGrdHeight);
     viewport.loadGroundTexture(gloParent->projectGroundTex);
     while (!viewport.glbMeshes.empty())
         viewport.removeGlbMesh(0);

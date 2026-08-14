@@ -43,6 +43,6 @@ void main(void) {
     bNormal = vec3(u.anchorBase * vec4(aNormal, 0.f));
     if (length(bNormal) < 0.5f)
         bNormal = vec3(0.f, 1.f, 0.f);
-    
+
     bUv = aUV;
 }

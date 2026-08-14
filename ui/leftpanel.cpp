@@ -398,7 +398,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
             float maxPosNorm = (float)myTrack->fMaxPosNormal;
             PROP_ROW(
                 "Norm: Max",
-                if (ImGui::DragFloat("##MaxPosNormal", &maxPosNorm, 0.05f, 0.1f, 20.0f, "%.2f G") || common::ValueScroll(&maxPosNorm, 0.5f, 0.1f)) {
+                if (ImGui::DragFloat("##MaxPosNormal", &maxPosNorm, 0.05f, 0.1f, 20.0f, "%.2f g") || common::ValueScroll(&maxPosNorm, 0.5f, 0.1f)) {
                     myTrack->fMaxPosNormal = std::clamp((double)maxPosNorm, 0.1, 20.0);
                     myTrack->requestUpdateTrack(0, 0);
                 })
@@ -406,7 +406,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
             float maxNegNorm = (float)myTrack->fMaxNegNormal;
             PROP_ROW(
                 "Norm: Min",
-                if (ImGui::DragFloat("##MaxNegNormal", &maxNegNorm, 0.05f, -10.0f, -0.1f, "%.2f G") || common::ValueScroll(&maxNegNorm, 0.5f, 0.1f)) {
+                if (ImGui::DragFloat("##MaxNegNormal", &maxNegNorm, 0.05f, -10.0f, -0.1f, "%.2f g") || common::ValueScroll(&maxNegNorm, 0.5f, 0.1f)) {
                     myTrack->fMaxNegNormal = std::clamp((double)maxNegNorm, -10.0, -0.1);
                     myTrack->requestUpdateTrack(0, 0);
                 })
@@ -414,7 +414,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
             float maxLat = (float)myTrack->fMaxLateral;
             PROP_ROW(
                 "Lat: Max",
-                if (ImGui::DragFloat("##MaxLateral", &maxLat, 0.05f, 0.1f, 15.0f, "%.2f G") || common::ValueScroll(&maxLat, 0.5f, 0.1f)) {
+                if (ImGui::DragFloat("##MaxLateral", &maxLat, 0.05f, 0.1f, 15.0f, "%.2f g") || common::ValueScroll(&maxLat, 0.5f, 0.1f)) {
                     myTrack->fMaxLateral = std::clamp((double)maxLat, 0.1, 15.0);
                     myTrack->requestUpdateTrack(0, 0);
                 })
@@ -422,7 +422,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
             float minLat = (float)myTrack->fMinLateral;
             PROP_ROW(
                 "Lat: Min",
-                if (ImGui::DragFloat("##MinLateral", &minLat, 0.05f, -15.0f, -0.1f, "%.2f G") || common::ValueScroll(&minLat, 0.5f, 0.1f)) {
+                if (ImGui::DragFloat("##MinLateral", &minLat, 0.05f, -15.0f, -0.1f, "%.2f g") || common::ValueScroll(&minLat, 0.5f, 0.1f)) {
                     myTrack->fMinLateral = std::clamp((double)minLat, -15.0, -0.1);
                     myTrack->requestUpdateTrack(0, 0);
                 })
@@ -1008,9 +1008,9 @@ void LeftPanel::renderStraightProperties(trackHandler* hTrack, section* sec, App
         } else if (speedMode == 2) {
             float displayAccel = (float)(s->fAccel / F_G);
             PROP_ROW(
-                "Acceleration",
+                "Longitudinal Accel",
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::DragFloat("##StraightAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f G") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
+                if (ImGui::DragFloat("##StraightAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f g") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
                     s->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
                     changed = true;
                 })
@@ -1068,9 +1068,9 @@ void LeftPanel::renderCurvedProperties(trackHandler* hTrack, section* sec, Appli
         } else if (speedMode == 2) {
             float displayAccel = (float)(c->fAccel / F_G);
             PROP_ROW(
-                "Acceleration",
+                "Longitudinal Accel",
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::DragFloat("##CurvedAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f G") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
+                if (ImGui::DragFloat("##CurvedAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f g") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
                     c->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
                     changed = true;
                 })
@@ -1135,9 +1135,9 @@ void LeftPanel::renderForcedProperties(trackHandler* hTrack, section* sec, Appli
         } else if (speedMode == 2) {
             float displayAccel = (float)(sec->fAccel / F_G);
             PROP_ROW(
-                "Acceleration",
+                "Longitudinal Accel",
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::DragFloat("##ForcedAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f G") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
+                if (ImGui::DragFloat("##ForcedAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f g") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
                     sec->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
                     changed = true;
                 })
@@ -1206,9 +1206,9 @@ void LeftPanel::renderStaticProperties(trackHandler* hTrack, section* sec, Appli
     } else if (speedMode == 3) {
         float displayAccel = (float)(sec->fAccel / F_G);
         PROP_ROW(
-            "Acceleration",
+            "Longitudinal Accel",
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::DragFloat("##StaticAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f G") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
+            if (ImGui::DragFloat("##StaticAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f g") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
                 sec->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
                 changed = true;
             })
@@ -1239,7 +1239,7 @@ void LeftPanel::renderColorsTab(trackHandler* hTrack, Application* app) {
         ImGui::TableNextColumn();
         ImGui::TextDisabled("Editable");
         ImGui::TableNextColumn();
-        graphColRow("Roll Speed", (int)GraphType::EditRoll);
+        graphColRow("Roll Rate", (int)GraphType::EditRoll);
         graphColRow("Normal Force", (int)GraphType::EditNormal);
         graphColRow("Lateral Force", (int)GraphType::EditLateral);
         ImGui::TableNextRow();
@@ -1247,7 +1247,8 @@ void LeftPanel::renderColorsTab(trackHandler* hTrack, Application* app) {
         ImGui::TextDisabled("Resulting");
         ImGui::TableNextColumn();
         graphColRow("Banking", (int)GraphType::Banking);
-        graphColRow("Roll Speed", (int)GraphType::RollSpeed);
+        graphColRow("Roll Rate", (int)GraphType::RollRate);
+        graphColRow("Rider Roll Rate", (int)GraphType::RiderRollRate);
         graphColRow("Roll Accel", (int)GraphType::RollAccel);
         graphColRow("Normal Force", (int)GraphType::NForce);
         graphColRow("N-Force Change", (int)GraphType::NForceChange);
@@ -1255,8 +1256,11 @@ void LeftPanel::renderColorsTab(trackHandler* hTrack, Application* app) {
         graphColRow("L-Force Change", (int)GraphType::LForceChange);
         graphColRow("Rider Pitch Change", (int)GraphType::PitchChange);
         graphColRow("Rider Yaw Change", (int)GraphType::YawChange);
+        graphColRow("World Pitch", (int)GraphType::WorldPitch);
         graphColRow("World Pitch Change", (int)GraphType::WorldPitchChange);
         graphColRow("World Yaw Change", (int)GraphType::WorldYawChange);
+        graphColRow("Velocity", (int)GraphType::Velocity);
+        graphColRow("Longitudinal Accel", (int)GraphType::LongitudinalAccel);
         END_PROP_TABLE()
         ImGui::TreePop();
     }
@@ -1266,8 +1270,11 @@ void LeftPanel::renderEnvironmentTab() {
     if (ImGui::TreeNodeEx("Ground", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("GroundProps")
         float size = gloParent->projectGrdTexSize;
+        float height = gloParent->projectGrdHeight;
         PROP_ROW(
             "Texture Size", if (ImGui::DragFloat("##GrdSize", &size, 1.0f, 1.0f, 10000.0f, "%.1f") || common::ValueScroll(&size, 10.0f, 1.0f)) { gloParent->projectGrdTexSize = std::max(1.0f, size); if (gViewport) gViewport->setGroundTextureSize(gloParent->projectGrdTexSize); })
+        PROP_ROW(
+            "Ground Height", if (ImGui::DragFloat("##GrdHeight", &height, 0.1f, -1000.0f, 1000.0f, "%.1f m") || common::ValueScroll(&height, 1.0f, 0.1f)) { gloParent->projectGrdHeight = height; if (gViewport) gViewport->setGroundHeight(gloParent->projectGrdHeight); })
         PROP_ROW(
             "Texture", if (ImGui::Button("Load...")) { auto f = pfd::open_file("Open Ground Texture", ".", {"Image Files", "*.jpg *.png *.bmp", "All Files", "*"}).result(); if (!f.empty()) { if (gViewport) { gViewport->loadGroundTexture(f[0]); gloParent->projectGroundTex = f[0]; } } })
         END_PROP_TABLE()

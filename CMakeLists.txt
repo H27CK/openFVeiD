@@ -20,6 +20,9 @@ endif()
 
 if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    if(MSVC)
+        add_compile_options(/MP)
+    endif()
 endif()
 
 # --- Dependencies ---
@@ -27,6 +30,10 @@ include(FetchContent)
 
 # GLFW (Windowing)
 set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git GIT_TAG 3.4)
 FetchContent_MakeAvailable(glfw)
 
@@ -40,7 +47,6 @@ add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/imgui_demo.cpp
 )
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
 if(MSVC)
@@ -63,7 +69,6 @@ endif()
 add_library(implot STATIC
     ${implot_SOURCE_DIR}/implot.cpp
     ${implot_SOURCE_DIR}/implot_items.cpp
-    ${implot_SOURCE_DIR}/implot_demo.cpp
 )
 target_include_directories(implot PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(implot PRIVATE imgui) # Critical: ImPlot needs ImGui

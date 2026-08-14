@@ -50,8 +50,10 @@ public:
     void destroy();
 
     void bindWithUniforms(VkCommandBuffer commandBuffer, const void* data, size_t bytes);
+    void bindWithUniformsAndSet(VkCommandBuffer commandBuffer, VkDescriptorSet descriptorSet, const void* data, size_t bytes);
     void bindTexture(uint32_t imageIndex, VkImageView imageView, VkSampler sampler);
     void bindStorageSet(VkCommandBuffer commandBuffer, VkDescriptorSet storageSet);
+    std::vector<VkDescriptorSet> createDescriptorSets(VkImageView imageView, VkSampler sampler);
 
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout layout = VK_NULL_HANDLE;

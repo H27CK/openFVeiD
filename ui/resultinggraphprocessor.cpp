@@ -37,12 +37,14 @@ void ResultingGraphProcessor::update(trackHandler* track) {
     processedTrack.xDistance.resize(totalPoints + 1, 0.0);
     processedTrack.xTime.resize(totalPoints + 1, 0.0);
     processedTrack.vel.resize(totalPoints + 1, 0.0);
+    processedTrack.longitudinalAccel.resize(totalPoints + 1, 0.0);
     processedTrack.worldPitch.resize(totalPoints + 1, 0.0);
     processedTrack.worldPitchChange.resize(totalPoints + 1, 0.0);
     processedTrack.worldYawChange.resize(totalPoints + 1, 0.0);
 
     processedTrack.roll.resize(totalPoints + 1, 0.0);
-    processedTrack.rollSpeed.resize(totalPoints + 1, 0.0);
+    processedTrack.rollRate.resize(totalPoints + 1, 0.0);
+    processedTrack.riderRollRate.resize(totalPoints + 1, 0.0);
     processedTrack.rollAccel.resize(totalPoints + 1, 0.0);
     processedTrack.pitchChange.resize(totalPoints + 1, 0.0);
     processedTrack.pitchChangeDeriv.resize(totalPoints + 1, 0.0);
@@ -64,7 +66,27 @@ void ResultingGraphProcessor::update(trackHandler* track) {
         processedTrack.worldPitch[j] = node->getPitch();
         processedTrack.xTime[j] = (double)j / F_HZ;
         processedTrack.roll[j] = node->fRoll;
-        processedTrack.rollSpeed[j] = node->fRollSpeed;
+        processedTrack.rollRate[j] = node->fRollSpeed;
+
+        if (j > 0) {
+            mnode* prev = track->trackData->getPoint(j - 1);
+            processedTrack.longitudinalAccel[j] = (node->fVel - prev->fVel) * F_HZ / F_G;
+        } else {
+            processedTrack.longitudinalAccel[j] = 0.0;
+        }
+
+        if (j > 0) {
+            mnode* prev = track->trackData->getPoint(j - 1);
+            double deltaRoll = node->fRoll - prev->fRoll;
+            while (deltaRoll < -180.0)
+                deltaRoll += 360.0;
+            while (deltaRoll > 180.0)
+                deltaRoll -= 360.0;
+            processedTrack.riderRollRate[j] = deltaRoll * F_HZ;
+        } else {
+            processedTrack.riderRollRate[j] = node->fRollSpeed;
+        }
+
         processedTrack.forceNormal[j] = node->forceNormal;
         processedTrack.forceLateral[j] = node->forceLateral;
         processedTrack.worldPitchChange[j] = node->getPitchChange();

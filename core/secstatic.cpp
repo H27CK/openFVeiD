@@ -19,6 +19,7 @@ secstatic::secstatic(track* getParent, mnode* first)
 }
 
 int secstatic::updateSection(int node) {
+    chaseCurves();
     (void)node;
 
     if (lNodes.size() > 1) {

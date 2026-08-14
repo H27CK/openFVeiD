@@ -48,6 +48,7 @@ secforced::secforced(track* getParent, mnode* first, float gettime)
 }
 
 int secforced::updateSection(int node) {
+    chaseCurves();
     bool restricted = false;
     bool stalled = false;
     if (rollFunc->lockedFunc() != -1) {

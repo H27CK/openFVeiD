@@ -42,7 +42,8 @@ enum class GraphType {
     EditLateral,
     // Resulting
     Banking,
-    RollSpeed,
+    RollRate,
+    RiderRollRate,
     RollAccel,
     NForce,
     NForceChange,
@@ -54,6 +55,7 @@ enum class GraphType {
     WorldYawChange,
     Velocity,
     WorldPitch,
+    LongitudinalAccel,
     Count
 };
 

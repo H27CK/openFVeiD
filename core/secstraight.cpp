@@ -41,7 +41,8 @@ void secstraight::changelength(float newlength) {
     this->updateSection();
 }
 
-int secstraight::updateSection(int) {
+int secstraight::updateSection(int node) {
+    chaseCurves();
     bool stalled = false;
     int numNodes = 1;
     this->length = 0;

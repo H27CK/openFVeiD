@@ -27,7 +27,8 @@
 
 struct ProcessedTrackData {
     std::vector<double> roll;
-    std::vector<double> rollSpeed;
+    std::vector<double> rollRate;
+    std::vector<double> riderRollRate;
     std::vector<double> rollAccel;
     std::vector<double> forceNormal;
     std::vector<double> forceNormalChange;
@@ -40,6 +41,7 @@ struct ProcessedTrackData {
     std::vector<double> xDistance;
     std::vector<double> xTime;
     std::vector<double> vel;
+    std::vector<double> longitudinalAccel;
     std::vector<double> worldPitch;
     std::vector<double> worldPitchChange;
     std::vector<double> worldYawChange;

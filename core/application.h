@@ -19,6 +19,9 @@
 
 #pragma once
 
+class Application;
+extern Application* gApplication;
+
 #include "core/dummies.h"
 #include "renderer/viewport.h"
 #include "ui/graphview.h"

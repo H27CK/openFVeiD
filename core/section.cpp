@@ -18,6 +18,7 @@
 */
 
 #include "section.h"
+#include "dummies.h"
 #include "exportfuncs.h"
 #include <cmath>
 #include <algorithm>
@@ -533,5 +534,74 @@ double section::getSpeed() {
         return lNodes.back().fVel;
     } else {
         return fVel;
+    }
+}
+
+void section::chaseCurves() {
+    if (!gloParent || !gloParent->mOptions || !gloParent->mOptions->enableCurveChasing || !gloParent->selectedFunc)
+        return;
+
+    func* activeFunc = gloParent->selectedFunc->parent;
+    if (!activeFunc || activeFunc->secParent != this)
+        return;
+
+    // Only chase if we have at least two functions to align
+    int activeCount = 0;
+    if (rollFunc)
+        activeCount++;
+    if (normForce)
+        activeCount++;
+    if (latForce)
+        activeCount++;
+    if (activeCount < 2)
+        return;
+
+    double activeLength = activeFunc->getMaxArgument();
+    func* secondaryFuncs[2];
+    int count = 0;
+    if (rollFunc && rollFunc != activeFunc)
+        secondaryFuncs[count++] = rollFunc;
+    if (normForce && normForce != activeFunc)
+        secondaryFuncs[count++] = normForce;
+    if (latForce && latForce != activeFunc)
+        secondaryFuncs[count++] = latForce;
+
+    for (int f = 0; f < count; ++f) {
+        func* secF = secondaryFuncs[f];
+        if (secF->lockedFunc() == -1) { // Only chase if the secondary function has no dynamic lock!
+            double secLength = secF->getMaxArgument();
+            if (activeLength > secLength + 1e-5) {
+                double diff = activeLength - secLength;
+                int lastIdx = (int)secF->funcList.size() - 1;
+                subfunc* lastSeg = secF->funcList[lastIdx];
+
+                // Smart check: constant hold or transition
+                if (std::abs(lastSeg->symArg) < 1e-5) {
+                    // Case I: Stretch existing constant hold
+                    double currentLen = lastSeg->maxArgument - lastSeg->minArgument;
+                    secF->changeLength(currentLen + diff, lastIdx);
+                } else {
+                    // Case II: Append a new constant hold
+                    secF->appendSubFunction(diff, lastIdx);
+                }
+            } else if (activeLength < secLength - 1e-5) {
+                // --- CASE B: Active curve is SHORTER -> Truncate/Shrink ---
+                double targetLen = activeLength;
+
+                // 1. Delete any trailing segments that start completely after the target length
+                while (secF->funcList.size() > 1 && secF->funcList.back()->minArgument >= targetLen - 1e-5) {
+                    secF->removeSubFunction((int)secF->funcList.size() - 1);
+                }
+
+                // 2. Shrink the remaining final segment so it ends exactly at the target length
+                int lastIdx = (int)secF->funcList.size() - 1;
+                subfunc* lastSeg = secF->funcList[lastIdx];
+                double newSegLen = targetLen - lastSeg->minArgument;
+                if (newSegLen < 1e-5) {
+                    newSegLen = 1e-5; // safety clamp
+                }
+                secF->changeLength(newSegLen, lastIdx);
+            }
+        }
     }
 }

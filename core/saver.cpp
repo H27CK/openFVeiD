@@ -36,6 +36,9 @@ void saver::saveEnvironmentChunk(std::ostream& out) {
     float envGrdSize = gloParent->projectGrdTexSize;
     writeBytes(&out, (const char*)&envGrdSize, sizeof(float));
 
+    float envGrdHeight = gloParent->projectGrdHeight;
+    writeBytes(&out, (const char*)&envGrdHeight, sizeof(float));
+
     int texLen = gloParent->projectGroundTex.length();
     writeBytes(&out, (const char*)&texLen, sizeof(int));
     if (texLen > 0) {
@@ -91,7 +94,8 @@ void saver::doSaveToStream(std::ostream& fout) {
     // Write all prepared chunks sorted alphabetically by tag
     for (const auto& pair : chunks) {
         if (!pair.second.empty() || pair.first == "TRKS") { // Ensure TRKS is always saved
-            writeChunkHeader(fout, pair.first.c_str(), 1, pair.second.length());
+            uint8_t ver = (pair.first == "ENVI") ? 2 : 1;
+            writeChunkHeader(fout, pair.first.c_str(), ver, pair.second.length());
             fout.write(pair.second.data(), pair.second.length());
         }
     }
@@ -100,6 +104,13 @@ void saver::doSaveToStream(std::ostream& fout) {
 void saver::loadEnvironmentChunk(std::istream& fin, uint8_t version, uint32_t length) {
     float envGrdSize = std::max(1.0f, readFloat(&fin));
     gloParent->projectGrdTexSize = envGrdSize;
+
+    if (version >= 2) {
+        float envGrdHeight = readFloat(&fin);
+        gloParent->projectGrdHeight = envGrdHeight;
+    } else {
+        gloParent->projectGrdHeight = 0.0f;
+    }
 
     int texLen = 0;
     readBytes(&fin, &texLen, sizeof(int));

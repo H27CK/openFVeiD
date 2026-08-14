@@ -40,6 +40,7 @@ struct FloorUniforms {
     glm::vec4 eyePos;
     glm::vec4 floorColor;
     glm::vec4 mistColor;
+    float floorHeight;
     float grdTexSize;
     float opacity;
     int32_t border;
@@ -47,7 +48,6 @@ struct FloorUniforms {
     int32_t mistEnabled;
     float mistNear;
     float mistFar;
-    float padding;
 };
 
 struct TrackUniforms {

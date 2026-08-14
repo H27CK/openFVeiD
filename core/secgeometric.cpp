@@ -47,6 +47,7 @@ secgeometric::secgeometric(track* getParent, mnode* first, float gettime)
 }
 
 int secgeometric::updateSection(int node) {
+    chaseCurves();
     bool stalled = false;
     bool restricted = false;
     if (rollFunc->lockedFunc() != -1) {

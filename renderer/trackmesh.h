@@ -109,6 +109,7 @@ public:
                   std::vector<unsigned int>* _borders);
     void updateVertexArrays(int fromNode = 0);
     void clearParametricStyles();
+    size_t getTotalRenderedVertices() const;
 
     void append3dsNode(std::vector<float>* _vertices);
 

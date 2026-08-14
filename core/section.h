@@ -79,6 +79,7 @@ public:
     double getSpeed();
     bool setLocked(eFunctype func, int _id, bool _active);
     void calcDirFromLast(int i);
+    void chaseCurves();
     std::vector<mnode> lNodes;
     track* parent;
     func* rollFunc;

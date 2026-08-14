@@ -12,6 +12,7 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     vec4 eyePos;
     vec4 floorColor;
     vec4 mistColor;
+    float floorHeight;
     float grdTexSize;
     float opacity;
     int border;
@@ -19,7 +20,6 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     int mistEnabled;
     float mistNear;
     float mistFar;
-    float padding;
 } u;
 
 layout(set = 0, binding = 1) uniform sampler2D rasterTex;
