@@ -1,0 +1,5 @@
+FVD_STYLE_V2
+EXTRUSION 0 0.14 0.14 -0.6 0
+EXTRUSION 0 0.14 0.14 0.6 0
+ASSET "bm_modern.glb" 1.18 -1 1.2 0.7 0.7 0.7 0 1 0
+ASSET "bm_modern_spine.glb" 0 -1 1.2 0.7 0.7 0.7 0 1 0
