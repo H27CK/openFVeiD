@@ -26,6 +26,8 @@
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
+#include <windows.h>
+#include <shellapi.h>
 #include <GLFW/glfw3native.h>
 #include <timeapi.h>
 #endif
@@ -50,6 +52,141 @@ static std::string formatWithCommas(size_t val) {
 }
 
 static int pendingDeleteSceneryIdx = -1;
+
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
+
+std::string Application::loadSkippedVersion() {
+    std::ifstream in("skip_version.txt");
+    if (!in)
+        return "";
+    std::string ver;
+    in >> ver;
+    return ver;
+}
+
+void Application::saveSkippedVersion(const std::string& ver) {
+    std::ofstream out("skip_version.txt");
+    if (out) {
+        out << ver;
+    }
+}
+
+std::vector<int> Application::parseVersion(std::string versionStr) {
+    if (!versionStr.empty() && (versionStr[0] == 'v' || versionStr[0] == 'V')) {
+        versionStr = versionStr.substr(1);
+    }
+    size_t dashPos = versionStr.find('-');
+    if (dashPos != std::string::npos) {
+        versionStr = versionStr.substr(0, dashPos);
+    }
+    std::vector<int> parts;
+    std::stringstream ss(versionStr);
+    std::string part;
+    while (std::getline(ss, part, '.')) {
+        try {
+            parts.push_back(std::stoi(part));
+        } catch (...) {
+            parts.push_back(0);
+        }
+    }
+    while (parts.size() < 3) {
+        parts.push_back(0);
+    }
+    return parts;
+}
+
+bool Application::isNewerVersion(const std::string& remote, const std::string& local) {
+    std::vector<int> rParts = parseVersion(remote);
+    std::vector<int> lParts = parseVersion(local);
+    for (size_t i = 0; i < 3; ++i) {
+        if (rParts[i] > lParts[i])
+            return true;
+        if (rParts[i] < lParts[i])
+            return false;
+    }
+    return false;
+}
+
+void Application::triggerUpdateCheck() {
+    std::thread([this]() {
+        // Check if our local version is an unreleased development or Git hash build.
+        // Standard releases always have at least 2 dot separators (e.g. vX.Y.Z) and no dev/dirty suffixes.
+        std::string localVer = FVD_VERSION;
+        int dotCount = 0;
+        for (char c : localVer) {
+            if (c == '.')
+                dotCount++;
+        }
+        bool isDevBuild = (dotCount < 2) || (localVer.find("-dev") != std::string::npos) || (localVer.find("-dirty") != std::string::npos);
+
+        if (isDevBuild) {
+            updateCheckFinished = true;
+            return;
+        }
+
+        // 1. Check if curl is available
+        std::string checkCmd = "curl --version 2>&1";
+        FILE* pipe = popen(checkCmd.c_str(), "r");
+        if (!pipe) {
+            curlAvailable = false;
+            updateCheckFinished = true;
+            return;
+        }
+        char buffer[128];
+        std::string checkResult = "";
+        if (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+            checkResult = buffer;
+        }
+        pclose(pipe);
+
+        if (checkResult.rfind("curl", 0) != 0) {
+            curlAvailable = false;
+            updateCheckFinished = true;
+            return;
+        }
+
+        // 2. Fetch the latest release JSON from the GitHub API
+        std::string fetchCmd = "curl -H \"User-Agent: FVDPlusPlus\" -s -m 5 https://api.github.com/repos/H27CK/openFVeiD/releases/latest 2>&1";
+        pipe = popen(fetchCmd.c_str(), "r");
+        if (!pipe) {
+            updateCheckFinished = true;
+            return;
+        }
+        std::string response = "";
+        while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+            response += buffer;
+        }
+        pclose(pipe);
+
+        // Find and parse "tag_name" key from the JSON response
+        size_t pos = response.find("\"tag_name\"");
+        if (pos != std::string::npos) {
+            size_t colon = response.find(":", pos);
+            if (colon != std::string::npos) {
+                size_t firstQuote = response.find("\"", colon);
+                if (firstQuote != std::string::npos) {
+                    size_t secondQuote = response.find("\"", firstQuote + 1);
+                    if (secondQuote != std::string::npos) {
+                        std::string remoteVer = response.substr(firstQuote + 1, secondQuote - firstQuote - 1);
+                        remoteVer.erase(remoteVer.find_last_not_of(" \n\r\t") + 1);
+
+                        if (!remoteVer.empty()) {
+                            remoteVersion = remoteVer;
+                            std::string skipped = loadSkippedVersion();
+                            if (remoteVer != skipped && isNewerVersion(remoteVer, FVD_VERSION)) {
+                                updateAvailable = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        updateCheckFinished = true;
+    }).detach();
+}
 
 Application::Application() {
     mUndoHandler = new GlobalUndoHandler(this, gloParent->mOptions->maxUndoChanges);
@@ -234,6 +371,8 @@ bool Application::Initialize() {
     lastTime = glfwGetTime();
     glfwGetCursorPos(window, &last_mx, &last_my);
     lastFPSUpdate = glfwGetTime();
+
+    triggerUpdateCheck();
 
     return true;
 }
@@ -973,6 +1112,18 @@ void Application::Render(float deltaTime) {
                 exitViewport();
                 showAboutDialog = true;
             }
+            if (ImGui::MenuItem("Check for Updates...")) {
+                if (!curlAvailable) {
+                    showInAppNotification("Update check failed: curl is not available");
+                } else if (!updateCheckFinished) {
+                    showInAppNotification("Update check in progress, please wait...");
+                } else if (updateAvailable) {
+                    exitViewport();
+                    showUpdatePopup = true;
+                } else {
+                    showInAppNotification("FVD++ is up to date!");
+                }
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -1030,6 +1181,47 @@ void Application::Render(float deltaTime) {
             ImGui::DockBuilderDockWindow("Measurement Graphs", dock_id_bottom_graphs);
             ImGui::DockBuilderFinish(dockspace_id);
         }
+    }
+
+    // Check if background thread found an update and we haven't prompted the user yet
+    if (updateAvailable && !hasTriggeredUpdatePopup) {
+        exitViewport();
+        showUpdatePopup = true;
+        hasTriggeredUpdatePopup = true;
+    }
+
+    if (showUpdatePopup) {
+        ImGui::SetNextWindowSize(ImVec2(350, 150), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Size.x / 2.0f - 175.0f, ImGui::GetMainViewport()->Size.y / 2.0f - 75.0f), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Update Available", &showUpdatePopup, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize);
+
+        ImGui::Text("A new version of FVD++ is available!");
+        ImGui::Separator();
+        ImGui::Text("Installed Version: %s", FVD_VERSION);
+        ImGui::Text("Latest Version:    %s", remoteVersion.c_str());
+        ImGui::Separator();
+
+        if (ImGui::Button("Visit Download Page")) {
+#if defined(_WIN32)
+            ShellExecuteA(NULL, "open", "https://github.com/H27CK/openFVeiD/releases/latest", NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+            [[maybe_unused]] int result = std::system("open https://github.com/H27CK/openFVeiD/releases/latest");
+#else
+            [[maybe_unused]] int result = std::system("xdg-open https://github.com/H27CK/openFVeiD/releases/latest");
+#endif
+            showUpdatePopup = false;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Skip This Version")) {
+            saveSkippedVersion(remoteVersion);
+            showUpdatePopup = false;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Remind Me Later")) {
+            showUpdatePopup = false;
+        }
+
+        ImGui::End();
     }
 
     if (showAboutDialog) {
@@ -1142,6 +1334,98 @@ void Application::Render(float deltaTime) {
                 ImGui::TableNextColumn();
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 ImGui::Combo("##Measure", &gloParent->mOptions->measures, "Metric (m, m/s)\0Metric (m, km/h)\0English (ft, mph)\0");
+
+                ImGui::EndTable();
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Default Transitions", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::BeginTable("OptionsTransitionsTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
+                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                const char* typesRoll[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "ToZero", "Custom"};
+                const char* typesForce[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "Custom"};
+
+                // 1. Roll Rate
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Roll Rate");
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                int rIdx = gloParent->mOptions->defaultTransitionRoll;
+                if (rIdx == 9)
+                    rIdx = 8;
+                if (ImGui::Combo("##DefaultTransitionRoll", &rIdx, typesRoll, IM_ARRAYSIZE(typesRoll))) {
+                    if (rIdx == 8)
+                        rIdx = 9;
+                    gloParent->mOptions->defaultTransitionRoll = rIdx;
+                }
+
+                // 2. Normal Force
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Normal Force");
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                int nIdx = gloParent->mOptions->defaultTransitionNormal;
+                if (nIdx == 9)
+                    nIdx = 7;
+                if (ImGui::Combo("##DefaultTransitionNormal", &nIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
+                    if (nIdx == 7)
+                        nIdx = 9;
+                    gloParent->mOptions->defaultTransitionNormal = nIdx;
+                }
+
+                // 3. Lateral Force
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Lateral Force");
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                int lIdx = gloParent->mOptions->defaultTransitionLateral;
+                if (lIdx == 9)
+                    lIdx = 7;
+                if (ImGui::Combo("##DefaultTransitionLateral", &lIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
+                    if (lIdx == 7)
+                        lIdx = 9;
+                    gloParent->mOptions->defaultTransitionLateral = lIdx;
+                }
+
+                // 4. Pitch
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Pitch");
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                int pIdx = gloParent->mOptions->defaultTransitionPitch;
+                if (pIdx == 9)
+                    pIdx = 7;
+                if (ImGui::Combo("##DefaultTransitionPitch", &pIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
+                    if (pIdx == 7)
+                        pIdx = 9;
+                    gloParent->mOptions->defaultTransitionPitch = pIdx;
+                }
+
+                // 5. Yaw
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Yaw");
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                int yIdx = gloParent->mOptions->defaultTransitionYaw;
+                if (yIdx == 9)
+                    yIdx = 7;
+                if (ImGui::Combo("##DefaultTransitionYaw", &yIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
+                    if (yIdx == 7)
+                        yIdx = 9;
+                    gloParent->mOptions->defaultTransitionYaw = yIdx;
+                }
 
                 ImGui::EndTable();
             }

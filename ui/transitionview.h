@@ -39,9 +39,20 @@ private:
     void renderTypeSpecificProperties(trackHandler* hTrack, subfunc* sf, Application* app);
     void renderTimewarpProperties(trackHandler* hTrack, subfunc* sf, Application* app);
     void renderActions(trackHandler* hTrack, subfunc* sf, Application* app);
+    void renderTargetSolver(trackHandler* hTrack, subfunc* sf, Application* app);
 
     std::string getLengthSuffix(subfunc* sf);
     std::string getChangeSuffix(subfunc* sf);
+
+    // Target Solver UI State
+    int solverTargetVar = 0;
+    float solverTargetValue = 0.0f;
+    int solverAdjustParam = 1; // Default to Amplitude/Change
+    int solverMaxIterations = 40;
+    int solverPrecisionDps = 5;
+    std::string solverMessage = "";
+    bool solverSuccess = false;
+    bool solverHasMessage = false;
 };
 
 #endif // TRANSITIONVIEW_H

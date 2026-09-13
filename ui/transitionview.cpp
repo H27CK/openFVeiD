@@ -17,6 +17,7 @@
 */
 
 #include "transitionview.h"
+#include "ui/targetsolver.h"
 #include "trackhandler.h"
 #include "track.h"
 #include "section.h"
@@ -57,6 +58,14 @@ void TransitionView::render(trackHandler* hTrack, subfunc* sf, Application* app)
         ImGui::BeginDisabled();
     }
 
+    static subfunc* lastSf = nullptr;
+    if (sf != lastSf) {
+        lastSf = sf;
+        solverMessage = "";
+        solverHasMessage = false;
+        solverSuccess = false;
+    }
+
     if (sf) {
         BEGIN_PROP_TABLE("TransitionProps")
         renderBasicProperties(hTrack, sf, app);
@@ -66,6 +75,8 @@ void TransitionView::render(trackHandler* hTrack, subfunc* sf, Application* app)
 
         ImGui::Separator();
         renderActions(hTrack, sf, app);
+        ImGui::Separator();
+        renderTargetSolver(hTrack, sf, app);
         ImGui::Separator();
     } else {
         ImGui::TextDisabled("Select a transition from the list or graph to edit properties.");
@@ -467,6 +478,136 @@ void TransitionView::renderActions(trackHandler* hTrack, subfunc* sf, Applicatio
     if (!canRemove)
         ImGui::EndDisabled();
 }
+
+void TransitionView::renderTargetSolver(trackHandler* hTrack, subfunc* sf, Application* app) {
+    if (!sf || !sf->parent || !sf->parent->secParent)
+        return;
+
+    std::vector<std::pair<const char*, TargetVariable>> availableVars;
+    if (sf->parent->type == funcRoll) {
+        availableVars = {
+            {"Roll Angle", TargetVariable::Roll},
+            {"Roll Rate", TargetVariable::RollRate}};
+    } else if (sf->parent->type == funcNormal || sf->parent->type == funcPitch) {
+        availableVars = {
+            {"Pitch Angle", TargetVariable::Pitch},
+            {"Pitch Rate", TargetVariable::PitchRate},
+            {"Speed", TargetVariable::Speed}};
+    } else { // funcLateral or funcYaw
+        availableVars = {
+            {"Yaw Angle", TargetVariable::Yaw},
+            {"Yaw Rate", TargetVariable::YawRate}};
+    }
+
+    std::vector<const char*> varLabels;
+    int selectedComboIdx = 0;
+    bool found = false;
+    for (int i = 0; i < (int)availableVars.size(); ++i) {
+        varLabels.push_back(availableVars[i].first);
+        if (availableVars[i].second == (TargetVariable)solverTargetVar) {
+            selectedComboIdx = i;
+            found = true;
+        }
+    }
+    if (!found) {
+        selectedComboIdx = 0;
+        solverTargetVar = (int)availableVars[0].second;
+    }
+
+    const char* params[] = {"Length / Duration", "Amplitude (Change)"};
+
+    std::string valSuffix = "";
+    switch ((TargetVariable)solverTargetVar) {
+    case TargetVariable::Roll:
+    case TargetVariable::Pitch:
+    case TargetVariable::Yaw:
+        valSuffix = " deg";
+        break;
+    case TargetVariable::RollRate:
+    case TargetVariable::PitchRate:
+    case TargetVariable::YawRate:
+        valSuffix = " deg/s";
+        break;
+    case TargetVariable::Speed:
+        if (gloParent) {
+            valSuffix = " " + gloParent->mOptions->getSpeedString();
+        } else {
+            valSuffix = " m/s";
+        }
+        break;
+    }
+
+    if (ImGui::CollapsingHeader("Target Solver", ImGuiTreeNodeFlags_DefaultOpen)) {
+        BEGIN_PROP_TABLE("TargetSolverProps")
+
+        PROP_ROW(
+            "Target Variable",
+            if (ImGui::Combo("##TargetVar", &selectedComboIdx, varLabels.data(), (int)varLabels.size())) {
+                solverTargetVar = (int)availableVars[selectedComboIdx].second;
+            };)
+
+        PROP_ROW(
+            "Target Value",
+            ImGui::DragFloat("##TargetValue", &solverTargetValue, 0.1f, -360.0f, 360.0f, ("%.3f" + valSuffix).c_str());)
+
+        PROP_ROW(
+            "Adjust Parameter",
+            ImGui::Combo("##AdjustParam", &solverAdjustParam, params, IM_ARRAYSIZE(params));)
+
+        PROP_ROW(
+            "Max Iterations",
+            ImGui::DragInt("##MaxIter", &solverMaxIterations, 1.0f, 5, 100);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("The maximum number of steps the numerical solver will take before stopping.");
+            })
+
+        PROP_ROW(
+            "Precision",
+            ImGui::DragInt("##Precision", &solverPrecisionDps, 0.1f, 1, 9);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Configure how many decimal places to solve the target to (higher = more precise).");
+            })
+
+        END_PROP_TABLE()
+
+        ImGui::Spacing();
+
+        if (ImGui::Button("Solve Target", ImVec2(-FLT_MIN, 0.0f))) {
+            double convertedTargetValue = solverTargetValue;
+            // If speed and in km/h or mph, convert to m/s for physics solver
+            if ((TargetVariable)solverTargetVar == TargetVariable::Speed && gloParent) {
+                if (gloParent->mOptions->measures == 1) { // km/h
+                    convertedTargetValue = solverTargetValue / 3.6;
+                } else if (gloParent->mOptions->measures == 2) { // mph
+                    convertedTargetValue = solverTargetValue / 2.23694;
+                }
+            }
+
+            double tolerance = std::pow(10.0, -solverPrecisionDps);
+
+            std::string msg;
+            solverSuccess = TargetSolver::Solve(hTrack, sf, app,
+                                                (TargetVariable)solverTargetVar,
+                                                convertedTargetValue,
+                                                (AdjustParameter)solverAdjustParam,
+                                                solverMaxIterations,
+                                                tolerance,
+                                                msg);
+            solverMessage = msg;
+            solverHasMessage = true;
+        }
+
+        if (solverHasMessage) {
+            ImGui::Spacing();
+            if (solverSuccess) {
+                ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "%s", solverMessage.c_str());
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", solverMessage.c_str());
+            }
+        }
+    }
+}
+
 std::string TransitionView::getLengthSuffix(subfunc* sf) {
     if (!sf || !sf->parent || !sf->parent->secParent)
         return "";
