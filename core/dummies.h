@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <glm/glm.hpp>
 #include <imgui.h>
@@ -38,8 +39,8 @@ struct DummyOptions {
     bool drawGrid = true;
     bool enforceMinRadius = false;
     float minRadius = 5.0f;
-    glm::vec3 backgroundColor = glm::vec3(80.f / 255.f, 140.f / 255.f, 160.f / 255.f);
-    glm::vec3 floorColor = glm::vec3(1.0f, 1.0f, 1.0f);
+    glm::vec3 backgroundColor = glm::vec3(0.5f, 0.5f, 0.5f);
+    glm::vec3 floorColor = glm::vec3(213.0f / 255.0f);
     int theme = 0; // 0: Dark, 1: Light, 2: Classic
     bool shadowsEnabled = true;
     bool transparentGraphs = false;
@@ -91,6 +92,13 @@ struct DummyOptions {
     bool relativeExport = false;     // Relative NoLimits 2 export coordinate behaviour
     float sunPitch = -90.0f;         // Directly above
     float sunYaw = 0.0f;
+    float sunLightStrength = 1.0f;
+    glm::vec3 sunLightColor = glm::vec3(1.0f);
+    float ambientLightStrength = 0.72f;
+    glm::vec3 ambientLightColor = glm::vec3(1.0f);
+    bool trackTextureEnabled = true;
+    std::string skyboxName = "Solid Color";
+    float skyboxRotation = 0.0f;
     float stallSpeed = 0.1f;
     float graphSpacingLimit = 0.1f;
     float scrollCtrlIncrement = 1.0f;
@@ -181,7 +189,18 @@ struct DummyOptions {
             for (int i = 0; i < 18; ++i) {
                 out << graphColors[i].x << " " << graphColors[i].y << " " << graphColors[i].z << " ";
             }
-            out << "\n";
+            out << "\n"
+                << ambientLightStrength << " "
+                << ambientLightColor.x << " "
+                << ambientLightColor.y << " "
+                << ambientLightColor.z << "\n"
+                << sunLightStrength << " "
+                << sunLightColor.x << " "
+                << sunLightColor.y << " "
+                << sunLightColor.z << "\n"
+                << trackTextureEnabled << "\n"
+                << std::quoted(skyboxName) << " "
+                << skyboxRotation << "\n";
         }
     }
 
@@ -198,6 +217,34 @@ struct DummyOptions {
                 for (int i = 0; i < 18; ++i) {
                     if (!(in >> graphColors[i].x >> graphColors[i].y >> graphColors[i].z))
                         break;
+                }
+
+                // Added after the original V1 fields so existing option files
+                // remain valid and retain the defaults when values are absent.
+                float savedAmbientStrength;
+                glm::vec3 savedAmbientColor;
+                if (in >> savedAmbientStrength >> savedAmbientColor.x >> savedAmbientColor.y >> savedAmbientColor.z) {
+                    ambientLightStrength = savedAmbientStrength;
+                    ambientLightColor = savedAmbientColor;
+                }
+
+                float savedSunStrength;
+                glm::vec3 savedSunColor;
+                if (in >> savedSunStrength >> savedSunColor.x >> savedSunColor.y >> savedSunColor.z) {
+                    sunLightStrength = savedSunStrength;
+                    sunLightColor = savedSunColor;
+                }
+
+                bool savedTrackTextureEnabled;
+                if (in >> savedTrackTextureEnabled) {
+                    trackTextureEnabled = savedTrackTextureEnabled;
+
+                    std::string savedSkyboxName;
+                    float savedSkyboxRotation;
+                    if (in >> std::quoted(savedSkyboxName) >> savedSkyboxRotation) {
+                        skyboxName = savedSkyboxName;
+                        skyboxRotation = savedSkyboxRotation;
+                    }
                 }
             }
         }
@@ -252,6 +299,24 @@ struct DummyGlobal {
         projectGroundTex = "";
         projectGrdHeight = 0.0f;
         projectGlbs.clear();
+
+        mOptions->floorColor = glm::vec3(213.0f / 255.0f);
+        mOptions->drawGrid = true;
+        mOptions->backgroundColor = glm::vec3(0.5f, 0.5f, 0.5f);
+        mOptions->shadowsEnabled = true;
+        mOptions->sunPitch = -90.0f;
+        mOptions->sunYaw = 0.0f;
+        mOptions->sunLightStrength = 1.0f;
+        mOptions->sunLightColor = glm::vec3(1.0f);
+        mOptions->ambientLightStrength = 0.72f;
+        mOptions->ambientLightColor = glm::vec3(1.0f);
+        mOptions->trackTextureEnabled = true;
+        mOptions->mistEnabled = false;
+        mOptions->mistNear = 100.0f;
+        mOptions->mistFar = 270.0f;
+        mOptions->mistColor = glm::vec3(0.5f);
+        mOptions->skyboxName = "Solid Color";
+        mOptions->skyboxRotation = 0.0f;
     }
 
     void updateInfoPanel() {}

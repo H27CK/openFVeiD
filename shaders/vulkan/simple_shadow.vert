@@ -16,6 +16,10 @@ layout(set = 0, binding = 0) uniform SimpleShadowUniforms {
     float heartline;
     int isInstanced;
     int isAsset;
+    float shadowStrength;
+    float padding0;
+    float padding1;
+    float padding2;
 } u;
 
 struct SplineNode {

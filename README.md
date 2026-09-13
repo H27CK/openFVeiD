@@ -195,6 +195,17 @@ xattr -cr fvd.app
 ```
 User data (options, logs, track styles, skyboxes) lives in `~/Library/Application Support/FVD++`. The shipped track styles are copied there on first launch; running the app from a source checkout keeps using the checkout's `track_styles/` directly.
 
+### Skyboxes and Environment Presets
+
+Install each skybox in its own folder under `skybox/`. The preferred face names are
+`nx`, `ny`, `nz`, `px`, `py`, and `pz`, with PNG, JPEG, BMP, or TGA extensions.
+The `cubemap_0` through `cubemap_5` naming format is also detected. FVD++ watches this
+directory, so complete sets appear in the Environment window without restarting.
+
+`.fvdenv` files store environment presets. Presets anywhere under `skybox/` appear in the Environment
+Preset dropdown and can be switched without restarting. The selected preset is watched
+and reapplied when the file changes.
+
 ## Installing Track Styles
 
 Track styles customize the rails, spines, cross-sections, etc. of your coasters. You can easily install them using either of the following methods.

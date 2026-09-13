@@ -12,6 +12,9 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     vec4 eyePos;
     vec4 floorColor;
     vec4 mistColor;
+    vec4 lightDir;
+    vec4 ambientColor;
+    vec4 sunColor;
     float floorHeight;
     float grdTexSize;
     float opacity;
@@ -20,6 +23,10 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     int mistEnabled;
     float mistNear;
     float mistFar;
+    float ambientStrength;
+    float sunStrength;
+    float padding0;
+    float padding1;
 } u;
 
 void main(void)

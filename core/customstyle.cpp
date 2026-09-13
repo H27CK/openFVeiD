@@ -146,9 +146,18 @@ bool CustomTrackStyle::load(const std::string& filepath) {
 
         float avgZ = (vertices[i0].pos.z + vertices[i1].pos.z + vertices[i2].pos.z) / 3.0f;
 
+        glm::vec3 faceNormal = glm::cross(vertices[i1].pos - vertices[i0].pos,
+                                          vertices[i2].pos - vertices[i0].pos);
+        if (glm::dot(faceNormal, faceNormal) > 0.0f)
+            faceNormal = glm::normalize(faceNormal);
+        else
+            faceNormal = glm::vec3(0.0f, 1.0f, 0.0f);
+
         unsigned int corners[3] = {i0, i1, i2};
         for (unsigned int corner : corners) {
             StyleVertex v = vertices[corner];
+            if (!normAccessor)
+                v.normal = faceNormal;
             v.faceRefZ = avgZ;
             expandedVertices.push_back(v);
             expandedIndices.push_back((unsigned int)expandedVertices.size() - 1);

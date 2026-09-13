@@ -32,10 +32,12 @@
 #include <timeapi.h>
 #endif
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <cctype>
 
 extern DummyGlobal* gloParent;
 extern DummyGLView* glView;
@@ -49,6 +51,13 @@ static std::string formatWithCommas(size_t val) {
         n -= 3;
     }
     return s;
+}
+
+static bool hasCaseInsensitiveExtension(const std::string& path, const std::string& expected) {
+    std::string extension = std::filesystem::path(path).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return extension == expected;
 }
 
 static int pendingDeleteSceneryIdx = -1;
@@ -226,6 +235,7 @@ bool Application::Initialize() {
     }
 
     gloParent->mOptions->load("options.cfg");
+    gloParent->resetEnvironment();
     loadRecentFiles();
 
     glfwSetErrorCallback([](int error, const char* description) {
@@ -410,6 +420,7 @@ void Application::Run() {
         float currentTime = (float)glfwGetTime();
         float deltaTime = currentTime - (float)lastTime;
         lastTime = currentTime;
+        viewport.update(deltaTime);
 
         double mx, my;
         glfwGetCursorPos(window, &mx, &my);
@@ -820,6 +831,7 @@ void Application::Render(float deltaTime) {
                 viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
                 viewport.setGroundHeight(gloParent->projectGrdHeight);
                 viewport.loadGroundTexture(gloParent->projectGroundTex);
+                viewport.applyProjectEnvironment();
                 while (!viewport.glbMeshes.empty())
                     viewport.removeGlbMesh(0);
                 if (mUndoHandler) {
@@ -904,6 +916,15 @@ void Application::Render(float deltaTime) {
                     if (!f.empty())
                         trackList[activeTrackIdx]->trackData->importMeasurementPoints(f[0]);
                 }
+                ImGui::SeparatorText("Environment");
+                if (ImGui::MenuItem("Environment Preset...")) {
+                    exitViewport();
+                    auto file = pfd::open_file("Import Environment", "skybox",
+                                               {"FVD Environment", "*.fvdenv", "All Files", "*"})
+                                    .result();
+                    if (!file.empty())
+                        viewport.loadEnvironmentPreset(file[0]);
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Export")) {
@@ -924,6 +945,20 @@ void Application::Render(float deltaTime) {
                     auto f = pfd::save_file("Export Measurement Points", "train.fvdmeasure", {"FVD Measurement Files", "*.fvdmeasure"}).result();
                     if (!f.empty())
                         trackList[activeTrackIdx]->trackData->exportMeasurementPoints(f);
+                }
+                ImGui::SeparatorText("Environment");
+                if (ImGui::MenuItem("Environment Preset...")) {
+                    exitViewport();
+                    std::string file = pfd::save_file(
+                                           "Export Environment",
+                                           viewport.suggestedEnvironmentPresetPath(),
+                                           {"FVD Environment", "*.fvdenv", "All Files", "*"})
+                                           .result();
+                    if (!file.empty()) {
+                        if (!hasCaseInsensitiveExtension(file, ".fvdenv"))
+                            file += ".fvdenv";
+                        viewport.saveEnvironmentPreset(file);
+                    }
                 }
                 ImGui::EndMenu();
             }
@@ -3295,6 +3330,7 @@ void Application::loadProjectFile(const std::string& path) {
     viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
     viewport.setGroundHeight(gloParent->projectGrdHeight);
     viewport.loadGroundTexture(gloParent->projectGroundTex);
+    viewport.applyProjectEnvironment();
     while (!viewport.glbMeshes.empty())
         viewport.removeGlbMesh(0);
     std::vector<DummyGlobal::GlbSettings> validGlbs;
