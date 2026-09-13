@@ -46,6 +46,7 @@ extern Application* gApplication;
 #include <string>
 #include <memory>
 #include <filesystem>
+#include <atomic>
 
 #ifndef GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_NONE
@@ -120,6 +121,20 @@ private:
     bool showAboutDialog = false;
     bool showExitPopup = false;
     bool viewportActive = false;
+
+    // Update Checker
+    void triggerUpdateCheck();
+    static std::string loadSkippedVersion();
+    static void saveSkippedVersion(const std::string& ver);
+    static bool isNewerVersion(const std::string& remote, const std::string& local);
+    static std::vector<int> parseVersion(std::string versionStr);
+
+    bool showUpdatePopup = false;
+    bool hasTriggeredUpdatePopup = false;
+    std::string remoteVersion = "";
+    std::atomic<bool> updateCheckFinished{false};
+    std::atomic<bool> curlAvailable{true};
+    std::atomic<bool> updateAvailable{false};
 
     // Export State
     bool showExportPopup = false;

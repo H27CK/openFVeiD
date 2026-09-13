@@ -29,18 +29,19 @@ To submit feature requests, report issues, and keep track of development, with n
 ## Key Features
 
 - **User Interface:** Dear ImGui integration with custom style controls, UI scaling, and status bar.
-- **Parametric Track Styles:** Dynamic track styling using recursive folder scanning (`track_styles/`). Supports GLTF/GLB asset models.
+- **Curve Chasing:** Bi-directional spline chasing that automatically adjusts subsequent transition durations to keep the ending node of a section anchored in 3D space.
+- **Custom Math Transitions:** Evaluates custom mathematical expressions defined by the user.
+- **Design Limiters:** Overlay indicators on force and banking graphs highlighting exceedances of configurable design standards.
+- **Parametric Track Styles:** Generates 3D track meshes from GLTF/GLB models scanned from local folders (including standard and community-contributed styles) with an in-app interactive style builder.
+- **Playhead Alignment:** Snaps transition start or end boundaries directly to the current viewport playhead position.
 - **Rider-Local Geometric Sections:** Support for creating track shapes in a rider-local coordinate system (`geometricriderlocal`).
 - **Force Analysis Offsets:** Seating position offset support for calculating forces at specific rider locations.
-- **Undo/Redo System:** Project-level undo and redo tracking up to 200 states.
+- **Static Spline Templates:** Import of external track shapes as static, non-editable guide splines in the 3D viewport.
+- **Target Solver:** Iterative numerical solver to adjust a transition's duration or amplitude to hit target variables at its end.
 - **High-Resolution Screenshots:** Multiplied viewport resolution capture (up to 8x) for anti-aliased images via F12 shortcut.
 - **Environment Settings:** Support for configurable mist distance and custom skybox textures.
 - **Orthographic Views:** Top, Front, and Side orthographic viewports with projected floor grids and highlighted axes.
 - **Viewport Navigation:** Automatic zoom-to-selection and immediate rendering updates on parameter changes.
-- **Data Import/Export:**
-  - Track export to NoLimits 2 (`.nl2elem`) and CSV.
-  - Track import from CSV with linear/cubic spline orientation interpolation and filtering.
-  - Multi-STL 3D environment loading integrated with project files.
 - **Renderer:** Vulkan viewport rendering (MoltenVK on macOS) with floor grid and shadow projection.
 
 ## Documentation
@@ -56,11 +57,15 @@ The following parametric track styles have been contributed by the community. Se
 | nerfer10 | [Arrow](community/track_styles/nerfer10/Arrow) | 1.0 |
 | nerfer10 | [B&M](community/track_styles/nerfer10/B&M) | 1.0 |
 | xwaldo | [B&M Classic](community/track_styles/xwaldo/bm_classic) | 1.0 |
+| xwaldo | [B&M Dive](community/track_styles/xwaldo/bm_dive) | 1.0 |
+| xwaldo | [B&M Modern](community/track_styles/xwaldo/bm_modern) | 1.0 |
 | xwaldo | [GCI](community/track_styles/xwaldo/gci) | 1.0 |
 | nerfer10 | [Generic Flat](community/track_styles/nerfer10/Generic%20Flat) | 1.0 |
-| nerfer10 | [Raptor](community/track_styles/nerfer10/Raptor) | 1.0 |
+| xwaldo | [Intamin Hot Racer](community/track_styles/xwaldo/intamin_hotracer) | 1.0 |
 | Loundlim | [Intamin LSM 0.9m](community/track_styles/Loundlim/Intamin%20LSM%200.9m) | 1.0 |
 | Loundlim | [Intamin Tri Tube 0.9m](community/track_styles/Loundlim/Intamin%20Tri%20Tube%200.9m) | 1.0 |
+| nerfer10 | [Raptor](community/track_styles/nerfer10/Raptor) | 1.0 |
+| xwaldo | [RMC](community/track_styles/xwaldo/rmc) | 1.0 |
 | Loundlim | [RMC IBox Track](community/track_styles/Loundlim/RMC%20IBox%20Track) | 1.0 |
 | Loundlim | [RMC Topper Track](community/track_styles/Loundlim/RMC%20Topper%20Track) | 1.0 |
 | Loundlim | [S&S Airlaunch & Looper](community/track_styles/Loundlim/S%26S%20Air%20Launch%20%26%20Looper) | 1.0 |

@@ -18,6 +18,7 @@
 */
 
 #include "subfunction.h"
+#include "dummies.h"
 #include "tinyexpr.h"
 #include "function.h"
 #include "mnode.h"
@@ -66,10 +67,26 @@ subfunc::subfunc(double min, double max, double start, double diff,
     parent = getparent;
     lenAssert(getparent != NULL);
 
-    if (parent->type == funcNormal) {
-        changeDegree(cubic);
+    if (gloParent && gloParent->mOptions) {
+        if (parent->type == funcRoll) {
+            changeDegree((eDegree)gloParent->mOptions->defaultTransitionRoll);
+        } else if (parent->type == funcNormal) {
+            changeDegree((eDegree)gloParent->mOptions->defaultTransitionNormal);
+        } else if (parent->type == funcLateral) {
+            changeDegree((eDegree)gloParent->mOptions->defaultTransitionLateral);
+        } else if (parent->type == funcPitch) {
+            changeDegree((eDegree)gloParent->mOptions->defaultTransitionPitch);
+        } else if (parent->type == funcYaw) {
+            changeDegree((eDegree)gloParent->mOptions->defaultTransitionYaw);
+        } else {
+            changeDegree(quartic);
+        }
     } else {
-        changeDegree(quartic);
+        if (parent->type == funcNormal || parent->type == funcPitch || parent->type == funcYaw) {
+            changeDegree(cubic);
+        } else {
+            changeDegree(quartic);
+        }
     }
     locked = false;
 }

@@ -70,6 +70,13 @@ struct DummyOptions {
     bool showFPS = true;
     bool vSync = true;
 
+    // Default Transitions
+    int defaultTransitionLateral = 4; // quartic (Lateral Force default)
+    int defaultTransitionNormal = 2;  // cubic (Normal Force default)
+    int defaultTransitionPitch = 2;   // cubic (Pitch default)
+    int defaultTransitionRoll = 4;    // quartic (Roll Rate default)
+    int defaultTransitionYaw = 2;     // cubic (Yaw default)
+
     // Mist Settings
     bool mistEnabled = false;
     float mistNear = 100.0f;
@@ -117,6 +124,11 @@ struct DummyOptions {
             out << "FVD_OPT_V1 "
                 << autoFocusOnSelection << " "
                 << backgroundColor.x << " " << backgroundColor.y << " " << backgroundColor.z << " "
+                << defaultTransitionLateral << " "
+                << defaultTransitionNormal << " "
+                << defaultTransitionPitch << " "
+                << defaultTransitionRoll << " "
+                << defaultTransitionYaw << " "
                 << drawGrid << " "
                 << editShadows << " "
                 << enforceMinRadius << " "
@@ -181,7 +193,7 @@ struct DummyOptions {
                 return;
 
             if (version == "FVD_OPT_V1") {
-                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> glbShadowsEnabled >> graphOverlayEnabled >> lookAheadPovSmoothing >> enableCurveChasing >> keyBackward >> keyForward >> keyLeft >> keyRight >> keyOverlayWarnings >> keyOverlayScenery >> keyAppendTransition >> keyPrependTransition >> keyViewPerspective >> keyViewTop >> keyViewSide >> keyViewFront >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> relativeExport >> screenshotMultiplier >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
+                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> defaultTransitionLateral >> defaultTransitionNormal >> defaultTransitionPitch >> defaultTransitionRoll >> defaultTransitionYaw >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> glbShadowsEnabled >> graphOverlayEnabled >> lookAheadPovSmoothing >> enableCurveChasing >> keyBackward >> keyForward >> keyLeft >> keyRight >> keyOverlayWarnings >> keyOverlayScenery >> keyAppendTransition >> keyPrependTransition >> keyViewPerspective >> keyViewTop >> keyViewSide >> keyViewFront >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> relativeExport >> screenshotMultiplier >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
 
                 for (int i = 0; i < 18; ++i) {
                     if (!(in >> graphColors[i].x >> graphColors[i].y >> graphColors[i].z))

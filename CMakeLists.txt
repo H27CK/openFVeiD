@@ -149,6 +149,7 @@ add_executable(fvd
     ui/measurementgraphprocessor.cpp
     ui/leftpanel.cpp
     ui/transitionview.cpp
+    ui/targetsolver.cpp
     ${RES_FILE}
     ${CMAKE_CURRENT_BINARY_DIR}/embedded_assets.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
