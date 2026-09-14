@@ -43,6 +43,7 @@ struct alignas(16) FloorUniforms {
     glm::vec4 lightDir;
     glm::vec4 ambientColor;
     glm::vec4 sunColor;
+    glm::vec4 gridColor;
     float floorHeight;
     float grdTexSize;
     float opacity;
@@ -53,8 +54,8 @@ struct alignas(16) FloorUniforms {
     float mistFar;
     float ambientStrength;
     float sunStrength;
-    float padding0;
-    float padding1;
+    float gridMajorThickness;
+    float gridMinorThickness;
 };
 
 struct TrackUniforms {
@@ -130,16 +131,17 @@ struct alignas(16) SimpleShadowUniforms {
     glm::mat4 modelMatrix;
     glm::mat4 anchorBase;
     glm::mat4 shadowMatrix;
+    glm::vec4 shadowColor;
     float uTrackLength;
     float heartline;
     int32_t isInstanced;
     int32_t isAsset;
     float shadowStrength;
-    float padding0;
-    float padding1;
+    float floorHeight;
+    int32_t softShadowsEnabled;
     float padding2;
 };
 
-static_assert(sizeof(FloorUniforms) == 272, "FloorUniforms must match the std140 shader block");
+static_assert(sizeof(FloorUniforms) == 288, "FloorUniforms must match the std140 shader block");
 static_assert(sizeof(TrackInstancedUniforms) == 368, "TrackInstancedUniforms must match the std140 shader block");
-static_assert(sizeof(SimpleShadowUniforms) == 288, "SimpleShadowUniforms must match the std140 shader block");
+static_assert(sizeof(SimpleShadowUniforms) == 304, "SimpleShadowUniforms must match the std140 shader block");

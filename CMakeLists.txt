@@ -114,8 +114,8 @@ add_executable(bin2c resources/tools/bin2c.cpp)
 file(GLOB ASSETS_FONTS RELATIVE ${CMAKE_SOURCE_DIR} "resources/fonts/*")
 set(ASSETS
     ${ASSETS_FONTS}
-    metal_normal.png
-    metal_roughness.jpg
+    assets/textures/metal_normal.png
+    assets/textures/metal_roughness.jpg
 )
 
 add_custom_command(

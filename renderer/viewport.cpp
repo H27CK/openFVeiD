@@ -142,7 +142,7 @@ void Viewport::resetView() {
     glm::vec3 anchor(0.0f);
     if (viewMode == ViewMode::Perspective) {
         freeFlyPos = anchor + glm::vec3(20.0f, 20.0f, 20.0f);
-        freeFlyDir = glm::normalize(anchor - freeFlyPos);
+        freeFlyDir = glm::normalize(anchor + glm::vec3(0.0f, 13.0f, 0.0f) - freeFlyPos);
         freeFlySide = glm::normalize(glm::cross(freeFlyDir, glm::vec3(0.0f, 1.0f, 0.0f)));
     } else if (viewMode == ViewMode::Top) {
         freeFlyPos = anchor + glm::vec3(0, 100, 0);
@@ -342,11 +342,11 @@ void Viewport::initTextures() {
     unsigned char cubeFaces[6 * 4] = {};
     dummyCubeTexture.createCube(*gVulkanContext, 1, 1, cubeFaces);
 
-    if (!loadEmbeddedTexture("metal_normal.png", metalNormalTexture)) {
+    if (!loadEmbeddedTexture("assets/textures/metal_normal.png", metalNormalTexture)) {
         const unsigned char flatNormal[4] = {128, 128, 255, 255};
         metalNormalTexture.create2d(*gVulkanContext, 1, 1, flatNormal);
     }
-    if (!loadEmbeddedTexture("metal_roughness.jpg", metalRoughnessTexture)) {
+    if (!loadEmbeddedTexture("assets/textures/metal_roughness.jpg", metalRoughnessTexture)) {
         const unsigned char defaultRoughness[4] = {160, 160, 160, 255};
         metalRoughnessTexture.create2d(*gVulkanContext, 1, 1, defaultRoughness);
     }
@@ -675,25 +675,33 @@ bool Viewport::saveEnvironmentPreset(const std::string& path) {
 
     const DummyOptions& options = *gloParent->mOptions;
     output << "FVD_ENVIRONMENT_V1\n"
+           << "ambient_color " << options.ambientLightColor.x << " " << options.ambientLightColor.y << " "
+           << options.ambientLightColor.z << "\n"
            << "ambient_strength " << options.ambientLightStrength << "\n"
-           << "ambient_color " << options.ambientLightColor.x << " "
-           << options.ambientLightColor.y << " " << options.ambientLightColor.z << "\n"
-           << "sun_strength " << options.sunLightStrength << "\n"
+           << "grid " << options.drawGrid << "\n"
+           << "grid_line_color " << options.gridLineColor.x << " " << options.gridLineColor.y << " "
+           << options.gridLineColor.z << "\n"
+           << "grid_major_thickness " << options.gridMajorThickness << "\n"
+           << "grid_minor_thickness " << options.gridMinorThickness << "\n"
+           << "mist_color " << options.mistColor.x << " " << options.mistColor.y << " "
+           << options.mistColor.z << "\n"
+           << "mist_enabled " << options.mistEnabled << "\n"
+           << "mist_far " << options.mistFar << "\n"
+           << "mist_near " << options.mistNear << "\n"
+           << "shadow_color " << options.shadowColor.x << " " << options.shadowColor.y << " "
+           << options.shadowColor.z << "\n"
+           << "shadows " << options.shadowsEnabled << "\n"
+           << "skybox " << std::quoted(options.skyboxName) << "\n"
+           << "skybox_color " << options.backgroundColor.x << " " << options.backgroundColor.y << " "
+           << options.backgroundColor.z << "\n"
+           << "skybox_rotation " << options.skyboxRotation << "\n"
+           << "soft_shadows " << options.softShadowsEnabled << "\n"
            << "sun_color " << options.sunLightColor.x << " " << options.sunLightColor.y << " "
            << options.sunLightColor.z << "\n"
            << "sun_pitch " << options.sunPitch << "\n"
+           << "sun_strength " << options.sunLightStrength << "\n"
            << "sun_yaw " << options.sunYaw << "\n"
-           << "shadows " << options.shadowsEnabled << "\n"
            << "track_texture " << options.trackTextureEnabled << "\n"
-           << "skybox " << std::quoted(options.skyboxName) << "\n"
-           << "skybox_color " << options.backgroundColor.x << " "
-           << options.backgroundColor.y << " " << options.backgroundColor.z << "\n"
-           << "skybox_rotation " << options.skyboxRotation << "\n"
-           << "mist_enabled " << options.mistEnabled << "\n"
-           << "mist_near " << options.mistNear << "\n"
-           << "mist_far " << options.mistFar << "\n"
-           << "mist_color " << options.mistColor.x << " " << options.mistColor.y << " "
-           << options.mistColor.z << "\n"
            << "end\n";
     output.close();
     if (!output)
@@ -724,36 +732,48 @@ bool Viewport::loadEnvironmentPreset(const std::string& path) {
             complete = true;
             break;
         }
-        if (key == "ambient_strength")
-            values >> preset.ambientLightStrength;
-        else if (key == "ambient_color")
+        if (key == "ambient_color")
             values >> preset.ambientLightColor.x >> preset.ambientLightColor.y >> preset.ambientLightColor.z;
-        else if (key == "sun_strength")
-            values >> preset.sunLightStrength;
-        else if (key == "sun_color")
-            values >> preset.sunLightColor.x >> preset.sunLightColor.y >> preset.sunLightColor.z;
-        else if (key == "sun_pitch")
-            values >> preset.sunPitch;
-        else if (key == "sun_yaw")
-            values >> preset.sunYaw;
+        else if (key == "ambient_strength")
+            values >> preset.ambientLightStrength;
+        else if (key == "grid")
+            values >> preset.drawGrid;
+        else if (key == "grid_line_color")
+            values >> preset.gridLineColor.x >> preset.gridLineColor.y >> preset.gridLineColor.z;
+        else if (key == "grid_major_thickness")
+            values >> preset.gridMajorThickness;
+        else if (key == "grid_minor_thickness")
+            values >> preset.gridMinorThickness;
+        else if (key == "mist_color")
+            values >> preset.mistColor.x >> preset.mistColor.y >> preset.mistColor.z;
+        else if (key == "mist_enabled")
+            values >> preset.mistEnabled;
+        else if (key == "mist_far")
+            values >> preset.mistFar;
+        else if (key == "mist_near")
+            values >> preset.mistNear;
+        else if (key == "shadow_color")
+            values >> preset.shadowColor.x >> preset.shadowColor.y >> preset.shadowColor.z;
         else if (key == "shadows")
             values >> preset.shadowsEnabled;
-        else if (key == "track_texture")
-            values >> preset.trackTextureEnabled;
         else if (key == "skybox")
             values >> std::quoted(preset.skyboxName);
         else if (key == "skybox_color")
             values >> preset.backgroundColor.x >> preset.backgroundColor.y >> preset.backgroundColor.z;
         else if (key == "skybox_rotation")
             values >> preset.skyboxRotation;
-        else if (key == "mist_enabled")
-            values >> preset.mistEnabled;
-        else if (key == "mist_near")
-            values >> preset.mistNear;
-        else if (key == "mist_far")
-            values >> preset.mistFar;
-        else if (key == "mist_color")
-            values >> preset.mistColor.x >> preset.mistColor.y >> preset.mistColor.z;
+        else if (key == "soft_shadows")
+            values >> preset.softShadowsEnabled;
+        else if (key == "sun_color")
+            values >> preset.sunLightColor.x >> preset.sunLightColor.y >> preset.sunLightColor.z;
+        else if (key == "sun_pitch")
+            values >> preset.sunPitch;
+        else if (key == "sun_strength")
+            values >> preset.sunLightStrength;
+        else if (key == "sun_yaw")
+            values >> preset.sunYaw;
+        else if (key == "track_texture")
+            values >> preset.trackTextureEnabled;
         if (values.fail())
             return false;
     }
@@ -761,16 +781,23 @@ bool Viewport::loadEnvironmentPreset(const std::string& path) {
         return false;
 
     preset.ambientLightStrength = std::clamp(preset.ambientLightStrength, 0.0f, 2.0f);
+    preset.gridMajorThickness = std::clamp(preset.gridMajorThickness, 0.1f, 10.0f);
+    preset.gridMinorThickness = std::clamp(preset.gridMinorThickness, 0.1f, 10.0f);
     preset.sunLightStrength = std::clamp(preset.sunLightStrength, 0.0f, 2.0f);
     preset.sunPitch = std::clamp(preset.sunPitch, -90.0f, 0.0f);
     preset.mistNear = std::clamp(preset.mistNear, 0.0f, 5000.0f);
     preset.mistFar = std::clamp(preset.mistFar, preset.mistNear, 10000.0f);
     preset.ambientLightColor = glm::clamp(preset.ambientLightColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.floorColor = glm::clamp(preset.floorColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.gridLineColor = glm::clamp(preset.gridLineColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.shadowColor = glm::clamp(preset.shadowColor, glm::vec3(0.0f), glm::vec3(1.0f));
     preset.sunLightColor = glm::clamp(preset.sunLightColor, glm::vec3(0.0f), glm::vec3(1.0f));
     preset.mistColor = glm::clamp(preset.mistColor, glm::vec3(0.0f), glm::vec3(1.0f));
     preset.backgroundColor = glm::clamp(preset.backgroundColor, glm::vec3(0.0f), glm::vec3(1.0f));
 
+    preset.lastEnvPreset = path;
     *gloParent->mOptions = preset;
+
     setMistColor(preset.mistColor);
     setShadowMode(preset.shadowsEnabled ? 1 : 0);
     setSkyboxRotation(preset.skyboxRotation);
@@ -824,7 +851,7 @@ bool Viewport::loadGroundTexture(const std::string& path) {
 }
 
 void Viewport::initFloorMesh() {
-    float a = 1000.f;
+    float a = 20000.f;
     float floor[4 * 6] = {
         -a, 0.f, -a, 0.f, 1.0f, 0.f,
         -a, 0.f, +a, 0.f, 1.0f, 0.f,
@@ -1577,7 +1604,7 @@ void Viewport::focusOnSection(int sectionIdx) {
 
     if (viewMode == ViewMode::Perspective) {
         freeFlyPos = worldPos - worldDir * 20.0f + glm::vec3(0, 8, 0);
-        freeFlyDir = glm::normalize(worldPos - freeFlyPos);
+        freeFlyDir = glm::normalize(worldPos + glm::vec3(0.0f, 5.0f, 0.0f) - freeFlyPos);
         freeFlySide = glm::normalize(glm::cross(freeFlyDir, glm::vec3(0, 1, 0)));
     } else if (viewMode == ViewMode::Top) {
         freeFlyPos = worldPos + glm::vec3(0, 100, 0);
@@ -1634,6 +1661,7 @@ void Viewport::drawFloor(VkCommandBuffer commandBuffer) {
         .lightDir = glm::vec4(lightDir, 0.0f),
         .ambientColor = glm::vec4(gloParent->mOptions->ambientLightColor, 1.0f),
         .sunColor = glm::vec4(gloParent->mOptions->sunLightColor, 1.0f),
+        .gridColor = glm::vec4(gloParent->mOptions->gridLineColor, 1.0f),
         .floorHeight = grdHeight,
         .grdTexSize = grdTexSize,
         .opacity = 1.0f,
@@ -1644,6 +1672,8 @@ void Viewport::drawFloor(VkCommandBuffer commandBuffer) {
         .mistFar = gloParent->mOptions->mistFar,
         .ambientStrength = gloParent->mOptions->ambientLightStrength,
         .sunStrength = gloParent->mOptions->sunLightStrength,
+        .gridMajorThickness = gloParent->mOptions->gridMajorThickness,
+        .gridMinorThickness = gloParent->mOptions->gridMinorThickness,
     };
     floorPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
     VkDeviceSize zeroOffset = 0;
@@ -1760,11 +1790,14 @@ void Viewport::drawGlbs(VkCommandBuffer commandBuffer, RenderPass pass) {
             .modelMatrix = ModelMatrix,
             .anchorBase = glm::mat4(1.0f),
             .shadowMatrix = shadowMatrix,
+            .shadowColor = glm::vec4(gloParent->mOptions->shadowColor, 1.0f),
             .uTrackLength = 0.0f,
             .heartline = 0.0f,
             .isInstanced = 0,
             .isAsset = 0,
             .shadowStrength = getShadowStrength(),
+            .floorHeight = grdHeight,
+            .softShadowsEnabled = gloParent->mOptions->softShadowsEnabled ? 1 : 0,
         };
         shadowGlbPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
         shadowGlbPipeline.bindStorageSet(commandBuffer, gVulkanContext->dummyStorageSet());
@@ -1846,11 +1879,14 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
                     .modelMatrix = ModelMatrix,
                     .anchorBase = anchorBase,
                     .shadowMatrix = shadowMatrix,
+                    .shadowColor = glm::vec4(gloParent->mOptions->shadowColor, 1.0f),
                     .uTrackLength = (float)myTrack->getTotalLength(),
                     .heartline = (float)myTrack->fHeart,
                     .isInstanced = 1,
                     .isAsset = isAsset,
                     .shadowStrength = getShadowStrength(),
+                    .floorHeight = grdHeight,
+                    .softShadowsEnabled = gloParent->mOptions->softShadowsEnabled ? 1 : 0,
                 };
                 shadowInstancedPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
                 shadowInstancedPipeline.bindStorageSet(commandBuffer, mesh->splineStorageSet);

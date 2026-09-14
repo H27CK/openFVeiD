@@ -1267,12 +1267,115 @@ void LeftPanel::renderColorsTab(trackHandler* hTrack, Application* app) {
 }
 
 void LeftPanel::renderEnvironmentTab() {
+    ImGui::TextDisabled("Tip: Right-click headers (Ground, Lighting, etc.) to reset.");
+    ImGui::Spacing();
+
+    bool groundOpen = ImGui::TreeNodeEx("Ground", ImGuiTreeNodeFlags_DefaultOpen);
+    if (ImGui::BeginPopupContextItem("GroundResetPopup")) {
+        if (ImGui::MenuItem("Reset Ground to Default")) {
+            gloParent->projectGrdTexSize = 440.0f;
+            gloParent->projectGrdHeight = 0.0f;
+            gloParent->projectGroundTex.clear();
+            gloParent->mOptions->floorColor = glm::vec3(213.0f / 255.0f);
+            gloParent->mOptions->drawGrid = true;
+            gloParent->mOptions->gridLineColor = glm::vec3(0.6f, 0.6f, 0.6f);
+            gloParent->mOptions->gridMajorThickness = 1.5f;
+            gloParent->mOptions->gridMinorThickness = 1.0f;
+            if (gViewport) {
+                gViewport->setGroundTextureSize(gloParent->projectGrdTexSize);
+                gViewport->setGroundHeight(gloParent->projectGrdHeight);
+                gViewport->loadGroundTexture("");
+            }
+        }
+        ImGui::EndPopup();
+    }
+    if (groundOpen) {
+        BEGIN_PROP_TABLE("GroundProps")
+        float size = gloParent->projectGrdTexSize;
+        float height = gloParent->projectGrdHeight;
+        PROP_ROW(
+            "Color",
+            if (ImGui::ColorEdit3("##FloorColor", &gloParent->mOptions->floorColor.x)) {
+                if (gViewport)
+                    gViewport->markSceneDirty();
+            })
+        PROP_ROW(
+            "Grid Enabled",
+            if (ImGui::Checkbox("##FloorGrid", &gloParent->mOptions->drawGrid)) {
+                if (gViewport)
+                    gViewport->markSceneDirty();
+            })
+        PROP_ROW(
+            "Grid Line Color",
+            if (ImGui::ColorEdit3("##GridLineColor", &gloParent->mOptions->gridLineColor.x)) {
+                if (gViewport)
+                    gViewport->markSceneDirty();
+            })
+        PROP_ROW(
+            "Grid Major Thickness",
+            if (ImGui::SliderFloat("##GridMajorThickness", &gloParent->mOptions->gridMajorThickness, 0.1f, 10.0f, "%.1f px")) {
+                gloParent->mOptions->gridMajorThickness = std::max(0.01f, gloParent->mOptions->gridMajorThickness);
+                if (gViewport)
+                    gViewport->markSceneDirty();
+            })
+        PROP_ROW(
+            "Grid Minor Thickness",
+            if (ImGui::SliderFloat("##GridMinorThickness", &gloParent->mOptions->gridMinorThickness, 0.1f, 10.0f, "%.1f px")) {
+                gloParent->mOptions->gridMinorThickness = std::max(0.01f, gloParent->mOptions->gridMinorThickness);
+                if (gViewport)
+                    gViewport->markSceneDirty();
+            })
+        PROP_ROW(
+            "Ground Height",
+            if (ImGui::DragFloat("##GrdHeight", &height, 0.1f, -1000.0f, 1000.0f, "%.1f m") || common::ValueScroll(&height, 1.0f, 0.1f)) {
+                gloParent->projectGrdHeight = height;
+                if (gViewport)
+                    gViewport->setGroundHeight(gloParent->projectGrdHeight);
+            })
+        PROP_ROW(
+            "Texture",
+            if (ImGui::Button("Load...")) {
+                auto f = pfd::open_file("Open Ground Texture", ".", {"Image Files", "*.jpg *.png *.bmp", "All Files", "*"}).result();
+                if (!f.empty() && gViewport && gViewport->loadGroundTexture(f[0])) {
+                    gloParent->projectGroundTex = f[0];
+                    gloParent->mOptions->floorColor = glm::vec3(1.0f);
+                    gViewport->markSceneDirty();
+                }
+            })
+        PROP_ROW(
+            "Texture Size",
+            if (ImGui::DragFloat("##GrdSize", &size, 1.0f, 1.0f, 10000.0f, "%.1f") || common::ValueScroll(&size, 10.0f, 1.0f)) {
+                gloParent->projectGrdTexSize = std::max(1.0f, size);
+                if (gViewport)
+                    gViewport->setGroundTextureSize(gloParent->projectGrdTexSize);
+            })
+        END_PROP_TABLE()
+        ImGui::TreePop();
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Render Env. Preset dropdown right above Lighting/Shadows section as it doesn't affect Ground but sets everything else
     if (gViewport) {
         const std::vector<std::string>& presets = gViewport->getAvailableEnvironmentPresets();
         const std::string& selectedPreset = gViewport->getSelectedEnvironmentPresetName();
         std::string presetToSelect;
-        if (ImGui::BeginCombo("Env. Preset",
-                              selectedPreset.empty() ? "None" : selectedPreset.c_str())) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Env. Preset");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::BeginCombo("##EnvPresetCombo",
+                              selectedPreset.empty() ? "Default" : selectedPreset.c_str())) {
+            // Special Default preset option
+            bool isDefaultSelected = selectedPreset.empty();
+            if (ImGui::Selectable("Default", isDefaultSelected)) {
+                presetToSelect = "Default";
+            }
+            if (isDefaultSelected)
+                ImGui::SetItemDefaultFocus();
+
             for (const std::string& name : presets) {
                 bool selected = name == selectedPreset;
                 if (ImGui::Selectable(name.c_str(), selected))
@@ -1282,44 +1385,67 @@ void LeftPanel::renderEnvironmentTab() {
             }
             ImGui::EndCombo();
         }
-        if (!presetToSelect.empty())
-            gViewport->selectEnvironmentPreset(presetToSelect);
-    }
-
-    bool groundOpen = ImGui::TreeNodeEx("Ground", ImGuiTreeNodeFlags_DefaultOpen);
-    if (groundOpen) {
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Reset##Ground")) {
+        if (presetToSelect == "Default") {
+            // Reset Ground Properties
             gloParent->projectGrdTexSize = 440.0f;
             gloParent->projectGrdHeight = 0.0f;
             gloParent->projectGroundTex.clear();
-            gloParent->mOptions->floorColor = glm::vec3(213.0f / 255.0f);
-            if (gViewport) {
-                gViewport->setGroundTextureSize(gloParent->projectGrdTexSize);
-                gViewport->setGroundHeight(gloParent->projectGrdHeight);
-                gViewport->loadGroundTexture("");
-            }
+
+            // Reset Options to modern defaults
+            DummyOptions* options = gloParent->mOptions;
+            options->floorColor = glm::vec3(213.0f / 255.0f, 213.0f / 255.0f, 213.0f / 255.0f);
+            options->drawGrid = true;
+            options->gridLineColor = glm::vec3(0.6f, 0.6f, 0.6f);
+            options->gridMajorThickness = 1.5f;
+            options->gridMinorThickness = 1.0f;
+
+            options->shadowsEnabled = true;
+            options->shadowColor = glm::vec3(0.2f, 0.2f, 0.2f);
+            options->softShadowsEnabled = true;
+            options->sunLightStrength = 1.0f;
+            options->sunLightColor = glm::vec3(1.0f);
+            options->ambientLightStrength = 0.72f;
+            options->ambientLightColor = glm::vec3(1.0f);
+            options->trackTextureEnabled = true;
+            options->sunPitch = -90.0f;
+            options->sunYaw = 0.0f;
+
+            options->skyboxName = "Solid Color";
+            options->skyboxRotation = 0.0f;
+            options->backgroundColor = glm::vec3(0.5f, 0.5f, 0.5f);
+
+            options->mistEnabled = false;
+            options->mistNear = 100.0f;
+            options->mistFar = 270.0f;
+            options->mistColor = glm::vec3(0.5f, 0.5f, 0.5f);
+
+            options->lastEnvPreset.clear();
+
+            // Apply to Viewport
+            gViewport->setGroundTextureSize(gloParent->projectGrdTexSize);
+            gViewport->setGroundHeight(gloParent->projectGrdHeight);
+            gViewport->loadGroundTexture("");
+            gViewport->setShadowMode(1);
+            gViewport->setLightDirection(options->sunPitch, options->sunYaw);
+            gViewport->selectSkybox("Solid Color");
+            gViewport->setSkyboxRotation(0.0f);
+            gViewport->setMistColor(options->mistColor);
+            gViewport->selectEnvironmentPreset(""); // Clear active viewport preset
+            gViewport->markSceneDirty();
+        } else if (!presetToSelect.empty()) {
+            gViewport->selectEnvironmentPreset(presetToSelect);
         }
-        BEGIN_PROP_TABLE("GroundProps")
-        float size = gloParent->projectGrdTexSize;
-        float height = gloParent->projectGrdHeight;
-        PROP_ROW(
-            "Texture Size", if (ImGui::DragFloat("##GrdSize", &size, 1.0f, 1.0f, 10000.0f, "%.1f") || common::ValueScroll(&size, 10.0f, 1.0f)) { gloParent->projectGrdTexSize = std::max(1.0f, size); if (gViewport) gViewport->setGroundTextureSize(gloParent->projectGrdTexSize); })
-        PROP_ROW(
-            "Ground Height", if (ImGui::DragFloat("##GrdHeight", &height, 0.1f, -1000.0f, 1000.0f, "%.1f m") || common::ValueScroll(&height, 1.0f, 0.1f)) { gloParent->projectGrdHeight = height; if (gViewport) gViewport->setGroundHeight(gloParent->projectGrdHeight); })
-        PROP_ROW(
-            "Color", if (ImGui::ColorEdit3("##FloorColor", &gloParent->mOptions->floorColor.x)) { if (gViewport) gViewport->markSceneDirty(); })
-        PROP_ROW(
-            "Texture", if (ImGui::Button("Load...")) { auto f = pfd::open_file("Open Ground Texture", ".", {"Image Files", "*.jpg *.png *.bmp", "All Files", "*"}).result(); if (!f.empty() && gViewport && gViewport->loadGroundTexture(f[0])) { gloParent->projectGroundTex = f[0]; gloParent->mOptions->floorColor = glm::vec3(1.0f); gViewport->markSceneDirty(); } })
-        END_PROP_TABLE()
-        ImGui::TreePop();
     }
+
+    ImGui::Spacing();
+
     bool lightingOpen = ImGui::TreeNodeEx("Lighting & Shadows", ImGuiTreeNodeFlags_DefaultOpen);
-    if (lightingOpen) {
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Reset##Lighting")) {
+    if (ImGui::BeginPopupContextItem("LightingResetPopup")) {
+        if (ImGui::MenuItem("Reset Lighting & Shadows to Default")) {
             DummyOptions* options = gloParent->mOptions;
             options->shadowsEnabled = true;
+            options->shadowColor = glm::vec3(0.2f, 0.2f, 0.2f);
+            options->softShadowsEnabled = true;
             options->sunLightStrength = 1.0f;
             options->sunLightColor = glm::vec3(1.0f);
             options->ambientLightStrength = 0.72f;
@@ -1333,56 +1459,97 @@ void LeftPanel::renderEnvironmentTab() {
                 gViewport->markSceneDirty();
             }
         }
+        ImGui::EndPopup();
+    }
+    if (lightingOpen) {
         BEGIN_PROP_TABLE("ShadowProps")
         extern Viewport* gViewport;
         PROP_ROW(
-            "Enable Shadows", if (ImGui::Checkbox("##EnableShadows", &gloParent->mOptions->shadowsEnabled)) { if (gViewport) gViewport->setShadowMode(gloParent->mOptions->shadowsEnabled ? 1 : 0); })
-        PROP_ROW(
-            "Sun Light", if (ImGui::SliderFloat("##SunLight", &gloParent->mOptions->sunLightStrength, 0.0f, 2.0f, "%.2f")) {
+            "Ambient Color",
+            if (ImGui::ColorEdit3("##AmbientColor", &gloParent->mOptions->ambientLightColor.x)) {
                 if (gViewport)
                     gViewport->markSceneDirty();
             })
         PROP_ROW(
-            "Sun Color", if (ImGui::ColorEdit3("##SunColor", &gloParent->mOptions->sunLightColor.x)) {
+            "Ambient Light",
+            if (ImGui::SliderFloat("##AmbientLight", &gloParent->mOptions->ambientLightStrength, 0.0f, 2.0f, "%.2f")) {
                 if (gViewport)
                     gViewport->markSceneDirty();
             })
         PROP_ROW(
-            "Ambient Light", if (ImGui::SliderFloat("##AmbientLight", &gloParent->mOptions->ambientLightStrength, 0.0f, 2.0f, "%.2f")) {
+            "Enable Shadows",
+            if (ImGui::Checkbox("##EnableShadows", &gloParent->mOptions->shadowsEnabled)) {
+                if (gViewport)
+                    gViewport->setShadowMode(gloParent->mOptions->shadowsEnabled ? 1 : 0);
+            })
+        PROP_ROW(
+            "Shadow Color",
+            if (ImGui::ColorEdit3("##ShadowColor", &gloParent->mOptions->shadowColor.x)) {
                 if (gViewport)
                     gViewport->markSceneDirty();
             })
         PROP_ROW(
-            "Ambient Color", if (ImGui::ColorEdit3("##AmbientColor", &gloParent->mOptions->ambientLightColor.x)) {
+            "Soft Shadows",
+            if (ImGui::Checkbox("##SoftShadows", &gloParent->mOptions->softShadowsEnabled)) {
                 if (gViewport)
                     gViewport->markSceneDirty();
             })
         PROP_ROW(
-            "Track Texture", if (ImGui::Checkbox("##TrackTexture", &gloParent->mOptions->trackTextureEnabled)) {
+            "Sun Color",
+            if (ImGui::ColorEdit3("##SunColor", &gloParent->mOptions->sunLightColor.x)) {
                 if (gViewport)
                     gViewport->markSceneDirty();
             })
         PROP_ROW(
-            "Sun Pitch", if (ImGui::SliderFloat("##SunPitch", &gloParent->mOptions->sunPitch, -90.0f, 0.0f, "%.1f deg")) {
+            "Sun Light",
+            if (ImGui::SliderFloat("##SunLight", &gloParent->mOptions->sunLightStrength, 0.0f, 2.0f, "%.2f")) {
+                if (gViewport)
+                    gViewport->markSceneDirty();
+            })
+        PROP_ROW(
+            "Sun Pitch",
+            if (ImGui::SliderFloat("##SunPitch", &gloParent->mOptions->sunPitch, -90.0f, 0.0f, "%.1f deg")) {
                 if (gViewport)
                     gViewport->setLightDirection(gloParent->mOptions->sunPitch, gloParent->mOptions->sunYaw);
             })
         PROP_ROW(
-            "Sun Yaw", if (ImGui::SliderFloat("##SunYaw", &gloParent->mOptions->sunYaw, -180.0f, 180.0f, "%.1f deg")) {
+            "Sun Yaw",
+            if (ImGui::SliderFloat("##SunYaw", &gloParent->mOptions->sunYaw, -180.0f, 180.0f, "%.1f deg")) {
                 if (gViewport)
                     gViewport->setLightDirection(gloParent->mOptions->sunPitch, gloParent->mOptions->sunYaw);
+            })
+        PROP_ROW(
+            "Track Texture",
+            if (ImGui::Checkbox("##TrackTexture", &gloParent->mOptions->trackTextureEnabled)) {
+                if (gViewport)
+                    gViewport->markSceneDirty();
             })
         END_PROP_TABLE()
         ImGui::TreePop();
     }
-    if (ImGui::TreeNodeEx("Skybox", ImGuiTreeNodeFlags_DefaultOpen)) {
+    bool skyboxOpen = ImGui::TreeNodeEx("Skybox", ImGuiTreeNodeFlags_DefaultOpen);
+    if (ImGui::BeginPopupContextItem("SkyboxResetPopup")) {
+        if (ImGui::MenuItem("Reset Skybox to Default")) {
+            gloParent->mOptions->skyboxName = "Solid Color";
+            gloParent->mOptions->skyboxRotation = 0.0f;
+            gloParent->mOptions->backgroundColor = glm::vec3(0.5f, 0.5f, 0.5f);
+            if (gViewport) {
+                gViewport->selectSkybox("Solid Color");
+                gViewport->setSkyboxRotation(0.0f);
+                gViewport->markSceneDirty();
+            }
+        }
+        ImGui::EndPopup();
+    }
+    if (skyboxOpen) {
         BEGIN_PROP_TABLE("SkyboxProps")
         const std::vector<std::string>* skyboxes = gViewport ? &gViewport->getAvailableSkyboxes() : nullptr;
         const char* preview = gloParent->mOptions->skyboxName.empty()
                                   ? "None"
                                   : gloParent->mOptions->skyboxName.c_str();
         PROP_ROW(
-            "Skybox", if (ImGui::BeginCombo("##Skybox", preview)) {
+            "Skybox",
+            if (ImGui::BeginCombo("##Skybox", preview)) {
                 std::string skyboxToSelect;
                 if (skyboxes) {
                     for (const std::string& name : *skyboxes) {
@@ -1399,11 +1566,19 @@ void LeftPanel::renderEnvironmentTab() {
             })
         if (gloParent->mOptions->skyboxName == "Solid Color") {
             PROP_ROW(
-                "Color", if (ImGui::ColorEdit3("##SkyboxColor", &gloParent->mOptions->backgroundColor.x)) { if (gViewport) gViewport->markSceneDirty(); })
+                "Color",
+                if (ImGui::ColorEdit3("##SkyboxColor", &gloParent->mOptions->backgroundColor.x)) {
+                    if (gViewport)
+                        gViewport->markSceneDirty();
+                })
         }
         if (gloParent->mOptions->skyboxName != "Solid Color") {
             PROP_ROW(
-                "Rotation Offset", if (ImGui::SliderFloat("##SkyboxRotation", &gloParent->mOptions->skyboxRotation, -180.0f, 180.0f, "%.1f deg")) { if (gViewport) gViewport->setSkyboxRotation(gloParent->mOptions->skyboxRotation); })
+                "Rotation Offset",
+                if (ImGui::SliderFloat("##SkyboxRotation", &gloParent->mOptions->skyboxRotation, -180.0f, 180.0f, "%.1f deg")) {
+                    if (gViewport)
+                        gViewport->setSkyboxRotation(gloParent->mOptions->skyboxRotation);
+                })
         }
         if (!gloParent->skyboxAvailable) {
             ImGui::TableNextRow();
@@ -1414,9 +1589,8 @@ void LeftPanel::renderEnvironmentTab() {
         ImGui::TreePop();
     }
     bool mistOpen = ImGui::TreeNodeEx("Mist (Far Field)", ImGuiTreeNodeFlags_DefaultOpen);
-    if (mistOpen) {
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Reset##Mist")) {
+    if (ImGui::BeginPopupContextItem("MistResetPopup")) {
+        if (ImGui::MenuItem("Reset Mist to Default")) {
             gloParent->mOptions->mistEnabled = false;
             gloParent->mOptions->mistNear = 100.0f;
             gloParent->mOptions->mistFar = 270.0f;
@@ -1424,26 +1598,36 @@ void LeftPanel::renderEnvironmentTab() {
             if (gViewport)
                 gViewport->setMistColor(gloParent->mOptions->mistColor);
         }
+        ImGui::EndPopup();
+    }
+    if (mistOpen) {
         BEGIN_PROP_TABLE("MistProps")
         extern Viewport* gViewport;
         PROP_ROW(
-            "Enabled", if (ImGui::Checkbox("##MistEnabled", &gloParent->mOptions->mistEnabled)) { if (gViewport) gViewport->markSceneDirty(); })
+            "Color",
+            if (ImGui::ColorEdit3("##MistColor", &gloParent->mOptions->mistColor.r)) {
+                if (gViewport)
+                    gViewport->setMistColor(gloParent->mOptions->mistColor);
+            })
         PROP_ROW(
-            "Near Dist", if (ImGui::DragFloat("##MistNear", &gloParent->mOptions->mistNear, 1.0f, 0.0f, 5000.0f, "%.1f m") || common::ValueScroll(&gloParent->mOptions->mistNear, 10.0f, 1.0f)) {
-                gloParent->mOptions->mistNear = std::clamp(gloParent->mOptions->mistNear, 0.0f, 5000.0f);
+            "Enabled",
+            if (ImGui::Checkbox("##MistEnabled", &gloParent->mOptions->mistEnabled)) {
                 if (gViewport)
                     gViewport->markSceneDirty();
             })
         PROP_ROW(
-            "Far Dist", if (ImGui::DragFloat("##MistFar", &gloParent->mOptions->mistFar, 1.0f, 0.0f, 10000.0f, "%.1f m") || common::ValueScroll(&gloParent->mOptions->mistFar, 10.0f, 1.0f)) {
+            "Far Dist",
+            if (ImGui::DragFloat("##MistFar", &gloParent->mOptions->mistFar, 1.0f, 0.0f, 10000.0f, "%.1f m") || common::ValueScroll(&gloParent->mOptions->mistFar, 10.0f, 1.0f)) {
                 gloParent->mOptions->mistFar = std::clamp(gloParent->mOptions->mistFar, gloParent->mOptions->mistNear, 10000.0f);
                 if (gViewport)
                     gViewport->markSceneDirty();
             })
         PROP_ROW(
-            "Color", if (ImGui::ColorEdit3("##MistColor", &gloParent->mOptions->mistColor.r)) {
+            "Near Dist",
+            if (ImGui::DragFloat("##MistNear", &gloParent->mOptions->mistNear, 1.0f, 0.0f, 5000.0f, "%.1f m") || common::ValueScroll(&gloParent->mOptions->mistNear, 10.0f, 1.0f)) {
+                gloParent->mOptions->mistNear = std::clamp(gloParent->mOptions->mistNear, 0.0f, 5000.0f);
                 if (gViewport)
-                    gViewport->setMistColor(gloParent->mOptions->mistColor);
+                    gViewport->markSceneDirty();
             })
         END_PROP_TABLE()
         ImGui::TreePop();

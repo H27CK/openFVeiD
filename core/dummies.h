@@ -33,77 +33,81 @@ class section;
 class subfunc;
 
 struct DummyOptions {
-    int meshQuality = 1;
-    int maxUndoChanges = 64;
-    int measures = 0; // 0: Metric (m/s), 1: Metric (kph), 2: English (mph)
+    bool autoFocusOnSelection = false;
     bool drawGrid = true;
+    bool editShadows = true;
+    bool enableCurveChasing = false;
     bool enforceMinRadius = false;
-    float minRadius = 5.0f;
-    glm::vec3 backgroundColor = glm::vec3(0.5f, 0.5f, 0.5f);
-    glm::vec3 floorColor = glm::vec3(213.0f / 255.0f);
-    int theme = 0; // 0: Dark, 1: Light, 2: Classic
+    bool glbShadowsEnabled = false;  // Experimental
+    bool graphOverlayEnabled = true; // Telemetry overlay
+    bool lookAheadPovSmoothing = true;
+    bool mistEnabled = false;
+    bool relativeExport = false; // Relative NoLimits 2 export coordinate behaviour
     bool shadowsEnabled = true;
+    bool showFPS = true;
+    bool skyboxEnabled = true;
+    bool softShadowsEnabled = true;
+    bool strictCustomStyleLock = true;
+    bool trackTextureEnabled = true;
     bool transparentGraphs = false;
     bool useLegacyHeartline = false;
-    bool lookAheadPovSmoothing = true;
-    bool enableCurveChasing = false;
-    float fov = 90.0f;
-    float mouseSensitivity = 1.0f;
-    float sprintMultiplier = 2.0f;
-    int keyForward = 0;
-    int keyBackward = 0;
-    int keyLeft = 0;
-    int keyRight = 0;
-    int keyOverlayWarnings = 0;
-    int keyOverlayScenery = 0;
-    int keyPrependTransition = ImGuiKey_LeftBracket;
-    int keyAppendTransition = ImGuiKey_RightBracket;
-    int keyViewPerspective = ImGuiKey_None;
-    int keyViewTop = ImGuiKey_None;
-    int keyViewSide = ImGuiKey_None;
-    int keyViewFront = ImGuiKey_None;
-    bool autoFocusOnSelection = false;
-    float fontSize = 15.0f;
-    int screenshotMultiplier = 2;
-    int msaaSamples = 4; // 0: Off, 2, 4, 8
-
-    int targetFPS = 60;
-    bool showFPS = true;
     bool vSync = true;
 
-    // Default Transitions
+    float ambientLightStrength = 0.72f;
+    float fontSize = 15.0f;
+    float fov = 90.0f;
+    float graphSpacingLimit = 0.1f;
+    float gridMajorThickness = 1.5f;
+    float gridMinorThickness = 1.0f;
+    float minRadius = 5.0f;
+    float mistFar = 270.0f;
+    float mistNear = 100.0f;
+    float mouseSensitivity = 1.0f;
+    float scrollCtrlIncrement = 1.0f;
+    float scrollIncrement = 0.1f;
+    float scrollShiftIncrement = 10.0f;
+    float skyboxRotation = 0.0f;
+    float sprintMultiplier = 2.0f;
+    float stallSpeed = 0.1f;
+    float sunLightStrength = 1.0f;
+    float sunPitch = -90.0f; // Directly above
+    float sunYaw = 0.0f;
+
     int defaultTransitionLateral = 4; // quartic (Lateral Force default)
     int defaultTransitionNormal = 2;  // cubic (Normal Force default)
     int defaultTransitionPitch = 2;   // cubic (Pitch default)
     int defaultTransitionRoll = 4;    // quartic (Roll Rate default)
     int defaultTransitionYaw = 2;     // cubic (Yaw default)
+    int keyAppendTransition = ImGuiKey_RightBracket;
+    int keyBackward = 0;
+    int keyForward = 0;
+    int keyLeft = 0;
+    int keyOverlayScenery = 0;
+    int keyOverlayWarnings = 0;
+    int keyPrependTransition = ImGuiKey_LeftBracket;
+    int keyRight = 0;
+    int keyViewFront = ImGuiKey_None;
+    int keyViewPerspective = ImGuiKey_None;
+    int keyViewSide = ImGuiKey_None;
+    int keyViewTop = ImGuiKey_None;
+    int maxUndoChanges = 64;
+    int measures = 0; // 0: Metric (m/s), 1: Metric (kph), 2: English (mph)
+    int meshQuality = 1;
+    int msaaSamples = 4;
+    int screenshotMultiplier = 2;
+    int targetFPS = 60;
+    int theme = 0; // 0: Dark, 1: Light, 2: Classic
 
-    // Mist Settings
-    bool mistEnabled = false;
-    float mistNear = 100.0f;
-    float mistFar = 270.0f;
-    glm::vec3 mistColor = glm::vec3(0.5f, 0.5f, 0.5f);
-
-    bool skyboxEnabled = true;
-    bool strictCustomStyleLock = true;
-    bool editShadows = true;
-    bool glbShadowsEnabled = false;  // Experimental
-    bool graphOverlayEnabled = true; // Telemetry overlay
-    bool relativeExport = false;     // Relative NoLimits 2 export coordinate behaviour
-    float sunPitch = -90.0f;         // Directly above
-    float sunYaw = 0.0f;
-    float sunLightStrength = 1.0f;
-    glm::vec3 sunLightColor = glm::vec3(1.0f);
-    float ambientLightStrength = 0.72f;
     glm::vec3 ambientLightColor = glm::vec3(1.0f);
-    bool trackTextureEnabled = true;
+    glm::vec3 backgroundColor = glm::vec3(0.5f, 0.5f, 0.5f);
+    glm::vec3 floorColor = glm::vec3(213.0f / 255.0f, 213.0f / 255.0f, 213.0f / 255.0f);
+    glm::vec3 gridLineColor = glm::vec3(0.6f, 0.6f, 0.6f);
+    glm::vec3 mistColor = glm::vec3(0.5f, 0.5f, 0.5f);
+    glm::vec3 shadowColor = glm::vec3(0.2f, 0.2f, 0.2f);
+    glm::vec3 sunLightColor = glm::vec3(1.0f);
+
+    std::string lastEnvPreset = "";
     std::string skyboxName = "Solid Color";
-    float skyboxRotation = 0.0f;
-    float stallSpeed = 0.1f;
-    float graphSpacingLimit = 0.1f;
-    float scrollCtrlIncrement = 1.0f;
-    float scrollIncrement = 0.1f;
-    float scrollShiftIncrement = 10.0f;
 
     glm::vec3 graphColors[18] = {
         glm::vec3(1.0f, 0.2f, 0.2f), // EditRoll (0)
@@ -131,76 +135,80 @@ struct DummyOptions {
         if (out) {
             out << "FVD_OPT_V1 "
                 << autoFocusOnSelection << " "
-                << backgroundColor.x << " " << backgroundColor.y << " " << backgroundColor.z << " "
+                << drawGrid << " "
+                << editShadows << " "
+                << enableCurveChasing << " "
+                << enforceMinRadius << " "
+                << glbShadowsEnabled << " "
+                << graphOverlayEnabled << " "
+                << lookAheadPovSmoothing << " "
+                << mistEnabled << " "
+                << relativeExport << " "
+                << shadowsEnabled << " "
+                << showFPS << " "
+                << skyboxEnabled << " "
+                << softShadowsEnabled << " "
+                << strictCustomStyleLock << " "
+                << trackTextureEnabled << " "
+                << transparentGraphs << " "
+                << useLegacyHeartline << " "
+                << vSync << " "
+                << ambientLightStrength << " "
+                << fontSize << " "
+                << fov << " "
+                << graphSpacingLimit << " "
+                << gridMajorThickness << " "
+                << gridMinorThickness << " "
+                << minRadius << " "
+                << mistFar << " "
+                << mistNear << " "
+                << mouseSensitivity << " "
+                << scrollCtrlIncrement << " "
+                << scrollIncrement << " "
+                << scrollShiftIncrement << " "
+                << skyboxRotation << " "
+                << sprintMultiplier << " "
+                << stallSpeed << " "
+                << sunLightStrength << " "
+                << sunPitch << " "
+                << sunYaw << " "
                 << defaultTransitionLateral << " "
                 << defaultTransitionNormal << " "
                 << defaultTransitionPitch << " "
                 << defaultTransitionRoll << " "
                 << defaultTransitionYaw << " "
-                << drawGrid << " "
-                << editShadows << " "
-                << enforceMinRadius << " "
-                << floorColor.x << " " << floorColor.y << " " << floorColor.z << " "
-                << fontSize << " "
-                << fov << " "
-                << glbShadowsEnabled << " "
-                << graphOverlayEnabled << " "
-                << lookAheadPovSmoothing << " "
-                << enableCurveChasing << " "
+                << keyAppendTransition << " "
                 << keyBackward << " "
                 << keyForward << " "
                 << keyLeft << " "
-                << keyRight << " "
-                << keyOverlayWarnings << " "
                 << keyOverlayScenery << " "
-                << keyAppendTransition << " "
+                << keyOverlayWarnings << " "
                 << keyPrependTransition << " "
-                << keyViewPerspective << " "
-                << keyViewTop << " "
-                << keyViewSide << " "
+                << keyRight << " "
                 << keyViewFront << " "
+                << keyViewPerspective << " "
+                << keyViewSide << " "
+                << keyViewTop << " "
                 << maxUndoChanges << " "
                 << measures << " "
                 << meshQuality << " "
-                << minRadius << " "
-                << mistColor.x << " " << mistColor.y << " " << mistColor.z << " "
-                << mistEnabled << " "
-                << mistFar << " "
-                << mistNear << " "
-                << mouseSensitivity << " "
                 << msaaSamples << " "
-                << relativeExport << " "
                 << screenshotMultiplier << " "
-                << scrollCtrlIncrement << " "
-                << scrollIncrement << " "
-                << scrollShiftIncrement << " "
-                << shadowsEnabled << " "
-                << showFPS << " "
-                << skyboxEnabled << " "
-                << sprintMultiplier << " "
-                << stallSpeed << " "
-                << strictCustomStyleLock << " "
-                << sunPitch << " "
-                << sunYaw << " "
                 << targetFPS << " "
                 << theme << " "
-                << transparentGraphs << " "
-                << vSync << "\n";
+                << ambientLightColor.x << " " << ambientLightColor.y << " " << ambientLightColor.z << " "
+                << backgroundColor.x << " " << backgroundColor.y << " " << backgroundColor.z << " "
+                << floorColor.x << " " << floorColor.y << " " << floorColor.z << " "
+                << gridLineColor.x << " " << gridLineColor.y << " " << gridLineColor.z << " "
+                << mistColor.x << " " << mistColor.y << " " << mistColor.z << " "
+                << shadowColor.x << " " << shadowColor.y << " " << shadowColor.z << " "
+                << sunLightColor.x << " " << sunLightColor.y << " " << sunLightColor.z << " "
+                << std::quoted(lastEnvPreset) << " "
+                << std::quoted(skyboxName) << "\n";
             for (int i = 0; i < 18; ++i) {
                 out << graphColors[i].x << " " << graphColors[i].y << " " << graphColors[i].z << " ";
             }
-            out << "\n"
-                << ambientLightStrength << " "
-                << ambientLightColor.x << " "
-                << ambientLightColor.y << " "
-                << ambientLightColor.z << "\n"
-                << sunLightStrength << " "
-                << sunLightColor.x << " "
-                << sunLightColor.y << " "
-                << sunLightColor.z << "\n"
-                << trackTextureEnabled << "\n"
-                << std::quoted(skyboxName) << " "
-                << skyboxRotation << "\n";
+            out << "\n";
         }
     }
 
@@ -212,39 +220,11 @@ struct DummyOptions {
                 return;
 
             if (version == "FVD_OPT_V1") {
-                in >> autoFocusOnSelection >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> defaultTransitionLateral >> defaultTransitionNormal >> defaultTransitionPitch >> defaultTransitionRoll >> defaultTransitionYaw >> drawGrid >> editShadows >> enforceMinRadius >> floorColor.x >> floorColor.y >> floorColor.z >> fontSize >> fov >> glbShadowsEnabled >> graphOverlayEnabled >> lookAheadPovSmoothing >> enableCurveChasing >> keyBackward >> keyForward >> keyLeft >> keyRight >> keyOverlayWarnings >> keyOverlayScenery >> keyAppendTransition >> keyPrependTransition >> keyViewPerspective >> keyViewTop >> keyViewSide >> keyViewFront >> maxUndoChanges >> measures >> meshQuality >> minRadius >> mistColor.x >> mistColor.y >> mistColor.z >> mistEnabled >> mistFar >> mistNear >> mouseSensitivity >> msaaSamples >> relativeExport >> screenshotMultiplier >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> shadowsEnabled >> showFPS >> skyboxEnabled >> sprintMultiplier >> stallSpeed >> strictCustomStyleLock >> sunPitch >> sunYaw >> targetFPS >> theme >> transparentGraphs >> vSync;
+                in >> autoFocusOnSelection >> drawGrid >> editShadows >> enableCurveChasing >> enforceMinRadius >> glbShadowsEnabled >> graphOverlayEnabled >> lookAheadPovSmoothing >> mistEnabled >> relativeExport >> shadowsEnabled >> showFPS >> skyboxEnabled >> softShadowsEnabled >> strictCustomStyleLock >> trackTextureEnabled >> transparentGraphs >> useLegacyHeartline >> vSync >> ambientLightStrength >> fontSize >> fov >> graphSpacingLimit >> gridMajorThickness >> gridMinorThickness >> minRadius >> mistFar >> mistNear >> mouseSensitivity >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> skyboxRotation >> sprintMultiplier >> stallSpeed >> sunLightStrength >> sunPitch >> sunYaw >> defaultTransitionLateral >> defaultTransitionNormal >> defaultTransitionPitch >> defaultTransitionRoll >> defaultTransitionYaw >> keyAppendTransition >> keyBackward >> keyForward >> keyLeft >> keyOverlayScenery >> keyOverlayWarnings >> keyPrependTransition >> keyRight >> keyViewFront >> keyViewPerspective >> keyViewSide >> keyViewTop >> maxUndoChanges >> measures >> meshQuality >> msaaSamples >> screenshotMultiplier >> targetFPS >> theme >> ambientLightColor.x >> ambientLightColor.y >> ambientLightColor.z >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> floorColor.x >> floorColor.y >> floorColor.z >> gridLineColor.x >> gridLineColor.y >> gridLineColor.z >> mistColor.x >> mistColor.y >> mistColor.z >> shadowColor.x >> shadowColor.y >> shadowColor.z >> sunLightColor.x >> sunLightColor.y >> sunLightColor.z >> std::quoted(lastEnvPreset) >> std::quoted(skyboxName);
 
                 for (int i = 0; i < 18; ++i) {
                     if (!(in >> graphColors[i].x >> graphColors[i].y >> graphColors[i].z))
                         break;
-                }
-
-                // Added after the original V1 fields so existing option files
-                // remain valid and retain the defaults when values are absent.
-                float savedAmbientStrength;
-                glm::vec3 savedAmbientColor;
-                if (in >> savedAmbientStrength >> savedAmbientColor.x >> savedAmbientColor.y >> savedAmbientColor.z) {
-                    ambientLightStrength = savedAmbientStrength;
-                    ambientLightColor = savedAmbientColor;
-                }
-
-                float savedSunStrength;
-                glm::vec3 savedSunColor;
-                if (in >> savedSunStrength >> savedSunColor.x >> savedSunColor.y >> savedSunColor.z) {
-                    sunLightStrength = savedSunStrength;
-                    sunLightColor = savedSunColor;
-                }
-
-                bool savedTrackTextureEnabled;
-                if (in >> savedTrackTextureEnabled) {
-                    trackTextureEnabled = savedTrackTextureEnabled;
-
-                    std::string savedSkyboxName;
-                    float savedSkyboxRotation;
-                    if (in >> std::quoted(savedSkyboxName) >> savedSkyboxRotation) {
-                        skyboxName = savedSkyboxName;
-                        skyboxRotation = savedSkyboxRotation;
-                    }
                 }
             }
         }
@@ -299,24 +279,6 @@ struct DummyGlobal {
         projectGroundTex = "";
         projectGrdHeight = 0.0f;
         projectGlbs.clear();
-
-        mOptions->floorColor = glm::vec3(213.0f / 255.0f);
-        mOptions->drawGrid = true;
-        mOptions->backgroundColor = glm::vec3(0.5f, 0.5f, 0.5f);
-        mOptions->shadowsEnabled = true;
-        mOptions->sunPitch = -90.0f;
-        mOptions->sunYaw = 0.0f;
-        mOptions->sunLightStrength = 1.0f;
-        mOptions->sunLightColor = glm::vec3(1.0f);
-        mOptions->ambientLightStrength = 0.72f;
-        mOptions->ambientLightColor = glm::vec3(1.0f);
-        mOptions->trackTextureEnabled = true;
-        mOptions->mistEnabled = false;
-        mOptions->mistNear = 100.0f;
-        mOptions->mistFar = 270.0f;
-        mOptions->mistColor = glm::vec3(0.5f);
-        mOptions->skyboxName = "Solid Color";
-        mOptions->skyboxRotation = 0.0f;
     }
 
     void updateInfoPanel() {}

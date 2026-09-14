@@ -372,6 +372,10 @@ bool Application::Initialize() {
     viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
     viewport.setGroundHeight(gloParent->projectGrdHeight);
 
+    if (!gloParent->mOptions->lastEnvPreset.empty()) {
+        viewport.loadEnvironmentPreset(gloParent->mOptions->lastEnvPreset);
+    }
+
     viewport.setMistColor(gloParent->mOptions->mistColor);
     viewport.setShadowMode(gloParent->mOptions->shadowsEnabled ? 1 : 0);
     viewport.setFOV(gloParent->mOptions->fov);
@@ -1529,15 +1533,6 @@ void Application::Render(float deltaTime) {
                 ImGui::TableNextColumn();
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 if (ImGui::ColorEdit3("##FloorColor", &gloParent->mOptions->floorColor.x)) {
-                    viewport.markSceneDirty();
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Floor Grid");
-                ImGui::TableNextColumn();
-                if (ImGui::Checkbox("##FloorGrid", &gloParent->mOptions->drawGrid)) {
                     viewport.markSceneDirty();
                 }
 
@@ -2954,8 +2949,10 @@ void Application::RenderParametricTrackEditorWindow() {
 }
 
 void Application::RenderEnvironmentWindow() {
-    ImGui::SetNextWindowSize(ImVec2(350, 300), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Size.x / 2.0f - 175.0f, ImGui::GetMainViewport()->Size.y / 2.0f - 150.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(350, 650), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Size.x / 2.0f - 175.0f,
+                                   ImGui::GetMainViewport()->Size.y / 2.0f - 325.0f),
+                            ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Environment", &showEnvironmentWindow, ImGuiWindowFlags_NoDocking)) {
         ImGui::End();
         return;

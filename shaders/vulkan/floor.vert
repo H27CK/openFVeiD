@@ -15,6 +15,7 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     vec4 lightDir;
     vec4 ambientColor;
     vec4 sunColor;
+    vec4 gridColor;
     float floorHeight;
     float grdTexSize;
     float opacity;
@@ -25,8 +26,8 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     float mistFar;
     float ambientStrength;
     float sunStrength;
-    float padding0;
-    float padding1;
+    float gridMajorThickness;
+    float gridMinorThickness;
 } u;
 
 void main(void)
