@@ -112,7 +112,11 @@ add_custom_target(vulkan_shaders DEPENDS ${VULKAN_SHADER_OUTPUTS})
 # --- Embedded Assets ---
 add_executable(bin2c resources/tools/bin2c.cpp)
 file(GLOB ASSETS_FONTS RELATIVE ${CMAKE_SOURCE_DIR} "resources/fonts/*")
-set(ASSETS ${ASSETS_FONTS})
+set(ASSETS
+    ${ASSETS_FONTS}
+    assets/textures/metal_normal.png
+    assets/textures/metal_roughness.jpg
+)
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/embedded_assets.cpp

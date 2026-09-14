@@ -17,10 +17,16 @@ layout(set = 0, binding = 0) uniform TrackUniforms {
     vec4 sectionColor;
     vec4 transitionColor;
     vec4 mistColor;
+    vec4 ambientColor;
+    vec4 sunColor;
     int colorMode;
     int mistEnabled;
     float mistNear;
     float mistFar;
+    float ambientStrength;
+    float sunStrength;
+    float padding0;
+    float padding1;
 } u;
 
 void main(void)
@@ -30,10 +36,10 @@ void main(void)
 
     float diffusal = max(dot(normal, -u.lightDir.xyz), 0.0);
 
-    // Clean CAD lighting model: Ambient + Diffuse
-    float ambient = 0.8;
-
-    vec3 finalColor = (ambient + diffusal * 0.5) * m_color;
+    vec3 ambientLight = m_color * u.ambientColor.rgb * u.ambientStrength;
+    vec3 directionalLight = m_color * u.sunColor.rgb * u.sunStrength *
+                            diffusal * 0.5;
+    vec3 finalColor = ambientLight + directionalLight;
 
     // Apply mist
     if (u.mistEnabled != 0) {

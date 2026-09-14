@@ -12,11 +12,19 @@ layout(set = 0, binding = 0) uniform SimpleShadowUniforms {
     mat4 modelMatrix;
     mat4 anchorBase;
     mat4 shadowMatrix;
+    vec4 shadowColor;
     float uTrackLength;
     float heartline;
     int isInstanced;
     int isAsset;
-} u;
+    float shadowStrength;
+    float floorHeight;
+    int softShadowsEnabled;
+    float padding2;
+}
+u;
+
+layout(location = 0) out float vHeight;
 
 struct SplineNode {
     vec4 pos;
@@ -29,8 +37,7 @@ layout(std430, set = 1, binding = 0) readonly buffer SplineData {
     SplineNode nodes[];
 };
 
-void main()
-{
+void main() {
     vec4 worldPos;
     if (u.isInstanced == 1) {
         // Spline-Warped Path for Assets and Ties
@@ -80,6 +87,9 @@ void main()
 
     // 1. Project WorldPos to Ground Plane (Shadow Space)
     vec4 shadowedWorldPos = u.shadowMatrix * worldPos;
+
+    // Pass the height above the floor plane as an interpolant
+    vHeight = worldPos.y - u.floorHeight;
 
     // 2. Transform to Camera View and Projection
     gl_Position = u.projectionMatrix * u.modelMatrix * shadowedWorldPos;

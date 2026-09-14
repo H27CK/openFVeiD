@@ -29,10 +29,16 @@
 #include "dummies.h"
 #include "glbreader.h"
 #include "customstyle.h"
+#include "assets.h"
+#include "logger.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <limits>
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 
@@ -40,6 +46,58 @@
 #include "stb_image_write.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
+static bool loadEmbeddedTexture(const char* name, VulkanTexture& texture) {
+    const AssetData* asset = getEmbeddedAsset(name);
+    if (!asset || !asset->data || asset->size == 0)
+        return false;
+
+    int width = 0, height = 0, channels = 0;
+    unsigned char* pixels = stbi_load_from_memory(asset->data, (int)asset->size,
+                                                  &width, &height, &channels, 4);
+    if (!pixels)
+        return false;
+
+    texture.create2d(*gVulkanContext, (uint32_t)width, (uint32_t)height, pixels);
+    stbi_image_free(pixels);
+    return true;
+}
+
+static std::string lowerCase(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+static bool isSupportedSkyboxImage(const std::filesystem::path& path) {
+    std::string extension = lowerCase(path.extension().string());
+    return extension == ".png" || extension == ".jpg" || extension == ".jpeg" ||
+           extension == ".bmp" || extension == ".tga";
+}
+
+static constexpr const char* SOLID_COLOR_SKYBOX = "Solid Color";
+
+static std::string absolutePathOrInput(const std::string& path) {
+    std::error_code error;
+    std::filesystem::path absolutePath = std::filesystem::absolute(path, error);
+    return (error ? std::filesystem::path(path) : absolutePath).lexically_normal().string();
+}
+
+static std::string findSkyboxFace(const std::filesystem::path& directory,
+                                  const std::string& requestedStem) {
+    std::error_code error;
+    if (!std::filesystem::is_directory(directory, error))
+        return {};
+    const std::string wanted = lowerCase(requestedStem);
+    for (const auto& entry : std::filesystem::directory_iterator(
+             directory, std::filesystem::directory_options::skip_permission_denied, error)) {
+        if (entry.is_regular_file(error) && isSupportedSkyboxImage(entry.path()) &&
+            lowerCase(entry.path().stem().string()) == wanted) {
+            return entry.path().lexically_normal().string();
+        }
+    }
+    return {};
+}
 
 Viewport::Viewport()
     : viewPortWidth(1280), viewPortHeight(720),
@@ -84,7 +142,7 @@ void Viewport::resetView() {
     glm::vec3 anchor(0.0f);
     if (viewMode == ViewMode::Perspective) {
         freeFlyPos = anchor + glm::vec3(20.0f, 20.0f, 20.0f);
-        freeFlyDir = glm::normalize(anchor - freeFlyPos);
+        freeFlyDir = glm::normalize(anchor + glm::vec3(0.0f, 13.0f, 0.0f) - freeFlyPos);
         freeFlySide = glm::normalize(glm::cross(freeFlyDir, glm::vec3(0.0f, 1.0f, 0.0f)));
     } else if (viewMode == ViewMode::Top) {
         freeFlyPos = anchor + glm::vec3(0, 100, 0);
@@ -119,13 +177,14 @@ void Viewport::shutdown() {
         ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)outputTextureId);
         outputTextureId = nullptr;
     }
+    unloadSkybox(false);
     destroyPipelines();
-    delete skyTexture;
-    skyTexture = nullptr;
     floorTexture.destroy();
     rasterTexture.destroy();
     dummyCubeTexture.destroy();
     dummyWhiteTexture.destroy();
+    metalNormalTexture.destroy();
+    metalRoughnessTexture.destroy();
     zeroAttributeBuffer.destroy();
     skyMesh.vertexBuffer.destroy();
     floorMesh.vertexBuffer.destroy();
@@ -158,13 +217,23 @@ void Viewport::setShadowMode(int mode) {
 
 void Viewport::setLightDirection(float pitch, float yaw) {
     float p = glm::radians(pitch);
-    float y = glm::radians(yaw);
+    // Rotating the cubemap lookup direction makes the visible environment move
+    // in the opposite direction, so apply the inverse offset to the sun vector.
+    float y = glm::radians(yaw - gloParent->mOptions->skyboxRotation);
 
     lightDir.x = cos(p) * sin(y);
     lightDir.y = sin(p);
     lightDir.z = cos(p) * cos(y);
     lightDir = glm::normalize(lightDir);
     sceneDirty = true;
+}
+
+float Viewport::getShadowStrength() const {
+    const glm::vec3 luminanceWeights(0.2126f, 0.7152f, 0.0722f);
+    float sunLuminance = glm::dot(gloParent->mOptions->sunLightColor, luminanceWeights);
+    float horizonFade = std::clamp(-lightDir.y / 0.1f, 0.0f, 1.0f);
+    return std::clamp(gloParent->mOptions->sunLightStrength * sunLuminance * horizonFade,
+                      0.0f, 1.0f);
 }
 
 void Viewport::setMSAASamples(int samples) {
@@ -273,42 +342,488 @@ void Viewport::initTextures() {
     unsigned char cubeFaces[6 * 4] = {};
     dummyCubeTexture.createCube(*gVulkanContext, 1, 1, cubeFaces);
 
-    bool customSkybox = true;
-    for (int i = 0; i < 6; ++i) {
-        std::string path = "skybox/cubemap_" + std::to_string(i) + ".png";
-        if (!std::filesystem::exists(path)) {
-            customSkybox = false;
-            break;
-        }
+    if (!loadEmbeddedTexture("assets/textures/metal_normal.png", metalNormalTexture)) {
+        const unsigned char flatNormal[4] = {128, 128, 255, 255};
+        metalNormalTexture.create2d(*gVulkanContext, 1, 1, flatNormal);
+    }
+    if (!loadEmbeddedTexture("assets/textures/metal_roughness.jpg", metalRoughnessTexture)) {
+        const unsigned char defaultRoughness[4] = {160, 160, 160, 255};
+        metalRoughnessTexture.create2d(*gVulkanContext, 1, 1, defaultRoughness);
     }
 
-    gloParent->skyboxAvailable = customSkybox;
+    refreshSkyboxes(true);
+    refreshEnvironmentPresets();
+}
 
-    if (customSkybox) {
-        int width = 0, height = 0, channels = 0;
-        std::vector<unsigned char> faces;
-        bool loaded = true;
-        for (int i = 0; i < 6 && loaded; ++i) {
-            std::string path = "skybox/cubemap_" + std::to_string(i) + ".png";
-            int faceWidth, faceHeight;
-            unsigned char* data = stbi_load(path.c_str(), &faceWidth, &faceHeight, &channels, 4);
-            if (!data || (i > 0 && (faceWidth != width || faceHeight != height))) {
-                loaded = false;
-            } else {
-                width = faceWidth;
-                height = faceHeight;
-                faces.insert(faces.end(), data, data + (size_t)width * height * 4);
-            }
-            if (data)
-                stbi_image_free(data);
+uint64_t Viewport::getFileSignature(const std::string& path) const {
+    std::error_code error;
+    const std::filesystem::path filePath(path);
+    if (!std::filesystem::is_regular_file(filePath, error))
+        return 0;
+
+    uint64_t signature = static_cast<uint64_t>(std::filesystem::file_size(filePath, error));
+    if (error)
+        return 0;
+    auto writeTime = std::filesystem::last_write_time(filePath, error);
+    if (error)
+        return 0;
+    signature ^= static_cast<uint64_t>(writeTime.time_since_epoch().count()) +
+                 0x9e3779b97f4a7c15ULL + (signature << 6) + (signature >> 2);
+    return signature;
+}
+
+uint64_t Viewport::getSkyboxDirectorySignature() const {
+    const std::filesystem::path root("skybox");
+    std::error_code error;
+    if (!std::filesystem::exists(root, error))
+        return 0;
+
+    std::vector<std::string> entries;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             root, std::filesystem::directory_options::skip_permission_denied, error)) {
+        if (entry.is_regular_file(error) && isSupportedSkyboxImage(entry.path())) {
+            entries.push_back(entry.path().lexically_normal().string() + ":" +
+                              std::to_string(getFileSignature(entry.path().string())));
         }
-        if (loaded) {
-            skyTexture = new VulkanTexture();
-            skyTexture->createCube(*gVulkanContext, width, height, faces.data());
+    }
+    std::sort(entries.begin(), entries.end());
+
+    uint64_t signature = 1469598103934665603ULL;
+    for (const std::string& entry : entries) {
+        for (unsigned char c : entry) {
+            signature ^= c;
+            signature *= 1099511628211ULL;
         }
-    } else {
+    }
+    return signature;
+}
+
+void Viewport::unloadSkybox(bool bindFallback) {
+    if (skyTexture) {
+        skyTexture->destroy();
+        delete skyTexture;
         skyTexture = nullptr;
     }
+    activeSkyboxName.clear();
+    activeSkyboxSignature = 0;
+    if (bindFallback && dummyCubeTexture.view != VK_NULL_HANDLE)
+        skyPipeline.bindTexture(0, dummyCubeTexture.view, dummyCubeTexture.sampler);
+    sceneDirty = true;
+}
+
+bool Viewport::loadSkybox(const SkyboxDefinition& definition) {
+    if (definition.facePaths.size() != 6)
+        return false;
+
+    int width = 0;
+    int height = 0;
+    for (const std::string& path : definition.facePaths) {
+        int faceWidth = 0;
+        int faceHeight = 0;
+        int channels = 0;
+        if (!stbi_info(path.c_str(), &faceWidth, &faceHeight, &channels) || faceWidth <= 0 ||
+            faceWidth != faceHeight || (width > 0 && (faceWidth != width || faceHeight != height))) {
+            LOG_WARN("Invalid or mismatched skybox face: %s", path.c_str());
+            return false;
+        }
+        width = faceWidth;
+        height = faceHeight;
+    }
+
+    const uint64_t faceBytes = static_cast<uint64_t>(width) * height * 4;
+    const uint64_t totalBytes = faceBytes * definition.facePaths.size();
+    if (totalBytes > 512ULL * 1024ULL * 1024ULL ||
+        totalBytes > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        LOG_WARN("Skybox '%s' is too large to load safely (%llu MiB decoded)",
+                 definition.name.c_str(), static_cast<unsigned long long>(totalBytes / (1024 * 1024)));
+        return false;
+    }
+
+    std::vector<unsigned char> faces(static_cast<size_t>(totalBytes));
+    for (size_t i = 0; i < definition.facePaths.size(); ++i) {
+        int faceWidth = 0;
+        int faceHeight = 0;
+        int channels = 0;
+        unsigned char* data = stbi_load(definition.facePaths[i].c_str(), &faceWidth,
+                                        &faceHeight, &channels, 4);
+        if (!data) {
+            LOG_WARN("Failed to decode skybox face: %s", definition.facePaths[i].c_str());
+            return false;
+        }
+        const size_t byteCount = static_cast<size_t>(faceBytes);
+        std::copy(data, data + byteCount, faces.begin() + i * byteCount);
+        stbi_image_free(data);
+    }
+
+    gVulkanContext->waitIdle();
+    unloadSkybox();
+    skyTexture = new VulkanTexture();
+    skyTexture->createCube(*gVulkanContext, static_cast<uint32_t>(width),
+                           static_cast<uint32_t>(height), faces.data());
+    skyPipeline.bindTexture(0, skyTexture->view, skyTexture->sampler);
+    activeSkyboxName = definition.name;
+    activeSkyboxSignature = definition.signature;
+    sceneDirty = true;
+    LOG_INFO("Loaded skybox '%s' (%dx%d)", definition.name.c_str(), width, height);
+    return true;
+}
+
+void Viewport::refreshSkyboxes(bool force) {
+    std::error_code error;
+    std::filesystem::create_directories("skybox", error);
+    uint64_t directorySignature = getSkyboxDirectorySignature();
+    bool directoryChanged = directorySignature != skyboxDirectorySignature;
+    if (!force && !directoryChanged) {
+        auto selected = std::find_if(skyboxDefinitions.begin(), skyboxDefinitions.end(),
+                                     [&](const SkyboxDefinition& definition) {
+                                         return definition.name == gloParent->mOptions->skyboxName;
+                                     });
+        if ((selected == skyboxDefinitions.end() && !skyTexture) ||
+            (selected != skyboxDefinitions.end() && activeSkyboxName == selected->name &&
+             activeSkyboxSignature == selected->signature)) {
+            return;
+        }
+    }
+    skyboxDirectorySignature = directorySignature;
+
+    std::vector<SkyboxDefinition> discovered;
+    auto addDirectory = [&](const std::filesystem::path& directory, const std::string& name) {
+        SkyboxDefinition definition;
+        definition.name = name;
+        definition.directory = directory.lexically_normal().string();
+
+        // Vulkan cube-array order is +X, -X, +Y, -Y, +Z, -Z.
+        const char* namedFaces[] = {"px", "nx", "py", "ny", "pz", "nz"};
+        for (const char* stem : namedFaces)
+            definition.facePaths.push_back(findSkyboxFace(directory, stem));
+
+        bool namedComplete = std::all_of(definition.facePaths.begin(), definition.facePaths.end(),
+                                         [](const std::string& path) { return !path.empty(); });
+        if (!namedComplete) {
+            definition.facePaths.clear();
+            for (int i = 0; i < 6; ++i)
+                definition.facePaths.push_back(findSkyboxFace(directory, "cubemap_" + std::to_string(i)));
+        }
+
+        bool complete = std::all_of(definition.facePaths.begin(), definition.facePaths.end(),
+                                    [](const std::string& path) { return !path.empty(); });
+        if (!complete)
+            return;
+
+        definition.signature = 1469598103934665603ULL;
+        for (const std::string& path : definition.facePaths) {
+            uint64_t faceSignature = getFileSignature(path);
+            definition.signature ^= faceSignature + 0x9e3779b97f4a7c15ULL +
+                                    (definition.signature << 6) + (definition.signature >> 2);
+        }
+        discovered.push_back(std::move(definition));
+    };
+
+    const std::filesystem::path root("skybox");
+    for (const auto& entry : std::filesystem::directory_iterator(
+             root, std::filesystem::directory_options::skip_permission_denied, error)) {
+        if (entry.is_directory(error))
+            addDirectory(entry.path(), entry.path().filename().string());
+    }
+    std::sort(discovered.begin(), discovered.end(),
+              [](const SkyboxDefinition& left, const SkyboxDefinition& right) {
+                  return lowerCase(left.name) < lowerCase(right.name);
+              });
+
+    skyboxDefinitions = std::move(discovered);
+    availableSkyboxNames = {SOLID_COLOR_SKYBOX};
+    for (const SkyboxDefinition& definition : skyboxDefinitions)
+        availableSkyboxNames.push_back(definition.name);
+    gloParent->skyboxAvailable = !skyboxDefinitions.empty();
+
+    std::string requestedName = gloParent->mOptions->skyboxName;
+    if (requestedName.empty()) {
+        requestedName = SOLID_COLOR_SKYBOX;
+        gloParent->mOptions->skyboxName = requestedName;
+    }
+
+    if (requestedName == SOLID_COLOR_SKYBOX) {
+        if (skyTexture) {
+            gVulkanContext->waitIdle();
+            unloadSkybox();
+        }
+        return;
+    }
+
+    auto requested = std::find_if(skyboxDefinitions.begin(), skyboxDefinitions.end(),
+                                  [&](const SkyboxDefinition& definition) {
+                                      return definition.name == requestedName;
+                                  });
+    if (requested == skyboxDefinitions.end()) {
+        if (skyTexture) {
+            gVulkanContext->waitIdle();
+            unloadSkybox();
+        }
+        return;
+    }
+
+    if (activeSkyboxName != requested->name || activeSkyboxSignature != requested->signature)
+        loadSkybox(*requested);
+}
+
+bool Viewport::selectSkybox(const std::string& name) {
+    gloParent->mOptions->skyboxName = name;
+    refreshSkyboxes(true);
+    return name == SOLID_COLOR_SKYBOX || activeSkyboxName == name;
+}
+
+void Viewport::setSkyboxRotation(float degrees) {
+    gloParent->mOptions->skyboxRotation = degrees;
+    setLightDirection(gloParent->mOptions->sunPitch, gloParent->mOptions->sunYaw);
+}
+
+void Viewport::refreshEnvironmentPresets() {
+    const std::filesystem::path root("skybox");
+    std::error_code iteratorError;
+    std::vector<EnvironmentPresetDefinition> discovered;
+
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             root, std::filesystem::directory_options::skip_permission_denied, iteratorError)) {
+        std::error_code entryError;
+        if (!entry.is_regular_file(entryError) ||
+            lowerCase(entry.path().extension().string()) != ".fvdenv") {
+            continue;
+        }
+
+        std::ifstream input(entry.path());
+        std::string magic;
+        if (!(input >> magic) || magic != "FVD_ENVIRONMENT_V1")
+            continue;
+
+        std::error_code relativeError;
+        std::filesystem::path relativePath = std::filesystem::relative(entry.path(), root, relativeError);
+        if (relativeError)
+            relativePath = entry.path().filename();
+
+        std::filesystem::path labelPath = relativePath;
+        labelPath.replace_extension();
+        std::string name;
+        if (lowerCase(labelPath.filename().string()) == "environment" && labelPath.has_parent_path() &&
+            labelPath.parent_path() != ".") {
+            name = labelPath.parent_path().generic_string();
+        } else {
+            name = labelPath.generic_string();
+        }
+
+        if (std::any_of(discovered.begin(), discovered.end(), [&](const EnvironmentPresetDefinition& preset) {
+                return preset.name == name;
+            })) {
+            name += " (" + relativePath.generic_string() + ")";
+        }
+        discovered.push_back({name, absolutePathOrInput(entry.path().string())});
+    }
+
+    std::sort(discovered.begin(), discovered.end(),
+              [](const EnvironmentPresetDefinition& left, const EnvironmentPresetDefinition& right) {
+                  return lowerCase(left.name) < lowerCase(right.name);
+              });
+    environmentPresetDefinitions = std::move(discovered);
+    availableEnvironmentPresetNames.clear();
+    selectedEnvironmentPresetName.clear();
+    for (const EnvironmentPresetDefinition& preset : environmentPresetDefinitions) {
+        availableEnvironmentPresetNames.push_back(preset.name);
+        if (preset.path == watchedEnvironmentPath)
+            selectedEnvironmentPresetName = preset.name;
+    }
+
+    if (selectedEnvironmentPresetName.empty() && !watchedEnvironmentPath.empty() &&
+        getFileSignature(watchedEnvironmentPath) != 0) {
+        selectedEnvironmentPresetName = std::filesystem::path(watchedEnvironmentPath).stem().string();
+    }
+}
+
+bool Viewport::selectEnvironmentPreset(const std::string& name) {
+    auto preset = std::find_if(environmentPresetDefinitions.begin(), environmentPresetDefinitions.end(),
+                               [&](const EnvironmentPresetDefinition& definition) {
+                                   return definition.name == name;
+                               });
+    return preset != environmentPresetDefinitions.end() && loadEnvironmentPreset(preset->path);
+}
+
+void Viewport::applyProjectEnvironment() {
+    watchedEnvironmentPath.clear();
+    watchedEnvironmentSignature = 0;
+    selectedEnvironmentPresetName.clear();
+
+    setMistColor(gloParent->mOptions->mistColor);
+    setShadowMode(gloParent->mOptions->shadowsEnabled ? 1 : 0);
+    setSkyboxRotation(gloParent->mOptions->skyboxRotation);
+    selectSkybox(gloParent->mOptions->skyboxName);
+    sceneDirty = true;
+}
+
+std::string Viewport::suggestedEnvironmentPresetPath() const {
+    auto selected = std::find_if(skyboxDefinitions.begin(), skyboxDefinitions.end(),
+                                 [&](const SkyboxDefinition& definition) {
+                                     return definition.name == gloParent->mOptions->skyboxName;
+                                 });
+    std::filesystem::path directory = selected == skyboxDefinitions.end()
+                                          ? std::filesystem::path("skybox")
+                                          : std::filesystem::path(selected->directory);
+    return (directory / "environment.fvdenv").string();
+}
+
+bool Viewport::saveEnvironmentPreset(const std::string& path) {
+    std::ofstream output(path, std::ios::trunc);
+    if (!output)
+        return false;
+
+    const DummyOptions& options = *gloParent->mOptions;
+    output << "FVD_ENVIRONMENT_V1\n"
+           << "ambient_color " << options.ambientLightColor.x << " " << options.ambientLightColor.y << " "
+           << options.ambientLightColor.z << "\n"
+           << "ambient_strength " << options.ambientLightStrength << "\n"
+           << "grid " << options.drawGrid << "\n"
+           << "grid_line_color " << options.gridLineColor.x << " " << options.gridLineColor.y << " "
+           << options.gridLineColor.z << "\n"
+           << "grid_major_thickness " << options.gridMajorThickness << "\n"
+           << "grid_minor_thickness " << options.gridMinorThickness << "\n"
+           << "mist_color " << options.mistColor.x << " " << options.mistColor.y << " "
+           << options.mistColor.z << "\n"
+           << "mist_enabled " << options.mistEnabled << "\n"
+           << "mist_far " << options.mistFar << "\n"
+           << "mist_near " << options.mistNear << "\n"
+           << "shadow_color " << options.shadowColor.x << " " << options.shadowColor.y << " "
+           << options.shadowColor.z << "\n"
+           << "shadows " << options.shadowsEnabled << "\n"
+           << "skybox " << std::quoted(options.skyboxName) << "\n"
+           << "skybox_color " << options.backgroundColor.x << " " << options.backgroundColor.y << " "
+           << options.backgroundColor.z << "\n"
+           << "skybox_rotation " << options.skyboxRotation << "\n"
+           << "soft_shadows " << options.softShadowsEnabled << "\n"
+           << "sun_color " << options.sunLightColor.x << " " << options.sunLightColor.y << " "
+           << options.sunLightColor.z << "\n"
+           << "sun_pitch " << options.sunPitch << "\n"
+           << "sun_strength " << options.sunLightStrength << "\n"
+           << "sun_yaw " << options.sunYaw << "\n"
+           << "track_texture " << options.trackTextureEnabled << "\n"
+           << "end\n";
+    output.close();
+    if (!output)
+        return false;
+
+    watchedEnvironmentPath = absolutePathOrInput(path);
+    watchedEnvironmentSignature = getFileSignature(watchedEnvironmentPath);
+    refreshEnvironmentPresets();
+    return true;
+}
+
+bool Viewport::loadEnvironmentPreset(const std::string& path) {
+    std::ifstream input(path);
+    std::string magic;
+    if (!(input >> magic) || magic != "FVD_ENVIRONMENT_V1")
+        return false;
+
+    DummyOptions preset = *gloParent->mOptions;
+    bool complete = false;
+    std::string line;
+    std::getline(input, line);
+    while (std::getline(input, line)) {
+        std::istringstream values(line);
+        std::string key;
+        if (!(values >> key) || key[0] == '#')
+            continue;
+        if (key == "end") {
+            complete = true;
+            break;
+        }
+        if (key == "ambient_color")
+            values >> preset.ambientLightColor.x >> preset.ambientLightColor.y >> preset.ambientLightColor.z;
+        else if (key == "ambient_strength")
+            values >> preset.ambientLightStrength;
+        else if (key == "grid")
+            values >> preset.drawGrid;
+        else if (key == "grid_line_color")
+            values >> preset.gridLineColor.x >> preset.gridLineColor.y >> preset.gridLineColor.z;
+        else if (key == "grid_major_thickness")
+            values >> preset.gridMajorThickness;
+        else if (key == "grid_minor_thickness")
+            values >> preset.gridMinorThickness;
+        else if (key == "mist_color")
+            values >> preset.mistColor.x >> preset.mistColor.y >> preset.mistColor.z;
+        else if (key == "mist_enabled")
+            values >> preset.mistEnabled;
+        else if (key == "mist_far")
+            values >> preset.mistFar;
+        else if (key == "mist_near")
+            values >> preset.mistNear;
+        else if (key == "shadow_color")
+            values >> preset.shadowColor.x >> preset.shadowColor.y >> preset.shadowColor.z;
+        else if (key == "shadows")
+            values >> preset.shadowsEnabled;
+        else if (key == "skybox")
+            values >> std::quoted(preset.skyboxName);
+        else if (key == "skybox_color")
+            values >> preset.backgroundColor.x >> preset.backgroundColor.y >> preset.backgroundColor.z;
+        else if (key == "skybox_rotation")
+            values >> preset.skyboxRotation;
+        else if (key == "soft_shadows")
+            values >> preset.softShadowsEnabled;
+        else if (key == "sun_color")
+            values >> preset.sunLightColor.x >> preset.sunLightColor.y >> preset.sunLightColor.z;
+        else if (key == "sun_pitch")
+            values >> preset.sunPitch;
+        else if (key == "sun_strength")
+            values >> preset.sunLightStrength;
+        else if (key == "sun_yaw")
+            values >> preset.sunYaw;
+        else if (key == "track_texture")
+            values >> preset.trackTextureEnabled;
+        if (values.fail())
+            return false;
+    }
+    if (!complete)
+        return false;
+
+    preset.ambientLightStrength = std::clamp(preset.ambientLightStrength, 0.0f, 2.0f);
+    preset.gridMajorThickness = std::clamp(preset.gridMajorThickness, 0.1f, 10.0f);
+    preset.gridMinorThickness = std::clamp(preset.gridMinorThickness, 0.1f, 10.0f);
+    preset.sunLightStrength = std::clamp(preset.sunLightStrength, 0.0f, 2.0f);
+    preset.sunPitch = std::clamp(preset.sunPitch, -90.0f, 0.0f);
+    preset.mistNear = std::clamp(preset.mistNear, 0.0f, 5000.0f);
+    preset.mistFar = std::clamp(preset.mistFar, preset.mistNear, 10000.0f);
+    preset.ambientLightColor = glm::clamp(preset.ambientLightColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.floorColor = glm::clamp(preset.floorColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.gridLineColor = glm::clamp(preset.gridLineColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.shadowColor = glm::clamp(preset.shadowColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.sunLightColor = glm::clamp(preset.sunLightColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.mistColor = glm::clamp(preset.mistColor, glm::vec3(0.0f), glm::vec3(1.0f));
+    preset.backgroundColor = glm::clamp(preset.backgroundColor, glm::vec3(0.0f), glm::vec3(1.0f));
+
+    preset.lastEnvPreset = path;
+    *gloParent->mOptions = preset;
+
+    setMistColor(preset.mistColor);
+    setShadowMode(preset.shadowsEnabled ? 1 : 0);
+    setSkyboxRotation(preset.skyboxRotation);
+    selectSkybox(preset.skyboxName);
+    sceneDirty = true;
+
+    watchedEnvironmentPath = absolutePathOrInput(path);
+    watchedEnvironmentSignature = getFileSignature(watchedEnvironmentPath);
+    refreshEnvironmentPresets();
+    LOG_INFO("Loaded environment preset: %s", watchedEnvironmentPath.c_str());
+    return true;
+}
+
+void Viewport::pollEnvironmentFiles(float deltaTime) {
+    environmentPollAccumulator += std::max(deltaTime, 0.0f);
+    if (environmentPollAccumulator < 1.0f)
+        return;
+    environmentPollAccumulator = 0.0f;
+
+    refreshSkyboxes();
+    refreshEnvironmentPresets();
+    if (watchedEnvironmentPath.empty())
+        return;
+    uint64_t signature = getFileSignature(watchedEnvironmentPath);
+    if (signature != 0 && signature != watchedEnvironmentSignature)
+        loadEnvironmentPreset(watchedEnvironmentPath);
 }
 
 bool Viewport::loadGroundTexture(const std::string& path) {
@@ -336,7 +851,7 @@ bool Viewport::loadGroundTexture(const std::string& path) {
 }
 
 void Viewport::initFloorMesh() {
-    float a = 1000.f;
+    float a = 20000.f;
     float floor[4 * 6] = {
         -a, 0.f, -a, 0.f, 1.0f, 0.f,
         -a, 0.f, +a, 0.f, 1.0f, 0.f,
@@ -471,15 +986,18 @@ void Viewport::initPipelines() {
     };
     VulkanPipelineConfig trackInstancedConfig = {
         .vertexSpirvPath = locateSpirvShader("track_instanced.vert"),
-        .fragmentSpirvPath = locateSpirvShader("track.frag"),
+        .fragmentSpirvPath = locateSpirvShader("track_instanced.frag"),
         .vertexBindings = instancedBindings,
         .vertexAttributes = instancedAttributes,
         .alphaBlend = true,
+        .sampledImageCount = 2,
         .uniformBufferSize = sizeof(TrackInstancedUniforms),
         .usesStorageSet = true,
     };
     trackInstancedConfig.sampleCount = currentSampleCount;
     trackInstancedPipeline.create(*gVulkanContext, trackInstancedConfig);
+    trackInstancedPipeline.bindTexture(0, metalNormalTexture.view, metalNormalTexture.sampler);
+    trackInstancedPipeline.bindTexture(1, metalRoughnessTexture.view, metalRoughnessTexture.sampler);
 
     VulkanPipelineConfig shadowInstancedConfig = {
         .vertexSpirvPath = locateSpirvShader("simple_shadow.vert"),
@@ -625,7 +1143,7 @@ void Viewport::render(const std::vector<trackHandler*>& trackList) {
     drawFloor(commandBuffer);
     drawOrthoGrid(commandBuffer);
 
-    if (shadowMode > 0) {
+    if (shadowMode > 0 && getShadowStrength() > 0.0001f) {
         for (auto track : trackList) {
             if (track->trackData->drawHeartline != 3) {
                 drawTrack(commandBuffer, track, RenderPass::PlanarShadow);
@@ -650,7 +1168,7 @@ void Viewport::render(const std::vector<trackHandler*>& trackList) {
 }
 
 void Viewport::update(float deltaTime) {
-    (void)deltaTime;
+    pollEnvironmentFiles(deltaTime);
 }
 
 void Viewport::movePOVCamera(float deltaZ, float deltaTime) {
@@ -739,7 +1257,7 @@ void Viewport::captureScreenshot(int multiplier, const std::string& path, const 
     drawSky(commandBuffer);
     drawFloor(commandBuffer);
     drawOrthoGrid(commandBuffer);
-    if (shadowMode > 0) {
+    if (shadowMode > 0 && getShadowStrength() > 0.0001f) {
         for (auto track : trackList) {
             if (track->trackData->drawHeartline != 3)
                 drawTrack(commandBuffer, track, RenderPass::PlanarShadow);
@@ -1086,7 +1604,7 @@ void Viewport::focusOnSection(int sectionIdx) {
 
     if (viewMode == ViewMode::Perspective) {
         freeFlyPos = worldPos - worldDir * 20.0f + glm::vec3(0, 8, 0);
-        freeFlyDir = glm::normalize(worldPos - freeFlyPos);
+        freeFlyDir = glm::normalize(worldPos + glm::vec3(0.0f, 5.0f, 0.0f) - freeFlyPos);
         freeFlySide = glm::normalize(glm::cross(freeFlyDir, glm::vec3(0, 1, 0)));
     } else if (viewMode == ViewMode::Top) {
         freeFlyPos = worldPos + glm::vec3(0, 100, 0);
@@ -1110,10 +1628,13 @@ void Viewport::drawSky(VkCommandBuffer commandBuffer) {
     glm::mat4 invV = glm::inverse(glm::mat4(glm::mat3(ModelMatrix)));
     glm::mat4 invP = glm::inverse(ProjectionMatrix);
     glm::mat4 invPV = invV * invP;
+    glm::mat4 skyRotation = glm::rotate(glm::mat4(1.0f),
+                                        glm::radians(gloParent->mOptions->skyboxRotation),
+                                        glm::vec3(0.0f, 1.0f, 0.0f));
 
     auto cornerRay = [&](float x, float y) {
         glm::vec4 ray = invPV * glm::vec4(x, y, 1.0f, 1.0f);
-        return glm::vec4(glm::normalize(glm::vec3(ray)), 0.0f);
+        return glm::vec4(glm::normalize(glm::vec3(skyRotation * ray)), 0.0f);
     };
 
     SkyUniforms uniforms = {
@@ -1121,8 +1642,8 @@ void Viewport::drawSky(VkCommandBuffer commandBuffer) {
         .topRight = cornerRay(1.0f, -1.0f),
         .bottomLeft = cornerRay(-1.0f, 1.0f),
         .bottomRight = cornerRay(1.0f, 1.0f),
-        .fallbackColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
-        .hasTexture = (skyTexture && gloParent->mOptions->skyboxEnabled) ? 1 : 0,
+        .fallbackColor = glm::vec4(gloParent->mOptions->backgroundColor, 1.0f),
+        .hasTexture = skyTexture ? 1 : 0,
     };
     skyPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
     VkDeviceSize zeroOffset = 0;
@@ -1137,6 +1658,10 @@ void Viewport::drawFloor(VkCommandBuffer commandBuffer) {
         .eyePos = glm::vec4(cameraPos, 1.0f),
         .floorColor = glm::vec4(gloParent->mOptions->floorColor, 1.0f),
         .mistColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
+        .lightDir = glm::vec4(lightDir, 0.0f),
+        .ambientColor = glm::vec4(gloParent->mOptions->ambientLightColor, 1.0f),
+        .sunColor = glm::vec4(gloParent->mOptions->sunLightColor, 1.0f),
+        .gridColor = glm::vec4(gloParent->mOptions->gridLineColor, 1.0f),
         .floorHeight = grdHeight,
         .grdTexSize = grdTexSize,
         .opacity = 1.0f,
@@ -1145,6 +1670,10 @@ void Viewport::drawFloor(VkCommandBuffer commandBuffer) {
         .mistEnabled = gloParent->mOptions->mistEnabled ? 1 : 0,
         .mistNear = gloParent->mOptions->mistNear,
         .mistFar = gloParent->mOptions->mistFar,
+        .ambientStrength = gloParent->mOptions->ambientLightStrength,
+        .sunStrength = gloParent->mOptions->sunLightStrength,
+        .gridMajorThickness = gloParent->mOptions->gridMajorThickness,
+        .gridMinorThickness = gloParent->mOptions->gridMinorThickness,
     };
     floorPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
     VkDeviceSize zeroOffset = 0;
@@ -1170,11 +1699,15 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
         .lightDir = glm::vec4(lightDir, 0.0f),
         .solidColor = glm::vec4(1.0f),
         .mistColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
+        .ambientColor = glm::vec4(gloParent->mOptions->ambientLightColor, 1.0f),
+        .sunColor = glm::vec4(gloParent->mOptions->sunLightColor, 1.0f),
         .wire = 0,
         .edgeWidth = 0.0f,
         .mistEnabled = gloParent->mOptions->mistEnabled ? 1 : 0,
         .mistNear = gloParent->mOptions->mistNear,
         .mistFar = gloParent->mOptions->mistFar,
+        .ambientStrength = gloParent->mOptions->ambientLightStrength,
+        .sunStrength = gloParent->mOptions->sunLightStrength,
     };
 
     VkBuffer buffers[2] = {markerMesh.vertexBuffer.buffer, zeroAttributeBuffer.buffer};
@@ -1257,10 +1790,14 @@ void Viewport::drawGlbs(VkCommandBuffer commandBuffer, RenderPass pass) {
             .modelMatrix = ModelMatrix,
             .anchorBase = glm::mat4(1.0f),
             .shadowMatrix = shadowMatrix,
+            .shadowColor = glm::vec4(gloParent->mOptions->shadowColor, 1.0f),
             .uTrackLength = 0.0f,
             .heartline = 0.0f,
             .isInstanced = 0,
             .isAsset = 0,
+            .shadowStrength = getShadowStrength(),
+            .floorHeight = grdHeight,
+            .softShadowsEnabled = gloParent->mOptions->softShadowsEnabled ? 1 : 0,
         };
         shadowGlbPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
         shadowGlbPipeline.bindStorageSet(commandBuffer, gVulkanContext->dummyStorageSet());
@@ -1286,11 +1823,15 @@ void Viewport::drawGlbs(VkCommandBuffer commandBuffer, RenderPass pass) {
         .lightDir = glm::vec4(lightDir, 0.0f),
         .solidColor = glm::vec4(1.0f),
         .mistColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
+        .ambientColor = glm::vec4(gloParent->mOptions->ambientLightColor, 1.0f),
+        .sunColor = glm::vec4(gloParent->mOptions->sunLightColor, 1.0f),
         .wire = 0,
         .edgeWidth = 0.006f,
         .mistEnabled = gloParent->mOptions->mistEnabled ? 1 : 0,
         .mistNear = gloParent->mOptions->mistNear,
         .mistFar = gloParent->mOptions->mistFar,
+        .ambientStrength = gloParent->mOptions->ambientLightStrength,
+        .sunStrength = gloParent->mOptions->sunLightStrength,
     };
     for (const auto& sm : glbMeshes) {
         if (!sm.visible)
@@ -1338,10 +1879,14 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
                     .modelMatrix = ModelMatrix,
                     .anchorBase = anchorBase,
                     .shadowMatrix = shadowMatrix,
+                    .shadowColor = glm::vec4(gloParent->mOptions->shadowColor, 1.0f),
                     .uTrackLength = (float)myTrack->getTotalLength(),
                     .heartline = (float)myTrack->fHeart,
                     .isInstanced = 1,
                     .isAsset = isAsset,
+                    .shadowStrength = getShadowStrength(),
+                    .floorHeight = grdHeight,
+                    .softShadowsEnabled = gloParent->mOptions->softShadowsEnabled ? 1 : 0,
                 };
                 shadowInstancedPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
                 shadowInstancedPipeline.bindStorageSet(commandBuffer, mesh->splineStorageSet);
@@ -1356,6 +1901,8 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
                     .sectionColor = glm::vec4(hTrack->trackColors[1], 1.0f),
                     .transitionColor = glm::vec4(hTrack->trackColors[2], 1.0f),
                     .mistColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
+                    .ambientColor = glm::vec4(gloParent->mOptions->ambientLightColor, 1.0f),
+                    .sunColor = glm::vec4(gloParent->mOptions->sunLightColor, 1.0f),
                     .colorMode = curTrackShader,
                     .mistEnabled = gloParent->mOptions->mistEnabled ? 1 : 0,
                     .mistNear = gloParent->mOptions->mistNear,
@@ -1364,6 +1911,9 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
                     .heartline = (float)myTrack->fHeart,
                     .isAsset = isAsset,
                     .smoothAlongSpline = smoothAlongSpline,
+                    .ambientStrength = gloParent->mOptions->ambientLightStrength,
+                    .sunStrength = gloParent->mOptions->sunLightStrength,
+                    .materialEnabled = gloParent->mOptions->trackTextureEnabled ? 1 : 0,
                 };
                 trackInstancedPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
                 trackInstancedPipeline.bindStorageSet(commandBuffer, mesh->splineStorageSet);
@@ -1398,10 +1948,14 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
             .sectionColor = glm::vec4(hTrack->trackColors[1], 1.0f),
             .transitionColor = glm::vec4(hTrack->trackColors[2], 1.0f),
             .mistColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
+            .ambientColor = glm::vec4(gloParent->mOptions->ambientLightColor, 1.0f),
+            .sunColor = glm::vec4(gloParent->mOptions->sunLightColor, 1.0f),
             .colorMode = 0,
             .mistEnabled = gloParent->mOptions->mistEnabled ? 1 : 0,
             .mistNear = gloParent->mOptions->mistNear,
             .mistFar = gloParent->mOptions->mistFar,
+            .ambientStrength = gloParent->mOptions->ambientLightStrength,
+            .sunStrength = gloParent->mOptions->sunLightStrength,
         };
         heartlinePipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
         VkBuffer buffers[2] = {mesh->heartlineBuffer.buffer, zeroAttributeBuffer.buffer};
@@ -1509,11 +2063,15 @@ void Viewport::drawOrthoGrid(VkCommandBuffer commandBuffer) {
         .lightDir = glm::vec4(lightDir, 0.0f),
         .solidColor = glm::vec4(1.0f),
         .mistColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
+        .ambientColor = glm::vec4(1.0f),
+        .sunColor = glm::vec4(1.0f),
         .wire = 0,
         .edgeWidth = 0.0f,
         .mistEnabled = 0,
         .mistNear = 0.0f,
         .mistFar = 1.0f,
+        .ambientStrength = 1.2f,
+        .sunStrength = 0.0f,
     };
 
     auto drawLineBatch = [&](const std::vector<float>& vertices, glm::vec3 color) {

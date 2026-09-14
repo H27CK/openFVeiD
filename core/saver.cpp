@@ -44,6 +44,28 @@ void saver::saveEnvironmentChunk(std::ostream& out) {
     if (texLen > 0) {
         out.write(gloParent->projectGroundTex.data(), texLen);
     }
+
+    const DummyOptions& options = *gloParent->mOptions;
+    writeVec3(&out, options.floorColor);
+    writeBytes(&out, (const char*)&options.drawGrid, sizeof(bool));
+    writeBytes(&out, (const char*)&options.ambientLightStrength, sizeof(float));
+    writeVec3(&out, options.ambientLightColor);
+    writeBytes(&out, (const char*)&options.sunLightStrength, sizeof(float));
+    writeVec3(&out, options.sunLightColor);
+    writeBytes(&out, (const char*)&options.sunPitch, sizeof(float));
+    writeBytes(&out, (const char*)&options.sunYaw, sizeof(float));
+    writeBytes(&out, (const char*)&options.shadowsEnabled, sizeof(bool));
+    writeBytes(&out, (const char*)&options.trackTextureEnabled, sizeof(bool));
+    writeBytes(&out, (const char*)&options.mistEnabled, sizeof(bool));
+    writeBytes(&out, (const char*)&options.mistNear, sizeof(float));
+    writeBytes(&out, (const char*)&options.mistFar, sizeof(float));
+    writeVec3(&out, options.mistColor);
+    writeVec3(&out, options.backgroundColor);
+    writeBytes(&out, (const char*)&options.skyboxRotation, sizeof(float));
+    int skyboxNameLength = static_cast<int>(options.skyboxName.size());
+    writeBytes(&out, (const char*)&skyboxNameLength, sizeof(int));
+    if (skyboxNameLength > 0)
+        out.write(options.skyboxName.data(), skyboxNameLength);
 }
 
 void saver::saveGlbsChunk(std::ostream& out) {
@@ -94,7 +116,7 @@ void saver::doSaveToStream(std::ostream& fout) {
     // Write all prepared chunks sorted alphabetically by tag
     for (const auto& pair : chunks) {
         if (!pair.second.empty() || pair.first == "TRKS") { // Ensure TRKS is always saved
-            uint8_t ver = (pair.first == "ENVI") ? 2 : 1;
+            uint8_t ver = (pair.first == "ENVI") ? 3 : 1;
             writeChunkHeader(fout, pair.first.c_str(), ver, pair.second.length());
             fout.write(pair.second.data(), pair.second.length());
         }
@@ -102,6 +124,7 @@ void saver::doSaveToStream(std::ostream& fout) {
 }
 
 void saver::loadEnvironmentChunk(std::istream& fin, uint8_t version, uint32_t length) {
+    std::streampos chunkEnd = fin.tellg() + (std::streamoff)length;
     float envGrdSize = std::max(1.0f, readFloat(&fin));
     gloParent->projectGrdTexSize = envGrdSize;
 
@@ -121,6 +144,39 @@ void saver::loadEnvironmentChunk(std::istream& fin, uint8_t version, uint32_t le
         std::string texPath(texBuf);
         delete[] texBuf;
         gloParent->projectGroundTex = common::normalizeAssetPath(texPath);
+    }
+
+    if (version < 3)
+        return;
+
+    constexpr std::streamoff fixedEnvironmentBytes =
+        5 * 3 * sizeof(float) + 7 * sizeof(float) + 4 * sizeof(bool) + sizeof(int);
+    if (fin.tellg() == std::streampos(-1) || chunkEnd - fin.tellg() < fixedEnvironmentBytes)
+        return;
+
+    DummyOptions& options = *gloParent->mOptions;
+    options.floorColor = glm::clamp(readVec3(&fin), glm::vec3(0.0f), glm::vec3(1.0f));
+    options.drawGrid = readBool(&fin);
+    options.ambientLightStrength = std::clamp(readFloat(&fin), 0.0f, 2.0f);
+    options.ambientLightColor = glm::clamp(readVec3(&fin), glm::vec3(0.0f), glm::vec3(1.0f));
+    options.sunLightStrength = std::clamp(readFloat(&fin), 0.0f, 2.0f);
+    options.sunLightColor = glm::clamp(readVec3(&fin), glm::vec3(0.0f), glm::vec3(1.0f));
+    options.sunPitch = std::clamp(readFloat(&fin), -90.0f, 0.0f);
+    options.sunYaw = std::clamp(readFloat(&fin), -180.0f, 180.0f);
+    options.shadowsEnabled = readBool(&fin);
+    options.trackTextureEnabled = readBool(&fin);
+    options.mistEnabled = readBool(&fin);
+    options.mistNear = std::clamp(readFloat(&fin), 0.0f, 5000.0f);
+    options.mistFar = std::clamp(readFloat(&fin), options.mistNear, 10000.0f);
+    options.mistColor = glm::clamp(readVec3(&fin), glm::vec3(0.0f), glm::vec3(1.0f));
+    options.backgroundColor = glm::clamp(readVec3(&fin), glm::vec3(0.0f), glm::vec3(1.0f));
+    options.skyboxRotation = std::clamp(readFloat(&fin), -180.0f, 180.0f);
+
+    int skyboxNameLength = readInt(&fin);
+    std::streamoff remaining = chunkEnd - fin.tellg();
+    if (skyboxNameLength >= 0 && skyboxNameLength <= 1024 &&
+        static_cast<std::streamoff>(skyboxNameLength) <= remaining) {
+        options.skyboxName = skyboxNameLength > 0 ? readString(&fin, skyboxNameLength) : "Solid Color";
     }
 }
 

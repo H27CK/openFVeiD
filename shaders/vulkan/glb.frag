@@ -15,14 +15,16 @@ layout(set = 0, binding = 0) uniform GlbUniforms {
     vec4 lightDir;
     vec4 solidColor;
     vec4 mistColor;
+    vec4 ambientColor;
+    vec4 sunColor;
     int wire;
     float edgeWidth;
     int mistEnabled;
     float mistNear;
     float mistFar;
+    float ambientStrength;
+    float sunStrength;
     float padding0;
-    float padding1;
-    float padding2;
 } u;
 
 layout(set = 0, binding = 1) uniform sampler2D uTexture;
@@ -35,9 +37,11 @@ void main(void)
 
     vec3 normal = normalize(bNormal);
     float diffusal = max(dot(normal, -u.lightDir.xyz), 0.0);
-    float ambient = 0.8;
 
-    vec3 finalColor = (ambient + diffusal * 0.5) * m_color;
+    vec3 ambientLight = m_color * u.ambientColor.rgb * u.ambientStrength;
+    vec3 directionalLight = m_color * u.sunColor.rgb * u.sunStrength *
+                            diffusal * 0.5;
+    vec3 finalColor = ambientLight + directionalLight;
 
     // Apply mist
     if (u.mistEnabled != 0) {

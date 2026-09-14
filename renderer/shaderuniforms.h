@@ -34,12 +34,16 @@ struct SkyUniforms {
     int32_t padding2;
 };
 
-struct FloorUniforms {
+struct alignas(16) FloorUniforms {
     glm::mat4 projectionMatrix;
     glm::mat4 modelMatrix;
     glm::vec4 eyePos;
     glm::vec4 floorColor;
     glm::vec4 mistColor;
+    glm::vec4 lightDir;
+    glm::vec4 ambientColor;
+    glm::vec4 sunColor;
+    glm::vec4 gridColor;
     float floorHeight;
     float grdTexSize;
     float opacity;
@@ -48,6 +52,10 @@ struct FloorUniforms {
     int32_t mistEnabled;
     float mistNear;
     float mistFar;
+    float ambientStrength;
+    float sunStrength;
+    float gridMajorThickness;
+    float gridMinorThickness;
 };
 
 struct TrackUniforms {
@@ -60,13 +68,19 @@ struct TrackUniforms {
     glm::vec4 sectionColor;
     glm::vec4 transitionColor;
     glm::vec4 mistColor;
+    glm::vec4 ambientColor;
+    glm::vec4 sunColor;
     int32_t colorMode;
     int32_t mistEnabled;
     float mistNear;
     float mistFar;
+    float ambientStrength;
+    float sunStrength;
+    float padding0;
+    float padding1;
 };
 
-struct TrackInstancedUniforms {
+struct alignas(16) TrackInstancedUniforms {
     glm::mat4 projectionMatrix;
     glm::mat4 modelMatrix;
     glm::mat4 anchorBase;
@@ -76,6 +90,8 @@ struct TrackInstancedUniforms {
     glm::vec4 sectionColor;
     glm::vec4 transitionColor;
     glm::vec4 mistColor;
+    glm::vec4 ambientColor;
+    glm::vec4 sunColor;
     int32_t colorMode;
     int32_t mistEnabled;
     float mistNear;
@@ -84,7 +100,10 @@ struct TrackInstancedUniforms {
     float heartline;
     int32_t isAsset;
     int32_t smoothAlongSpline;
-    int32_t padding;
+    float ambientStrength;
+    float sunStrength;
+    int32_t materialEnabled;
+    float padding1;
 };
 
 struct StlUniforms {
@@ -95,23 +114,34 @@ struct StlUniforms {
     glm::vec4 lightDir;
     glm::vec4 solidColor;
     glm::vec4 mistColor;
+    glm::vec4 ambientColor;
+    glm::vec4 sunColor;
     int32_t wire;
     float edgeWidth;
     int32_t mistEnabled;
     float mistNear;
     float mistFar;
+    float ambientStrength;
+    float sunStrength;
     float padding0;
-    float padding1;
-    float padding2;
 };
 
-struct SimpleShadowUniforms {
+struct alignas(16) SimpleShadowUniforms {
     glm::mat4 projectionMatrix;
     glm::mat4 modelMatrix;
     glm::mat4 anchorBase;
     glm::mat4 shadowMatrix;
+    glm::vec4 shadowColor;
     float uTrackLength;
     float heartline;
     int32_t isInstanced;
     int32_t isAsset;
+    float shadowStrength;
+    float floorHeight;
+    int32_t softShadowsEnabled;
+    float padding2;
 };
+
+static_assert(sizeof(FloorUniforms) == 288, "FloorUniforms must match the std140 shader block");
+static_assert(sizeof(TrackInstancedUniforms) == 368, "TrackInstancedUniforms must match the std140 shader block");
+static_assert(sizeof(SimpleShadowUniforms) == 304, "SimpleShadowUniforms must match the std140 shader block");
