@@ -17,14 +17,16 @@ layout(set = 0, binding = 0) uniform GlbUniforms {
     vec4 lightDir;
     vec4 solidColor;
     vec4 mistColor;
+    vec4 ambientColor;
+    vec4 sunColor;
     int wire;
     float edgeWidth;
     int mistEnabled;
     float mistNear;
     float mistFar;
+    float ambientStrength;
+    float sunStrength;
     float padding0;
-    float padding1;
-    float padding2;
 } u;
 
 void main(void) {

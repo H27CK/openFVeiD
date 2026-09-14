@@ -25,10 +25,16 @@ layout(set = 0, binding = 0) uniform TrackUniforms {
     vec4 sectionColor;
     vec4 transitionColor;
     vec4 mistColor;
+    vec4 ambientColor;
+    vec4 sunColor;
     int colorMode;
     int mistEnabled;
     float mistNear;
     float mistFar;
+    float ambientStrength;
+    float sunStrength;
+    float padding0;
+    float padding1;
 } u;
 
 vec3 getColor()

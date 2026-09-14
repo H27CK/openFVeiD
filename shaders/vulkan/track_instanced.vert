@@ -2,7 +2,6 @@
 
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
-layout(location = 2) in vec2 aUv;
 layout(location = 10) in float aFaceRefZ;
 
 // Instance data
@@ -14,7 +13,8 @@ layout(location = 9) in vec3 aColor;
 layout(location = 0) out vec4 bPosition;
 layout(location = 1) out vec3 bNormal;
 layout(location = 2) out vec3 color;
-layout(location = 3) out vec2 bUv;
+layout(location = 4) out vec3 bMaterialPosition;
+layout(location = 5) out vec3 bMaterialNormal;
 
 layout(set = 0, binding = 0) uniform TrackInstancedUniforms {
     mat4 projectionMatrix;
@@ -26,6 +26,8 @@ layout(set = 0, binding = 0) uniform TrackInstancedUniforms {
     vec4 sectionColor;
     vec4 transitionColor;
     vec4 mistColor;
+    vec4 ambientColor;
+    vec4 sunColor;
     int colorMode;
     int mistEnabled;
     float mistNear;
@@ -34,7 +36,10 @@ layout(set = 0, binding = 0) uniform TrackInstancedUniforms {
     float heartline;
     int isAsset;
     int smoothAlongSpline;
-    int padding;
+    float ambientStrength;
+    float sunStrength;
+    int materialEnabled;
+    float padding1;
 } u;
 
 struct SplineNode {
@@ -118,8 +123,6 @@ vec3 getDynamicColor(float vSelected, float vVel, float vRoll, float vNForce, fl
 
 void main() {
     // Basic Attributes from instance
-    bUv = aUv;
-
     // Spline Lookup
     float startDist = aInstanceMatrix[3].x;
     float minZ = aInstanceMatrix[3].z;
@@ -183,11 +186,21 @@ void main() {
     float totalX = localX + lateralOffset;
     float totalY = localY + normalOffset;
 
+    // All instanced geometry shares this meter-based material space. The Z
+    // coordinate follows track distance, while X/Y retain the asset's actual
+    // scaled cross-section, so GLTFs and extrusions receive identical density.
+    bMaterialPosition = vec3(totalX, totalY, dist);
+
     vec3 warpedPos = iPos - (iLat * totalX) - (iNorm * totalY);
     vec4 worldPos = u.anchorBase * vec4(warpedPos, 1.0);
 
     vec3 localNormal = aNormal;
     if (shouldInvert) localNormal = -localNormal;
+
+    vec3 normalScale = vec3(max(abs(aInstanceMatrix[0][0]), 0.0001),
+                            max(abs(aInstanceMatrix[1][1]), 0.0001), 1.0);
+    localNormal = normalize(localNormal / normalScale);
+    bMaterialNormal = localNormal;
 
     vec3 warpedNormal = normalize(-(nLat * localNormal.x) - (nNorm * localNormal.y) + (nDir * localNormal.z));
     bNormal = mat3(u.anchorBase) * warpedNormal;

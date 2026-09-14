@@ -1483,9 +1483,13 @@ void track::saveTrackChunk(std::ostream& file) {
     writeBytes(&propStream, (const char*)&style, sizeof(int));
     writeBytes(&propStream, (const char*)&povPos.x, sizeof(float));
     writeBytes(&propStream, (const char*)&povPos.y, sizeof(float));
+    if (mParent) {
+        for (const glm::vec3& color : mParent->trackColors)
+            writeVec3(&propStream, color);
+    }
 
     std::string propData = propStream.str();
-    writeChunkHeader(file, "PROP", 1, propData.length());
+    writeChunkHeader(file, "PROP", 2, propData.length());
     file.write(propData.data(), propData.length());
 
     // 2. Write SECS chunk (Sequential section list)
@@ -1541,8 +1545,10 @@ void track::saveTrackChunk(std::ostream& file) {
         writeBytes(&asstStream, (const char*)&asset.fullLayout, sizeof(bool));
         writeBytes(&asstStream, (const char*)&asset.toEnd, sizeof(bool));
     }
+    for (const auto& asset : customAssets)
+        writeBytes(&asstStream, (const char*)&asset.smoothAlongSpline, sizeof(bool));
     std::string asstData = asstStream.str();
-    writeChunkHeader(file, "ASST", 1, asstData.length());
+    writeChunkHeader(file, "ASST", 2, asstData.length());
     file.write(asstData.data(), asstData.length());
 
     // 5. Write OFFS chunk
@@ -1614,6 +1620,7 @@ void track::loadTrackChunk(std::istream& file, uint8_t version, uint32_t length)
 }
 
 void track::loadPropChunk(std::istream& file, uint8_t version, uint32_t length) {
+    std::streampos chunkEnd = file.tellg() + (std::streamoff)length;
     int namelength = readInt(&file);
     name = readString(&file, namelength);
     startPos = readVec3(&file);
@@ -1630,6 +1637,14 @@ void track::loadPropChunk(std::istream& file, uint8_t version, uint32_t length) 
     style = (enum trackStyle)readInt(&file);
     povPos.x = readFloat(&file);
     povPos.y = readFloat(&file);
+
+    constexpr std::streamoff colorBytes = 4 * 3 * sizeof(float);
+    std::streampos colorPosition = file.tellg();
+    if (version >= 2 && mParent && colorPosition != std::streampos(-1) &&
+        chunkEnd - colorPosition >= colorBytes) {
+        for (glm::vec3& color : mParent->trackColors)
+            color = glm::clamp(readVec3(&file), glm::vec3(0.0f), glm::vec3(1.0f));
+    }
 
     anchorNode->fEnergy = 0.5f * anchorNode->fVel * anchorNode->fVel +
                           F_G * anchorNode->fPosHearty(0.9 * fHeart);
@@ -1707,6 +1722,7 @@ void track::loadExtrChunk(std::istream& file, uint8_t version, uint32_t length) 
 }
 
 void track::loadAsstChunk(std::istream& file, uint8_t version, uint32_t length) {
+    std::streampos chunkEnd = file.tellg() + (std::streamoff)length;
     for (auto& asset : customAssets) {
         if (asset.loadedModel)
             delete asset.loadedModel;
@@ -1729,6 +1745,13 @@ void track::loadAsstChunk(std::istream& file, uint8_t version, uint32_t length) 
         asset.visible = true;
         asset.loadedModel = nullptr;
         customAssets.push_back(asset);
+    }
+
+    std::streampos smoothPosition = file.tellg();
+    if (version >= 2 && smoothPosition != std::streampos(-1) &&
+        chunkEnd - smoothPosition >= static_cast<std::streamoff>(customAssets.size() * sizeof(bool))) {
+        for (CustomAssetInstance& asset : customAssets)
+            asset.smoothAlongSpline = readBool(&file);
     }
 }
 

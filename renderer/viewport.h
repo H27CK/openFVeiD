@@ -25,6 +25,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <vector>
 #include <string>
+#include <cstdint>
 
 #include "renderer/vulkan/vulkanbuffer.h"
 #include "renderer/vulkan/vulkanframebuffer.h"
@@ -108,6 +109,23 @@ public:
         }
     }
     bool loadGroundTexture(const std::string& path);
+    void refreshSkyboxes(bool force = false);
+    const std::vector<std::string>& getAvailableSkyboxes() const {
+        return availableSkyboxNames;
+    }
+    bool selectSkybox(const std::string& name);
+    void setSkyboxRotation(float degrees);
+    bool loadEnvironmentPreset(const std::string& path);
+    bool saveEnvironmentPreset(const std::string& path);
+    const std::vector<std::string>& getAvailableEnvironmentPresets() const {
+        return availableEnvironmentPresetNames;
+    }
+    const std::string& getSelectedEnvironmentPresetName() const {
+        return selectedEnvironmentPresetName;
+    }
+    bool selectEnvironmentPreset(const std::string& name);
+    void applyProjectEnvironment();
+    std::string suggestedEnvironmentPresetPath() const;
     bool addGlbMesh(const std::string& path);
     void removeGlbMesh(int index);
     bool selectGlbAtRay(float ndcX, float ndcY);
@@ -199,12 +217,31 @@ public:
     std::vector<GlbMesh> glbMeshes;
 
 private:
+    struct SkyboxDefinition {
+        std::string name;
+        std::string directory;
+        std::vector<std::string> facePaths;
+        uint64_t signature = 0;
+    };
+
+    struct EnvironmentPresetDefinition {
+        std::string name;
+        std::string path;
+    };
+
     void initPipelines();
     void destroyPipelines();
     void initTextures();
     void initFloorMesh();
+    bool loadSkybox(const SkyboxDefinition& definition);
+    void unloadSkybox(bool bindFallback = true);
+    uint64_t getSkyboxDirectorySignature() const;
+    uint64_t getFileSignature(const std::string& path) const;
+    void refreshEnvironmentPresets();
+    void pollEnvironmentFiles(float deltaTime);
 
     void buildMatrices(float offset = 0.0f);
+    float getShadowStrength() const;
     void drawSky(VkCommandBuffer commandBuffer);
     void drawFloor(VkCommandBuffer commandBuffer);
     void drawOrthoGrid(VkCommandBuffer commandBuffer);
@@ -232,10 +269,23 @@ private:
     VulkanPipeline orthoGridPipeline;
 
     VulkanTexture* skyTexture = nullptr;
+    std::vector<SkyboxDefinition> skyboxDefinitions;
+    std::vector<std::string> availableSkyboxNames;
+    std::string activeSkyboxName;
+    uint64_t activeSkyboxSignature = 0;
+    uint64_t skyboxDirectorySignature = 0;
+    std::vector<EnvironmentPresetDefinition> environmentPresetDefinitions;
+    std::vector<std::string> availableEnvironmentPresetNames;
+    std::string selectedEnvironmentPresetName;
+    std::string watchedEnvironmentPath;
+    uint64_t watchedEnvironmentSignature = 0;
+    float environmentPollAccumulator = 0.0f;
     VulkanTexture floorTexture;
     VulkanTexture rasterTexture;
     VulkanTexture dummyCubeTexture;
     VulkanTexture dummyWhiteTexture;
+    VulkanTexture metalNormalTexture;
+    VulkanTexture metalRoughnessTexture;
     VulkanBuffer zeroAttributeBuffer;
 
     Mesh skyMesh;
