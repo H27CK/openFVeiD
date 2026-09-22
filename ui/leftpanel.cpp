@@ -1531,6 +1531,12 @@ void LeftPanel::renderStraightProperties(trackHandler* hTrack, section* sec, App
                     s->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
                     changed = true;
                 })
+            PROP_ROW(
+                "Accel Respects Gravity",
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::Checkbox("##StraightAccelGravity", &s->bAccelRespectsGravity)) {
+                    changed = true;
+                })
         }
     }
     float displayLength = (float)(s->fHLength * gloParent->mOptions->getLengthFactor());
@@ -1589,6 +1595,12 @@ void LeftPanel::renderCurvedProperties(trackHandler* hTrack, section* sec, Appli
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 if (ImGui::DragFloat("##CurvedAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f g") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
                     c->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
+                    changed = true;
+                })
+            PROP_ROW(
+                "Accel Respects Gravity",
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::Checkbox("##StraightAccelGravity", &c->bAccelRespectsGravity)) {
                     changed = true;
                 })
         }
@@ -1656,6 +1668,12 @@ void LeftPanel::renderForcedProperties(trackHandler* hTrack, section* sec, Appli
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 if (ImGui::DragFloat("##ForcedAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f g") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
                     sec->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
+                    changed = true;
+                })
+            PROP_ROW(
+                "Accel Respects Gravity",
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::Checkbox("##StraightAccelGravity", &sec->bAccelRespectsGravity)) {
                     changed = true;
                 })
         }
@@ -1727,6 +1745,12 @@ void LeftPanel::renderStaticProperties(trackHandler* hTrack, section* sec, Appli
             ImGui::SetNextItemWidth(-FLT_MIN);
             if (ImGui::DragFloat("##StaticAccel", &displayAccel, 0.01f, -10.0f, 10.0f, "%.2f g") || common::ValueScroll(&displayAccel, 0.1f, 0.01f)) {
                 sec->fAccel = (double)std::clamp(displayAccel, -10.0f, 10.0f) * F_G;
+                changed = true;
+            })
+        PROP_ROW(
+            "Accel Respects Gravity",
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::Checkbox("##StraightAccelGravity", &sec->bAccelRespectsGravity)) {
                 changed = true;
             })
     }
