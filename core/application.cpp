@@ -2569,10 +2569,78 @@ void Application::RenderTrainGeneratorWindow() {
     static glm::vec3 arrSpacing(0.9f, 0.0f, -0.9f);
     static float arrCarSpacing = 2.8f;
 
-    if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (ImGui::BeginTable("TrainGenTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+    struct TrainPresets {
+            const char* name;
+            float carSpacing;
+            int rows;
+            int seats;
+            glm::vec3 spacing;
+        };
+
+    // This table provides reference values for car distance, seat spacing, stagger, and row spacing for various coaster types, extracted from the custom train presets list made by nerfer10 (peterc8117).
+    static const TrainPresets presets[] = {
+        {"Custom", 2.8f, 2, 2, glm::vec3(0.9f, 0.0f, -0.9f)},
+        {"Arrow 4D ", 3.3f, 1, 4, glm::vec3(5.9f, 0.0f, 0.0f)},
+        {"Schwarzkopf Looping ", 2.0f, 2, 2, glm::vec3(0.5f, 0.0f, -0.75f)},
+        {"Arrow Corkscrew ", 2.5f, 2, 2, glm::vec3(0.5f, 0.0f, -0.75f)},
+        {"Gerstlauer Bobsled", 2.5f, 3, 2, glm::vec3(0.5f, 0.0f, -1.05f)},
+        {"Gerstlauer Eurofighter", 2.5f, 2, 4, glm::vec3(0.55f, 0.0f, -1.2f)},
+        {"Gerstlauer Infinity", 1.65f, 1, 4, glm::vec3(0.65f, 0.0f, 0.0f)},
+        {"GG Timberliner", 1.1f, 1, 2, glm::vec3(0.65f, 0.0f, 0.0f)},
+        {"RMC Hybrid", 1.95f, 2, 2, glm::vec3(0.6f, 0.0f, -0.85f)},
+        {"Intamin Hyper & Rocket", 2.2f, 2, 2, glm::vec3(0.65f, 0.1f, -0.9f)},
+        {"B&M Hyper", 1.5f, 1, 4, glm::vec3(0.5f, 0.0f, 0.0f)},
+        {"B&M Staggered Hyper", 2.6f, 1, 4, glm::vec3(0.5f, 0.0f, 0.0f)},
+        {"Vekoma SLC", 1.5f, 1, 2, glm::vec3(0.7f, 0.0f, 0.0f)},
+        {"B&M Invert", 1.5f, 1, 4, glm::vec3(0.5f, 0.0f, 0.0f)},
+        {"Intamin Impulse", 2.95f, 2, 2, glm::vec3(0.6f, 0.0f, -1.45f)},
+        {"Premier LIM", 2.4f, 2, 2, glm::vec3(0.55f, 0.0f, -0.9f)},
+        {"Mack Launch", 2.5f, 2, 2, glm::vec3(0.85f, 0.1f, -1.05f)},
+        {"Maurer XCar", 3.8f, 2, 3, glm::vec3(0.9f, 0.0f, -1.0f)},
+        {"Arrow Suspended", 2.55f, 2, 2, glm::vec3(0.5f, 0.0f, -0.85f)},
+        {"B&M Dive (8 Across)", 1.7f, 1, 8, glm::vec3(0.5f, 0.1f, -1.33f)},
+        {"B&M Dive (10 Across)", 1.7f, 1, 10, glm::vec3(0.5f, 0.1f, -1.33f)},
+        {"B&M Floorless/Sit-Down/Stand-Up", 1.55f, 1, 4, glm::vec3(0.5f, 0.0f, 0.0f)},
+        {"B&M Flying", 2.45f, 1, 4, glm::vec3(0.65f, 0.0f, 0.0f)},
+        {"B&M Wing", 2.35f, 1, 4, glm::vec3(4.45f, 0.0f, 0.0f)},
+        {"Vekoma Dutchman", 2.5f, 1, 4, glm::vec3(0.65f, 0.0f, 0.0f)},
+        {"Vekoma Mk1101", 2.5f, 2, 2, glm::vec3(0.75f, 0.0f, -1.0f)},
+        {"Vekoma Minetrain", 3.3f, 3, 2, glm::vec3(0.55f, 0.0f, -0.85f)},
+        {"Vekoma Motorbike", 1.7f, 1, 2, glm::vec3(0.8f, 0.0f, 0.0f)},
+        {"PTC 4-Seat", 2.1f, 2, 2, glm::vec3(0.5f, 0.0f, -0.85f)},
+        {"PTC 6-Seat", 2.95f, 3, 2, glm::vec3(0.5f, 0.0f, -0.85f)},
+        {"GCI Wooden", 1.15f, 1, 2, glm::vec3(0.5f, 0.0f, 0.0f)},
+        {"Gerstlauer Wooden (Trailered 4-Seat)", 1.9f, 2, 2, glm::vec3(0.5f, 0.0f, -0.65f)},
+        {"Intamin Hot Racer", 1.2f, 1, 1, glm::vec3(0.0f, 0.45f, 0.0f)},
+        {"RMC Raptor", 1.5f, 1, 1, glm::vec3(0.0f, 0.45f, 0.0f)}
+    };
+
+    static int selectedPreset = 0;
+
+    ImGui::SeparatorText("Preset Type");
+    if (ImGui::BeginCombo("##PresetCombo", presets[selectedPreset].name)) {
+        for (int n = 0; n < IM_ARRAYSIZE(presets); n++) {
+            const bool is_selected = (selectedPreset == n);
+            if (ImGui::Selectable(presets[n].name, is_selected)) {
+                selectedPreset = n;
+                if (selectedPreset != 0) {
+                    arrCarSpacing = presets[n].carSpacing;
+                    arrRows = presets[n].rows;
+                    arrSeats = presets[n].seats;
+                    arrSpacing = presets[n].spacing;
+                }
+            }
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::SeparatorText("Parameters");
+
+    if (ImGui::BeginTable("TrainGenTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
             auto propRow = [](const char* label, auto contentFunc) {
                 ImGui::TableNextRow();
@@ -2584,20 +2652,38 @@ void Application::RenderTrainGeneratorWindow() {
                 contentFunc();
             };
 
-            propRow("Cars", [&]() { ImGui::DragInt("##Cars", &arrCars, 1, 1, 20); });
-            propRow("Car Distance", [&]() {
-                if (ImGui::DragFloat("##CarDist", &arrCarSpacing, 0.1f, 0.0f, 20.0f)) {
-                    if (arrCarSpacing < 0.0f)
-                        arrCarSpacing = 0.0f;
-                }
-            });
-            propRow("Rows/Car", [&]() { ImGui::DragInt("##Rows", &arrRows, 1, 1, 10); });
-            propRow("Seats/Row", [&]() { ImGui::DragInt("##Seats", &arrSeats, 1, 1, 10); });
-            propRow("Spacing", [&]() { ImGui::DragFloat3("##Spacing", &arrSpacing.x, 0.1f); });
+        bool disableInputs = (selectedPreset != 0);
 
-            ImGui::EndTable();
+    propRow("Cars", [&]() { ImGui::DragInt("##Cars", &arrCars, 1, 1, 20); });
+
+    propRow("Car Distance", [&]() {
+        if (disableInputs) ImGui::BeginDisabled();
+        if (ImGui::DragFloat("##CarDist", &arrCarSpacing, 0.1f, 0.0f, 20.0f)) {
+            if (arrCarSpacing < 0.0f) arrCarSpacing = 0.0f;
         }
-    }
+        if (disableInputs) ImGui::EndDisabled();
+    });
+
+    propRow("Rows/Car", [&]() {
+        if (disableInputs) ImGui::BeginDisabled();
+        ImGui::DragInt("##Rows", &arrRows, 1, 1, 10);
+        if (disableInputs) ImGui::EndDisabled();
+    });
+
+    propRow("Seats/Row", [&]() {
+        if (disableInputs) ImGui::BeginDisabled();
+        ImGui::DragInt("##Seats", &arrSeats, 1, 1, 20);
+        if (disableInputs) ImGui::EndDisabled();
+    });
+
+    propRow("Spacing", [&]() {
+        if (disableInputs) ImGui::BeginDisabled();
+        ImGui::DragFloat3("##Spacing", &arrSpacing.x, 0.1f);
+        if (disableInputs) ImGui::EndDisabled();
+    });
+
+    ImGui::EndTable();
+}
 
     ImGui::Separator();
     if (ImGui::Button("Generate", ImVec2(-FLT_MIN, 0))) {
