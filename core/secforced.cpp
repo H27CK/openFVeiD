@@ -536,6 +536,7 @@ void secforced::saveSection(std::ostream& file) {
     rollFunc->saveFunction(file);
     normForce->saveFunction(file);
     latForce->saveFunction(file);
+    writeBytes(&file, (const char*)&bAccelRespectsGravity, sizeof(bool));
 }
 
 void secforced::loadSection(std::istream& file) {
@@ -558,6 +559,11 @@ void secforced::loadSection(std::istream& file) {
     rollFunc->loadFunction(file);
     normForce->loadFunction(file);
     latForce->loadFunction(file);
+    if (file.peek() != EOF) {
+        bAccelRespectsGravity = readBool(&file);
+    } else {
+        bAccelRespectsGravity = false;
+    }
 }
 
 bool secforced::isInFunction(int index, subfunc* func) {

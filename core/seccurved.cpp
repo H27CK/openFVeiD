@@ -282,6 +282,7 @@ void seccurved::saveSection(std::ostream& file) {
     writeBytes(&file, (const char*)&bOrientation, sizeof(bool));
     writeBytes(&file, (const char*)&tempAccel, sizeof(float));
     rollFunc->saveFunction(file);
+    writeBytes(&file, (const char*)&bAccelRespectsGravity, sizeof(bool));
 }
 
 void seccurved::loadSection(std::istream& file) {
@@ -305,6 +306,11 @@ void seccurved::loadSection(std::istream& file) {
         fAccel = 0.0;
     }
     rollFunc->loadFunction(file);
+    if (file.peek() != EOF) {
+        bAccelRespectsGravity = readBool(&file);
+    } else {
+        bAccelRespectsGravity = false;
+    }
 }
 
 bool seccurved::isInFunction(int index, subfunc* func) {

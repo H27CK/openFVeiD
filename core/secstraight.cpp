@@ -178,6 +178,8 @@ void secstraight::saveSection(std::ostream& file) {
     writeBytes(&file, (const char*)&tempLength, sizeof(float));
     writeBytes(&file, (const char*)&tempAccel, sizeof(float));
     rollFunc->saveFunction(file);
+
+    writeBytes(&file, (const char*)&bAccelRespectsGravity, sizeof(bool));
 }
 
 void secstraight::loadSection(std::istream& file) {
@@ -196,6 +198,11 @@ void secstraight::loadSection(std::istream& file) {
         fAccel = 0.0;
     }
     rollFunc->loadFunction(file);
+    if (file.peek() != EOF) {
+        bAccelRespectsGravity = readBool(&file);
+    } else {
+        bAccelRespectsGravity = false;
+    }
 }
 
 bool secstraight::isInFunction(int index, subfunc* func) {
