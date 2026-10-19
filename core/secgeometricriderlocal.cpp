@@ -221,7 +221,8 @@ int secgeometricriderlocal::updateSection(int node) {
                 curNode->fVel = this->fVel;
             } else {
                 double minSpeed = (double)gloParent->mOptions->stallSpeed;
-                curNode->fVel = std::max(minSpeed, prevNode->fVel + this->fAccel / F_HZ);
+                double accel = this->bAccelRespectsGravity ? this->fAccel - (F_G * sin(curNode->getPitch() * F_PI / 180.0)) : this->fAccel;
+                curNode->fVel = std::max(minSpeed, prevNode->fVel + accel / F_HZ);
             }
             curNode->fEnergy = 0.5 * curNode->fVel * curNode->fVel +
                                F_G * (curNode->vPosHeart(parent->fHeart * 0.9f).y +
@@ -495,6 +496,7 @@ void secgeometricriderlocal::saveSection(std::ostream& file) {
     rollFunc->saveFunction(file);
     normForce->saveFunction(file);
     latForce->saveFunction(file);
+    writeBytes(&file, (const char*)&bAccelRespectsGravity, sizeof(bool));
 }
 
 void secgeometricriderlocal::loadSection(std::istream& file) {
@@ -516,6 +518,11 @@ void secgeometricriderlocal::loadSection(std::istream& file) {
     rollFunc->loadFunction(file);
     normForce->loadFunction(file);
     latForce->loadFunction(file);
+    if (file.peek() != EOF) {
+        bAccelRespectsGravity = readBool(&file);
+    } else {
+        bAccelRespectsGravity = false;
+    }
 }
 
 bool secgeometricriderlocal::isInFunction(int index, subfunc* func) {

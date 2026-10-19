@@ -132,7 +132,8 @@ int secstraight::updateSection(int node) {
                 curNode->fVel = this->fVel;
             } else {
                 double minSpeed = (double)gloParent->mOptions->stallSpeed;
-                curNode->fVel = std::max(minSpeed, prevNode->fVel + this->fAccel / F_HZ);
+                double accel = this->bAccelRespectsGravity ? this->fAccel - (F_G * sin(curNode->getPitch() * F_PI / 180.0)) : this->fAccel;
+                curNode->fVel = std::max(minSpeed, prevNode->fVel + accel / F_HZ);
             }
             curNode->fEnergy = 0.5 * curNode->fVel * curNode->fVel +
                                F_G * (curNode->vPosHeart(parent->fHeart * 0.9f).y +
@@ -177,6 +178,8 @@ void secstraight::saveSection(std::ostream& file) {
     writeBytes(&file, (const char*)&tempLength, sizeof(float));
     writeBytes(&file, (const char*)&tempAccel, sizeof(float));
     rollFunc->saveFunction(file);
+
+    writeBytes(&file, (const char*)&bAccelRespectsGravity, sizeof(bool));
 }
 
 void secstraight::loadSection(std::istream& file) {
@@ -195,6 +198,11 @@ void secstraight::loadSection(std::istream& file) {
         fAccel = 0.0;
     }
     rollFunc->loadFunction(file);
+    if (file.peek() != EOF) {
+        bAccelRespectsGravity = readBool(&file);
+    } else {
+        bAccelRespectsGravity = false;
+    }
 }
 
 bool secstraight::isInFunction(int index, subfunc* func) {

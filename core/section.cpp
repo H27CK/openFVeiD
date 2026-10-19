@@ -32,6 +32,7 @@ using namespace std;
 
 section::section(track* getParent, enum secType _type, mnode* first) {
     sName = "Unnamed";
+    bAccelRespectsGravity = false;
     fAccel = 0.0;
     lNodes.reserve(1000);
     lNodes.push_back(*first);
