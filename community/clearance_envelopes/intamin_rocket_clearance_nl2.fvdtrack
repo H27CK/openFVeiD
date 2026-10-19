@@ -1,0 +1,5 @@
+FVD_TRACK_V1
+AUTHOR "Loundlim"
+MANUFACTURER "Intamin"
+TYPE "Rocket Clearance"
+ASSET "intamin_rocket_nl2.glb" 0 -1 0.5 0.7 0.7 0.7 0 1

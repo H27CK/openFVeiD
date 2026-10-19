@@ -53,10 +53,11 @@ typedef struct pipeoption_s {
     bool smooth;
 } pipeoption_t;
 
+#include "core/customtrack.h"
+
 class track;
 class section;
 class mnode;
-class CustomTrackStyle;
 
 struct track_asset_instance_t {
     glm::mat4 matrix;

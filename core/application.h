@@ -66,7 +66,7 @@ public:
     Application();
     ~Application();
 
-    bool Initialize();
+    bool Initialize(int argc = 0, char** argv = nullptr);
     void Run();
     void Shutdown();
 
@@ -81,12 +81,17 @@ public:
             mUndoHandler->pushSnapshot();
     }
 
+    void CreateNewProject();
     void forkTrack(trackHandler* sourceTrack, int nodeIdx);
+    void splitTrack(trackHandler* sourceTrack, int sectionIdx);
+    void mergeTracks(trackHandler* trackA, trackHandler* trackB);
     void importReferenceTrack(const std::string& path);
 
 private:
     void Update(float deltaTime);
     void Render(float deltaTime);
+    void RenderWelcomeScreen();
+    void RenderOptionsWindow();
     void RenderTrainGeneratorWindow();
     void RenderMeasurementPointsWindow();
     void RenderParametricTrackEditorWindow();
@@ -113,6 +118,11 @@ private:
     void showInAppNotification(const std::string& msg);
     bool firstFrame = true;
     bool forceResetLayout = false;
+    bool showWelcomeScreen = false;
+    VulkanTexture welcomeSvgTexture;
+    VkDescriptorSet welcomeSvgDescriptorSet = VK_NULL_HANDLE;
+    void initWelcomeSvgTexture();
+    void destroyWelcomeSvgTexture();
     bool showOptions = false;
     bool showTrainGenerator = false;
     bool showMeasurementPoints = false;

@@ -18,6 +18,7 @@
 
 #include "graphview.h"
 #include "application.h"
+#include "core/keybinds.h"
 #include "renderer/viewport.h"
 #include "trackhandler.h"
 #include "track.h"
@@ -27,11 +28,162 @@
 #include "subfunction.h"
 #include "dummies.h"
 #include "portable-file-dialogs.h"
+#include "imgui_internal.h"
+#include "implot_internal.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+
+static void AddOpenPolyline(ImDrawList* drawList, const ImVec2* points, int count, ImU32 col, float thickness) {
+    if (count < 2 || !points || !drawList || (col & IM_COL32_A_MASK) == 0)
+        return;
+
+    // Filter duplicate consecutive points
+    std::vector<ImVec2> pts;
+    pts.reserve(count);
+    pts.push_back(points[0]);
+    for (int i = 1; i < count; ++i) {
+        float dx = points[i].x - pts.back().x;
+        float dy = points[i].y - pts.back().y;
+        if (dx * dx + dy * dy > 0.01f)
+            pts.push_back(points[i]);
+    }
+    int n = (int)pts.size();
+    if (n < 2)
+        return;
+
+    // Chunking to guarantee no 16-bit index overflow (max 2000 points per batch)
+    const int CHUNK_SIZE = 2000;
+    for (int chunkStart = 0; chunkStart < n - 1; chunkStart += CHUNK_SIZE - 1) {
+        int chunkEnd = std::min(n, chunkStart + CHUNK_SIZE);
+        int chunkCount = chunkEnd - chunkStart;
+        if (chunkCount < 2)
+            break;
+
+        const ImVec2* chunkPts = &pts[chunkStart];
+        int numSegs = chunkCount - 1;
+
+        std::vector<ImVec2> normals(numSegs);
+        for (int i = 0; i < numSegs; ++i) {
+            float dx = chunkPts[i + 1].x - chunkPts[i].x;
+            float dy = chunkPts[i + 1].y - chunkPts[i].y;
+            float len = std::sqrt(dx * dx + dy * dy);
+            float inv = len > 0.0f ? 1.0f / len : 0.0f;
+            normals[i] = ImVec2(-dy * inv, dx * inv);
+        }
+
+        float halfThick = thickness * 0.5f;
+        float wInner = std::max(0.0f, halfThick - 0.5f);
+        float wOuter = halfThick + 0.5f;
+
+        ImU32 colCore = col;
+        ImU32 colTrans = col & ~IM_COL32_A_MASK;
+        ImVec2 uv = drawList->_Data->TexUvWhitePixel;
+
+        int vtxCount = chunkCount * 4;
+        int idxCount = numSegs * 18;
+
+        drawList->PrimReserve(idxCount, vtxCount);
+        ImDrawIdx baseIdx = (ImDrawIdx)drawList->_VtxCurrentIdx;
+
+        for (int i = 0; i < chunkCount; ++i) {
+            ImVec2 m;
+            if (i == 0) {
+                m = normals[0];
+            } else if (i == chunkCount - 1) {
+                m = normals[numSegs - 1];
+            } else {
+                ImVec2 n0 = normals[i - 1];
+                ImVec2 n1 = normals[i];
+                float cosTheta = n0.x * n1.x + n0.y * n1.y;
+                float k = 1.0f / (1.0f + std::max(-0.7f, cosTheta));
+                k = std::min(k, 3.0f);
+                m = ImVec2((n0.x + n1.x) * k, (n0.y + n1.y) * k);
+            }
+
+            ImVec2 p = chunkPts[i];
+            drawList->PrimWriteVtx(ImVec2(p.x - m.x * wOuter, p.y - m.y * wOuter), uv, colTrans);
+            drawList->PrimWriteVtx(ImVec2(p.x - m.x * wInner, p.y - m.y * wInner), uv, colCore);
+            drawList->PrimWriteVtx(ImVec2(p.x + m.x * wInner, p.y + m.y * wInner), uv, colCore);
+            drawList->PrimWriteVtx(ImVec2(p.x + m.x * wOuter, p.y + m.y * wOuter), uv, colTrans);
+        }
+
+        for (int i = 0; i < numSegs; ++i) {
+            ImDrawIdx i0 = (ImDrawIdx)(baseIdx + i * 4);
+            ImDrawIdx i1 = (ImDrawIdx)(baseIdx + (i + 1) * 4);
+
+            // Left AA fringe quad
+            drawList->PrimWriteIdx(i0 + 0);
+            drawList->PrimWriteIdx(i1 + 0);
+            drawList->PrimWriteIdx(i1 + 1);
+            drawList->PrimWriteIdx(i0 + 0);
+            drawList->PrimWriteIdx(i1 + 1);
+            drawList->PrimWriteIdx(i0 + 1);
+
+            // Center core quad
+            drawList->PrimWriteIdx(i0 + 1);
+            drawList->PrimWriteIdx(i1 + 1);
+            drawList->PrimWriteIdx(i1 + 2);
+            drawList->PrimWriteIdx(i0 + 1);
+            drawList->PrimWriteIdx(i1 + 2);
+            drawList->PrimWriteIdx(i0 + 2);
+
+            // Right AA fringe quad
+            drawList->PrimWriteIdx(i0 + 2);
+            drawList->PrimWriteIdx(i1 + 2);
+            drawList->PrimWriteIdx(i1 + 3);
+            drawList->PrimWriteIdx(i0 + 2);
+            drawList->PrimWriteIdx(i1 + 3);
+            drawList->PrimWriteIdx(i0 + 3);
+        }
+    }
+}
+
+static void PlotVectorLine(const char* label_id, const double* xs, const double* ys, int count, const ImPlotSpec& spec) {
+    if (count < 2 || !xs || !ys)
+        return;
+
+    if (ImPlot::BeginItem(label_id, spec, spec.LineColor)) {
+        ImDrawList* drawList = ImPlot::GetPlotDrawList();
+        ImU32 col = ImGui::ColorConvertFloat4ToU32(spec.LineColor);
+        float thickness = spec.LineWeight > 0.0f ? spec.LineWeight : 1.5f;
+
+        ImPlotPlot& plot = *ImPlot::GetCurrentPlot();
+        ImPlotRect limits = ImPlot::GetPlotLimits(plot.CurrentX, plot.CurrentY);
+
+        if (plot.FitThisFrame && !ImHasFlag(spec.Flags, ImPlotItemFlags_NoFit)) {
+            for (int i = 0; i < count; ++i) {
+                ImPlot::FitPoint(ImPlotPoint(xs[i], ys[i]));
+            }
+        }
+
+        std::vector<ImVec2> screenPoints;
+        screenPoints.reserve(count);
+
+        for (int i = 0; i < count; ++i) {
+            double x = xs[i];
+            double y = ys[i];
+
+            // Culling outside X bounds with 1-point buffer
+            if (x < limits.X.Min) {
+                if (i + 1 < count && xs[i + 1] < limits.X.Min)
+                    continue;
+            } else if (x > limits.X.Max) {
+                if (i > 0 && xs[i - 1] > limits.X.Max)
+                    break;
+            }
+
+            ImVec2 pt = ImPlot::PlotToPixels(x, y, plot.CurrentX, plot.CurrentY);
+            screenPoints.push_back(pt);
+        }
+
+        AddOpenPolyline(drawList, screenPoints.data(), (int)screenPoints.size(), col, thickness);
+
+        ImPlot::EndItem();
+    }
+}
 
 GraphView::GraphView()
     : needsUpdate(true), playheadSnappingEnabled(true), doAutoFocus(false), autoScaleYEdit(true), autoScaleYResult(true), autoScaleYMeasure(true), playheadLocked(false), lockedPOVPos(0), selectedSubfunc(nullptr), lastSelectedMinArg(-1.0), lastSelectedMaxArg(-1.0) {
@@ -365,8 +517,6 @@ void GraphView::renderPlot(trackHandler* hTrack) {
 
     renderTimeline(hTrack);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
-
     // Group 1: Edit Actions (Align Start / Align End)
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("Edit:");
@@ -547,8 +697,6 @@ void GraphView::renderPlot(trackHandler* hTrack) {
 
         ImGui::EndPopup();
     }
-
-    ImGui::PopStyleVar();
 
     bool isForced = activeSec && activeSec->type == forced;
     bool isGeo = activeSec && (activeSec->type == geometric || activeSec->type == geometricriderlocal);
@@ -908,7 +1056,7 @@ void GraphView::renderPlot(trackHandler* hTrack) {
                 fillSpec.FillAlpha = spec.LineColor.w * 0.3f;
                 fillSpec.Flags |= ImPlotItemFlags_NoLegend | ImPlotItemFlags_NoFit;
                 ImPlot::PlotShaded(label.c_str(), secData.x.data(), secData.y.data(), (int)secData.x.size(), 0.0, fillSpec);
-                ImPlot::PlotLine(label.c_str(), secData.x.data(), secData.y.data(), (int)secData.x.size(), spec);
+                PlotVectorLine(label.c_str(), secData.x.data(), secData.y.data(), (int)secData.x.size(), spec);
                 if (!secData.x.empty()) {
                     double xZero[2] = {secData.x.front(), secData.x.back()};
                     double yZero[2] = {0.0, 0.0};
@@ -955,7 +1103,7 @@ void GraphView::renderPlot(trackHandler* hTrack) {
                 fillSpec.FillAlpha = spec.LineColor.w * 0.3f;
                 fillSpec.Flags |= ImPlotItemFlags_NoLegend | ImPlotItemFlags_NoFit;
                 ImPlot::PlotShaded(dLabel.c_str(), eg.x.data(), eg.y.data(), (int)eg.x.size(), 0.0, fillSpec);
-                ImPlot::PlotLine(dLabel.c_str(), eg.x.data(), eg.y.data(), (int)eg.x.size(), spec);
+                PlotVectorLine(dLabel.c_str(), eg.x.data(), eg.y.data(), (int)eg.x.size(), spec);
                 if (!eg.x.empty()) {
                     double xZero[2] = {eg.x.front(), eg.x.back()};
                     double yZero[2] = {0.0, 0.0};
@@ -972,27 +1120,24 @@ void GraphView::renderPlot(trackHandler* hTrack) {
         // (Removed: Resulting graphs are now plotted in the "Resulting Graphs" tab instead of the "Graphs" tab)
 
         ImPlot::PushPlotClipRect();
-        if (!gimbalLockRegions.empty()) {
-            for (const auto& region : gimbalLockRegions) {
-                ImVec2 p_min = ImPlot::PlotToPixels(region.first, ImPlot::GetPlotLimits().Y.Min);
-                ImVec2 p_max = ImPlot::PlotToPixels(region.second, ImPlot::GetPlotLimits().Y.Max);
-                ImPlot::GetPlotDrawList()->AddRectFilled(p_min, p_max, IM_COL32(255, 180, 50, 50));
+        auto drawShadedRegions = [](const std::vector<std::pair<double, double>>& regions, ImU32 color) {
+            double yMin = ImPlot::GetPlotLimits().Y.Min;
+            double yMax = ImPlot::GetPlotLimits().Y.Max;
+            for (const auto& region : regions) {
+                ImVec2 p1 = ImPlot::PlotToPixels(region.first, yMin);
+                ImVec2 p2 = ImPlot::PlotToPixels(region.second, yMax);
+                ImVec2 p_min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
+                ImVec2 p_max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
+                if (p_max.x - p_min.x < 3.0f) {
+                    p_max.x = p_min.x + 3.0f;
+                }
+                ImPlot::GetPlotDrawList()->AddRectFilled(p_min, p_max, color);
             }
-        }
-        if (!radiusLimitRegions.empty()) {
-            for (const auto& region : radiusLimitRegions) {
-                ImVec2 p_min = ImPlot::PlotToPixels(region.first, ImPlot::GetPlotLimits().Y.Min);
-                ImVec2 p_max = ImPlot::PlotToPixels(region.second, ImPlot::GetPlotLimits().Y.Max);
-                ImPlot::GetPlotDrawList()->AddRectFilled(p_min, p_max, IM_COL32(255, 180, 50, 50));
-            }
-        }
-        if (!forceLimitRegions.empty()) {
-            for (const auto& region : forceLimitRegions) {
-                ImVec2 p_min = ImPlot::PlotToPixels(region.first, ImPlot::GetPlotLimits().Y.Min);
-                ImVec2 p_max = ImPlot::PlotToPixels(region.second, ImPlot::GetPlotLimits().Y.Max);
-                ImPlot::GetPlotDrawList()->AddRectFilled(p_min, p_max, IM_COL32(255, 180, 50, 50));
-            }
-        }
+        };
+
+        drawShadedRegions(gimbalLockRegions, IM_COL32(255, 60, 60, 90));
+        drawShadedRegions(radiusLimitRegions, IM_COL32(255, 150, 20, 90));
+        drawShadedRegions(forceLimitRegions, IM_COL32(255, 60, 60, 90));
         ImPlot::PopPlotClipRect();
 
         if (!sectionBoundaries.empty()) {
@@ -1161,12 +1306,12 @@ void GraphView::updateData(trackHandler* track) {
             bool isRadiusViolated = false;
             if (track->trackData->enforceMinRadius) {
                 float minRadius = track->trackData->minRadius;
-                if (minRadius > 0.0f) {
-                    mnode* prevNode = (i > 0) ? track->trackData->getPoint(i - 1) : node;
+                if (minRadius > 0.0f && i > 0) {
+                    mnode* prevNode = track->trackData->getPoint(i - 1);
                     double dotProd = glm::dot(node->vDir, prevNode->vDir);
                     double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
-                    double ds = node->fDistFromLast;
-                    if (deltaThetaRad > 1e-7) {
+                    double ds = glm::length(node->vPos - prevNode->vPos);
+                    if (deltaThetaRad > 1e-7 && ds > 1e-7) {
                         double physicalRadius = ds / deltaThetaRad;
                         if (physicalRadius < minRadius) {
                             isRadiusViolated = true;
@@ -1177,7 +1322,7 @@ void GraphView::updateData(trackHandler* track) {
 
             if (isRadiusViolated && !inRadiusRegion) {
                 inRadiusRegion = true;
-                radiusRegionStart = x;
+                radiusRegionStart = (i > 0) ? (useDistance ? track->trackData->getPoint(i - 1)->fTotalLength : ((i - 1.0) / F_HZ)) : x;
             } else if (!isRadiusViolated && inRadiusRegion) {
                 inRadiusRegion = false;
                 radiusLimitRegions.push_back({radiusRegionStart, x});
@@ -1196,7 +1341,7 @@ void GraphView::updateData(trackHandler* track) {
 
             if (isForceViolated && !inForceRegion) {
                 inForceRegion = true;
-                forceRegionStart = x;
+                forceRegionStart = (i > 0) ? (useDistance ? track->trackData->getPoint(i - 1)->fTotalLength : ((i - 1.0) / F_HZ)) : x;
             } else if (!isForceViolated && inForceRegion) {
                 inForceRegion = false;
                 forceLimitRegions.push_back({forceRegionStart, x});
@@ -1224,7 +1369,7 @@ void GraphView::sampleEditable(trackHandler* hTrack) {
     if (!hTrack || !hTrack->trackData || !hTrack->trackData->activeSection)
         return;
     section* sec = hTrack->trackData->activeSection;
-    if (sec->type == anchor)
+    if (sec->type == anchor || sec->lNodes.empty())
         return;
     bool useDistance = (sec->bArgument == 1);
     int startIdx = hTrack->trackData->getNumPoints(sec);
@@ -1447,6 +1592,12 @@ void GraphView::sampleGraph(trackHandler* hTrack, GraphType type) {
 void GraphView::renderResultingPlot(trackHandler* hTrack) {
     if (!hTrack || !hTrack->trackData)
         return;
+
+    if (hTrack->trackData->graphChanged) {
+        updateData(hTrack);
+        hTrack->trackData->graphChanged = false;
+    }
+
     section* activeSec = hTrack->trackData->activeSection;
     bool isForced = activeSec && activeSec->type == forced;
     renderTimeline(hTrack);
@@ -1632,7 +1783,7 @@ void GraphView::renderResultingPlot(trackHandler* hTrack) {
                         label = "##" + label + "_" + std::to_string(s);
                     firstVisible = false;
 
-                    ImPlot::PlotLine(label.c_str(), secData.x.data(), secData.y.data(), (int)secData.x.size(), spec);
+                    PlotVectorLine(label.c_str(), secData.x.data(), secData.y.data(), (int)secData.x.size(), spec);
                     if (!secData.x.empty()) {
                         double xZero[2] = {secData.x.front(), secData.x.back()};
                         double yZero[2] = {0.0, 0.0};
@@ -1647,27 +1798,24 @@ void GraphView::renderResultingPlot(trackHandler* hTrack) {
         }
 
         ImPlot::PushPlotClipRect();
-        if (!gimbalLockRegions.empty()) {
-            for (const auto& region : gimbalLockRegions) {
-                ImVec2 p_min = ImPlot::PlotToPixels(region.first, ImPlot::GetPlotLimits().Y.Min);
-                ImVec2 p_max = ImPlot::PlotToPixels(region.second, ImPlot::GetPlotLimits().Y.Max);
-                ImPlot::GetPlotDrawList()->AddRectFilled(p_min, p_max, IM_COL32(255, 180, 50, 50));
+        auto drawShadedRegions = [](const std::vector<std::pair<double, double>>& regions, ImU32 color) {
+            double yMin = ImPlot::GetPlotLimits().Y.Min;
+            double yMax = ImPlot::GetPlotLimits().Y.Max;
+            for (const auto& region : regions) {
+                ImVec2 p1 = ImPlot::PlotToPixels(region.first, yMin);
+                ImVec2 p2 = ImPlot::PlotToPixels(region.second, yMax);
+                ImVec2 p_min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
+                ImVec2 p_max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
+                if (p_max.x - p_min.x < 3.0f) {
+                    p_max.x = p_min.x + 3.0f;
+                }
+                ImPlot::GetPlotDrawList()->AddRectFilled(p_min, p_max, color);
             }
-        }
-        if (!radiusLimitRegions.empty()) {
-            for (const auto& region : radiusLimitRegions) {
-                ImVec2 p_min = ImPlot::PlotToPixels(region.first, ImPlot::GetPlotLimits().Y.Min);
-                ImVec2 p_max = ImPlot::PlotToPixels(region.second, ImPlot::GetPlotLimits().Y.Max);
-                ImPlot::GetPlotDrawList()->AddRectFilled(p_min, p_max, IM_COL32(255, 180, 50, 50));
-            }
-        }
-        if (!forceLimitRegions.empty()) {
-            for (const auto& region : forceLimitRegions) {
-                ImVec2 p_min = ImPlot::PlotToPixels(region.first, ImPlot::GetPlotLimits().Y.Min);
-                ImVec2 p_max = ImPlot::PlotToPixels(region.second, ImPlot::GetPlotLimits().Y.Max);
-                ImPlot::GetPlotDrawList()->AddRectFilled(p_min, p_max, IM_COL32(255, 180, 50, 50));
-            }
-        }
+        };
+
+        drawShadedRegions(gimbalLockRegions, IM_COL32(255, 60, 60, 90));
+        drawShadedRegions(radiusLimitRegions, IM_COL32(255, 150, 20, 90));
+        drawShadedRegions(forceLimitRegions, IM_COL32(255, 60, 60, 90));
         ImPlot::PopPlotClipRect();
 
         if (!sectionBoundaries.empty()) {
@@ -1751,6 +1899,12 @@ bool GraphView::hasMeasurementGraphsVisible(trackHandler* hTrack) const {
 void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
     if (!hTrack || !hTrack->trackData)
         return;
+
+    if (hTrack->trackData->graphChanged) {
+        updateData(hTrack);
+        hTrack->trackData->graphChanged = false;
+    }
+
     renderTimeline(hTrack);
 
     ImGui::Checkbox("Auto-Scale Y", &autoScaleYMeasure);
@@ -1875,7 +2029,7 @@ void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
                     snprintf(nbuf, sizeof(nbuf), "%s (N)", offset.name);
 
                     if (offset.showNormal && !measurementData[i].x.empty()) {
-                        ImPlot::PlotLine(nbuf, measurementData[i].x.data(), measurementData[i].yNormal.data(), measurementData[i].x.size(), spec);
+                        PlotVectorLine(nbuf, measurementData[i].x.data(), measurementData[i].yNormal.data(), (int)measurementData[i].x.size(), spec);
                         if (!measurementData[i].x.empty()) {
                             double xZero[2] = {measurementData[i].x.front(), measurementData[i].x.back()};
                             double yZero[2] = {0.0, 0.0};
@@ -1972,7 +2126,7 @@ void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
                     snprintf(lbuf, sizeof(lbuf), "%s (L)", offset.name);
 
                     if (offset.showLateral && !measurementData[i].x.empty()) {
-                        ImPlot::PlotLine(lbuf, measurementData[i].x.data(), measurementData[i].yLateral.data(), measurementData[i].x.size(), spec);
+                        PlotVectorLine(lbuf, measurementData[i].x.data(), measurementData[i].yLateral.data(), (int)measurementData[i].x.size(), spec);
                         if (!measurementData[i].x.empty()) {
                             double xZero[2] = {measurementData[i].x.front(), measurementData[i].x.back()};
                             double yZero[2] = {0.0, 0.0};
@@ -2144,7 +2298,7 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
             }
         }
 
-        bool pPressed = ImGui::IsKeyPressed(ImGuiKey_P, false) && !ImGui::GetIO().WantTextInput;
+        bool pPressed = !ImGui::GetIO().WantTextInput && KeybindManager::instance().isTriggered(KeyAction::PlayheadPlayPause);
         if (pPressed) {
             isPlayingPOV = !isPlayingPOV;
             if (isPlayingPOV)
@@ -2293,16 +2447,16 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
 
             // Keyboard single taps (global, triggers immediately on key press)
             if (!ImGui::GetIO().WantTextInput) {
-                if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false)) {
+                if (KeybindManager::instance().isTriggered(KeyAction::PlayheadStepBackward)) {
                     step = -1;
-                } else if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false)) {
+                } else if (KeybindManager::instance().isTriggered(KeyAction::PlayheadStepForward)) {
                     step = 1;
                 }
             }
 
-            // Keyboard holds (Left/Right arrows are global, except when typing in a text input)
-            bool decKeyActive = !ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_LeftArrow);
-            bool incKeyActive = !ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_RightArrow);
+            // Keyboard holds (triggers repeat stepping)
+            bool decKeyActive = !ImGui::GetIO().WantTextInput && KeybindManager::instance().isHeld(KeyAction::PlayheadStepBackward);
+            bool incKeyActive = !ImGui::GetIO().WantTextInput && KeybindManager::instance().isHeld(KeyAction::PlayheadStepForward);
 
             static float holdTimer = 0.0f;
             static float repeatTimer = 0.0f;

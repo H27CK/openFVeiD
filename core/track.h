@@ -29,6 +29,8 @@
 #include "secnlcsv.h"
 #include "secstatic.h"
 #include "sectionhandler.h"
+#include "customtrack.h"
+#include "train.h"
 #include <vector>
 #include <string>
 #include <fstream>
@@ -41,6 +43,31 @@ enum trackStyle {
     parametric = 0
 };
 
+inline const char* kTrackManufacturers[] = {
+    "Arrow",
+    "B&M",
+    "Chance",
+    "GCI",
+    "Generic",
+    "Gerstlauer",
+    "Gravity Group",
+    "Intamin",
+    "Jinma",
+    "Mack",
+    "Maurer",
+    "Morgan",
+    "Premier",
+    "PTC",
+    "RMC",
+    "S&S",
+    "Schwarzkopf",
+    "Togo",
+    "Vekoma",
+    "Zamperla",
+    "Zierer",
+    "Other",
+    "Custom"};
+
 #pragma pack(push, 1)
 struct ChunkHeader {
     char tag[4];
@@ -52,7 +79,7 @@ struct ChunkHeader {
 void writeChunkHeader(std::ostream& out, const char* tag, uint8_t version, uint32_t length);
 ChunkHeader readChunkHeader(std::istream& in);
 
-class CustomTrackStyle;
+class CustomTrack;
 
 class track {
 public:
@@ -67,15 +94,15 @@ public:
 
     struct CustomAssetInstance {
         std::string filepath;
-        CustomTrackStyle* loadedModel = nullptr; // The loaded GLTF data
-        float startDist = 0.0f;                  // Distance along spline to start
-        float endDist = -1.0f;                   // Distance along spline to stop (-1 means end of track)
-        float interval = 1.0f;                   // Spacing between instances
-        glm::vec3 color = glm::vec3(0.7f);       // Asset color
-        bool fullLayout = false;                 // Automatically cover entire layout
-        bool toEnd = true;                       // Automatically repeat to end of track
-        bool visible = true;                     // Whether the asset is visible
-        bool smoothAlongSpline = true;           // Blend duplicate-vertex normals for smoother shading
+        CustomTrack* loadedModel = nullptr; // The loaded GLTF data
+        float startDist = 0.0f;             // Distance along spline to start
+        float endDist = -1.0f;              // Distance along spline to stop (-1 means end of track)
+        float interval = 1.0f;              // Spacing between instances
+        glm::vec3 color = glm::vec3(0.7f);  // Asset color
+        bool fullLayout = false;            // Automatically cover entire layout
+        bool toEnd = true;                  // Automatically repeat to end of track
+        bool visible = true;                // Whether the asset is visible
+        bool smoothAlongSpline = true;      // Blend duplicate-vertex normals for smoother shading
     };
 
     track();
@@ -121,8 +148,16 @@ public:
     void loadOffsChunk(std::istream& file, uint8_t version, uint32_t length);
     void loadLimChunk(std::istream& file, uint8_t version, uint32_t length);
 
-    bool exportParametricStyle(const std::string& filepath);
-    bool importParametricStyle(const std::string& filepath);
+    bool exportCustomTrack(const std::string& filepath);
+    bool importCustomTrack(const std::string& filepath);
+    bool exportParametricStyle(const std::string& filepath) {
+        return exportCustomTrack(filepath);
+    }
+    bool importParametricStyle(const std::string& filepath) {
+        return importCustomTrack(filepath);
+    }
+
+    bool importTrainStyle(const std::string& filepath);
 
     bool exportMeasurementPoints(const std::string& filepath);
     bool importMeasurementPoints(const std::string& filepath);
@@ -194,7 +229,12 @@ public:
     enum trackStyle style;
     glm::vec2 povPos;
 
-    std::string customStyleFile;
+    std::string customTrackFile;
+    std::string& customStyleFile = customTrackFile;
+    std::string trackAuthor;
+    std::string trackManufacturer;
+    std::string trackCoasterType;
+    Train train;
 
     std::vector<ParametricExtrusion> customExtrusions;
     std::vector<CustomAssetInstance> customAssets;

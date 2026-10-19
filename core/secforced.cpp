@@ -18,7 +18,6 @@
 */
 
 #include "secforced.h"
-#include "common.h"
 #include "exportfuncs.h"
 #include "mnode.h"
 #include <algorithm>
@@ -173,18 +172,6 @@ int secforced::updateSection(int node) {
                          F_HZ); // - rollFunc->getValue(i/1000.f));
         calcDirFromLast(i + 1);
 
-        if (parent->enforceMinRadius && parent->minRadius > 0.0f) {
-            double dotProd = glm::dot(curNode->vDir, prevNode->vDir);
-            double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
-            double ds = curNode->fDistFromLast;
-            if (deltaThetaRad > 1e-7) {
-                double physicalRadius = ds / deltaThetaRad;
-                if (physicalRadius < parent->minRadius) {
-                    restricted = true;
-                }
-            }
-        }
-
         if (bOrientation == EULER ||
             rollFunc->getSubfunc((float)(i + 1) / F_HZ)->degree == tozero) {
             curNode->setRoll(glm::dot(curNode->vDir, glm::dvec3(0.0, -1.0, 0.0)) *
@@ -202,6 +189,18 @@ int secforced::updateSection(int node) {
         curNode->fHeartDistFromLast = glm::distance(curNode->vPos, prevNode->vPos);
         curNode->fTotalHeartLength =
             prevNode->fTotalHeartLength + curNode->fHeartDistFromLast;
+
+        if (parent->enforceMinRadius && parent->minRadius > 0.0f) {
+            double dotProd = glm::dot(curNode->vDir, prevNode->vDir);
+            double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
+            double ds = curNode->fDistFromLast;
+            if (deltaThetaRad > 1e-7) {
+                double physicalRadius = ds / deltaThetaRad;
+                if (physicalRadius < parent->minRadius) {
+                    restricted = true;
+                }
+            }
+        }
         curNode->fRollSpeed +=
             rollFunc->getValue((float)(i + 1) / F_HZ); // /1000.f/curNode->fDistFromLast;
 
@@ -397,18 +396,6 @@ int secforced::updateDistanceSection(int node) {
                          F_HZ); // - rollFunc->getValue(i/1000.f));
         calcDirFromLast(i + 1);
 
-        if (parent->enforceMinRadius && parent->minRadius > 0.0f) {
-            double dotProd = glm::dot(curNode->vDir, prevNode->vDir);
-            double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
-            double ds = curNode->fDistFromLast;
-            if (deltaThetaRad > 1e-7) {
-                double physicalRadius = ds / deltaThetaRad;
-                if (physicalRadius < parent->minRadius) {
-                    restricted = true;
-                }
-            }
-        }
-
         if (bOrientation == EULER) {
             curNode->setRoll(glm::dot(curNode->vDir, glm::dvec3(0.0, -1.0, 0.0)) *
                              curNode->fYawFromLast);
@@ -425,6 +412,18 @@ int secforced::updateDistanceSection(int node) {
         curNode->fHeartDistFromLast = glm::distance(curNode->vPos, prevNode->vPos);
         curNode->fTotalHeartLength =
             prevNode->fTotalHeartLength + curNode->fHeartDistFromLast;
+
+        if (parent->enforceMinRadius && parent->minRadius > 0.0f) {
+            double dotProd = glm::dot(curNode->vDir, prevNode->vDir);
+            double deltaThetaRad = acos(glm::clamp(dotProd, -1.0, 1.0));
+            double ds = curNode->fDistFromLast;
+            if (deltaThetaRad > 1e-7) {
+                double physicalRadius = ds / deltaThetaRad;
+                if (physicalRadius < parent->minRadius) {
+                    restricted = true;
+                }
+            }
+        }
         curNode->fRollSpeed += rollFunc->getValue(length + curNode->fVel / F_HZ) *
                                curNode->fVel; // /1000.f/curNode->fDistFromLast;
 

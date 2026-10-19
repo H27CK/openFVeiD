@@ -2,9 +2,7 @@
 
 layout(location = 0) in vec3 aPosition;
 
-layout(location = 0) out vec2 rasterCoord;
-layout(location = 1) out vec2 floorCoord;
-layout(location = 2) out vec4 bPosition;
+layout(location = 0) out vec3 vRayDir;
 
 layout(set = 0, binding = 0) uniform FloorUniforms {
     mat4 projectionMatrix;
@@ -28,21 +26,16 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     float sunStrength;
     float gridMajorThickness;
     float gridMinorThickness;
-} u;
+}
+u;
 
-void main(void)
-{
-    vec3 eye = u.eyePos.xyz;
-    eye.y = 0.0;
-    bPosition = vec4(aPosition.x, aPosition.y + u.floorHeight - u.eyePos.y, aPosition.z, 0.0);
-
-    // Eliminating large world translation additions and matrix subtractions to resolve POV/ortho jittering.
-    // In camera space: pos = R * (WorldPos - CameraPos) = R * (aPosition + eye - eyePos) = R * (aPosition - vec3(0, eyePos.y, 0))
+void main(void) {
+    // In camera space: pos = R * (WorldPos - CameraPos)
     mat4 viewRot = u.modelMatrix;
     viewRot[3] = vec4(0.0, 0.0, 0.0, 1.0);
     vec3 cameraRelativePos = aPosition + vec3(0.0, u.floorHeight - u.eyePos.y, 0.0);
     gl_Position = u.projectionMatrix * viewRot * vec4(cameraRelativePos, 1.0);
 
-    rasterCoord = 0.1 * (aPosition.zx + eye.zx + vec2(5.0, 5.0));
-    floorCoord = (aPosition.zx + eye.zx + vec2(u.grdTexSize, u.grdTexSize)) / (u.grdTexSize) - vec2(0.5, 0.5);
+    // Pass the camera-relative ray direction for analytical per-pixel ray-plane reconstruction
+    vRayDir = cameraRelativePos;
 }

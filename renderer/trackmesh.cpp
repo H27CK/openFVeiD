@@ -23,14 +23,11 @@
 #include "mnode.h"
 #include "section.h"
 #include "track.h"
-#include <iostream>
 #include <algorithm>
 #include "renderer/viewport.h"
-#include "customstyle.h"
+#include "customtrack.h"
 #include "dummies.h"
-#include "logger.h"
 #include <chrono>
-#include <map>
 
 static void releaseAssetMesh(track_asset_mesh_t& assetMesh) {
     if (gVulkanContext)

@@ -20,30 +20,69 @@
 #include "cgltf.h"
 #include "stb_image.h"
 #include "logger.h"
-#include <iostream>
+#include "vfs.h"
+#include <filesystem>
+#include <fstream>
 
-bool readGlb(const std::string& fileName, GlbModelData& modelData) {
+bool readGlb(const std::string& virtualPath, GlbModelData& modelData) {
+    std::vector<uint8_t> buffer;
+
+    // 1. Direct filesystem check for absolute or existing disk paths (e.g. user-imported scenery)
+    std::error_code ec;
+    std::filesystem::path p(virtualPath);
+    if (std::filesystem::exists(p, ec) && !std::filesystem::is_directory(p, ec)) {
+        std::ifstream f(p, std::ios::binary | std::ios::ate);
+        if (f.is_open()) {
+            std::streamsize size = f.tellg();
+            f.seekg(0, std::ios::beg);
+            buffer.resize(static_cast<size_t>(size));
+            if (f.read(reinterpret_cast<char*>(buffer.data()), size)) {
+                return readGlbFromMemory(buffer.data(), buffer.size(), modelData);
+            }
+        }
+    }
+
+    if (!VFS::get().readFileBinary(virtualPath, buffer)) {
+        LOG_DEBUG("VFS: Failed to read GLB file '%s'", virtualPath.c_str());
+        return false;
+    }
+    return readGlbFromMemory(buffer.data(), buffer.size(), modelData);
+}
+
+bool readGlbFromMemory(const void* bufferData, size_t bufferSize, GlbModelData& modelData) {
     modelData.primitives.clear();
+    modelData.emptyNodes.clear();
 
     cgltf_options options = {};
     cgltf_data* data = nullptr;
-    cgltf_result result = cgltf_parse_file(&options, fileName.c_str(), &data);
+    cgltf_result result = cgltf_parse(&options, bufferData, bufferSize, &data);
 
     if (result != cgltf_result_success) {
-        LOG_DEBUG("Failed to parse GLB: %s", fileName.c_str());
+        LOG_DEBUG("Failed to parse GLB from memory buffer");
         return false;
     }
 
-    result = cgltf_load_buffers(&options, data, fileName.c_str());
+    result = cgltf_load_buffers(&options, data, nullptr);
     if (result != cgltf_result_success) {
         cgltf_free(data);
-        LOG_DEBUG("Failed to load GLB buffers: %s", fileName.c_str());
+        LOG_DEBUG("Failed to load GLB buffers from memory");
         return false;
     }
 
     for (cgltf_size nodeIdx = 0; nodeIdx < data->nodes_count; ++nodeIdx) {
         cgltf_node* node = &data->nodes[nodeIdx];
         if (!node->mesh) {
+            float worldMat[16];
+            cgltf_node_transform_world(node, worldMat);
+            glm::mat4 worldTransform(
+                worldMat[0], worldMat[1], worldMat[2], worldMat[3],
+                worldMat[4], worldMat[5], worldMat[6], worldMat[7],
+                worldMat[8], worldMat[9], worldMat[10], worldMat[11],
+                worldMat[12], worldMat[13], worldMat[14], worldMat[15]);
+            GlbEmptyNode empty;
+            empty.name = node->name ? node->name : "";
+            empty.worldTransform = worldTransform;
+            modelData.emptyNodes.push_back(empty);
             continue;
         }
 

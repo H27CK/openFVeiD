@@ -1,0 +1,6 @@
+FVD_TRACK_V1
+AUTHOR "Loundlim"
+MANUFACTURER "RMC"
+TYPE "I-Box"
+ASSET "ibox_track.glb" 0 -1 0.25 0.7 0.7 0.7 1 1
+ASSET "ibox_track_tie.glb" 0 -1 1 0.7 0.7 0.7 0 1

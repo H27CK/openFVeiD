@@ -32,7 +32,7 @@ void InitLogger(const std::string& filename) {
     std::lock_guard<std::mutex> lock(g_LogMutex);
     g_LogFile.open(filename, std::ios::out | std::ios::trunc);
     if (!g_LogFile.is_open()) {
-        std::cerr << "Failed to open log file: " << filename << std::endl;
+        std::cerr << "Failed to open log file: " << filename << '\n';
     }
 }
 
@@ -60,7 +60,7 @@ void Log(LogLevel level, const char* fmt, ...) {
 
     {
         std::lock_guard<std::mutex> lock(g_LogMutex);
-        g_LogFile << "[" << timeBuffer << "] [" << levelStr << "] " << buffer << std::endl;
+        g_LogFile << "[" << timeBuffer << "] [" << levelStr << "] " << buffer << '\n';
     }
 }
 

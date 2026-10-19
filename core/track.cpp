@@ -26,8 +26,7 @@
 #include "trackhandler.h"
 #include "trackmesh.h"
 #include "logger.h"
-#include "customstyle.h"
-#include "imgui.h"
+#include "vfs.h"
 #include <sstream>
 #include <filesystem>
 
@@ -114,6 +113,7 @@ track::track(trackHandler* _parent, glm::dvec3 startPos, double startYaw,
 }
 
 track::~track() {
+    train.clear();
     for (auto sec : lSections) {
         delete sec;
     }
@@ -1119,11 +1119,17 @@ void track::processPendingUpdates() {
     }
 }
 
-bool track::exportParametricStyle(const std::string& filepath) {
+bool track::exportCustomTrack(const std::string& filepath) {
     std::ofstream out(filepath);
     if (!out)
         return false;
-    out << "FVD_STYLE_V2\n";
+    out << "FVD_TRACK_V1\n";
+    if (!trackAuthor.empty())
+        out << "AUTHOR \"" << trackAuthor << "\"\n";
+    if (!trackManufacturer.empty())
+        out << "MANUFACTURER \"" << trackManufacturer << "\"\n";
+    if (!trackCoasterType.empty())
+        out << "TYPE \"" << trackCoasterType << "\"\n";
     for (const auto& ext : customExtrusions) {
         out << "EXTRUSION " << (int)ext.shape << " " << ext.size.x << " " << ext.size.y << " " << ext.offset.x << " " << ext.offset.y << "\n";
     }
@@ -1136,13 +1142,14 @@ bool track::exportParametricStyle(const std::string& filepath) {
     return true;
 }
 
-bool track::importParametricStyle(const std::string& filepath) {
-    std::ifstream in(filepath);
-    if (!in)
+bool track::importCustomTrack(const std::string& filepath) {
+    std::string content;
+    if (!VFS::get().readFileText(filepath, content))
         return false;
+    std::stringstream in(content);
     std::string version;
     in >> version;
-    if (version != "FVD_STYLE_V1" && version != "FVD_STYLE_V2")
+    if (version != "FVD_TRACK_V1" && version != "FVD_STYLE_V1" && version != "FVD_STYLE_V2")
         return false;
 
     std::string baseDir = std::filesystem::path(filepath).parent_path().string();
@@ -1155,6 +1162,9 @@ bool track::importParametricStyle(const std::string& filepath) {
             delete asset.loadedModel;
     }
     customAssets.clear();
+    trackAuthor.clear();
+    trackManufacturer.clear();
+    trackCoasterType.clear();
 
     std::string line;
     std::getline(in, line); // consume remainder of version line
@@ -1164,7 +1174,42 @@ bool track::importParametricStyle(const std::string& filepath) {
         std::stringstream ss(line);
         std::string tag;
         ss >> tag;
-        if (tag == "EXTRUSION") {
+        if (tag == "AUTHOR") {
+            std::string rem;
+            std::getline(ss, rem);
+            size_t q1 = rem.find('\"');
+            size_t q2 = rem.find_last_of('\"');
+            if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                trackAuthor = rem.substr(q1 + 1, q2 - q1 - 1);
+            else {
+                std::stringstream rss(rem);
+                rss >> trackAuthor;
+            }
+        } else if (tag == "MANUFACTURER") {
+            std::string rem;
+            std::getline(ss, rem);
+            size_t q1 = rem.find('\"');
+            size_t q2 = rem.find_last_of('\"');
+            if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                trackManufacturer = rem.substr(q1 + 1, q2 - q1 - 1);
+            else {
+                std::stringstream rss(rem);
+                rss >> trackManufacturer;
+            }
+        } else if (tag == "TYPE" || tag == "COASTER_TYPE") {
+            std::string rem;
+            std::getline(ss, rem);
+            size_t q1 = rem.find('\"');
+            size_t q2 = rem.find_last_of('\"');
+            if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                trackCoasterType = rem.substr(q1 + 1, q2 - q1 - 1);
+            else {
+                std::stringstream rss(rem);
+                rss >> trackCoasterType;
+            }
+            if (trackCoasterType == "Wooden*")
+                trackCoasterType = "Wooden";
+        } else if (tag == "EXTRUSION") {
             ParametricExtrusion ext;
             int shape;
             ss >> shape >> ext.size.x >> ext.size.y >> ext.offset.x >> ext.offset.y;
@@ -1222,7 +1267,7 @@ bool track::importParametricStyle(const std::string& filepath) {
                         asset.toEnd = (te != 0);
                         asset.smoothAlongSpline = true;
                     } else {
-                        // Fallback for older .fvdstyle files
+                        // Fallback for older .fvdtrack files
                         asset.fullLayout = (asset.startDist == 0.0f && asset.endDist < 0.0f);
                         asset.toEnd = (asset.endDist < 0.0f);
                         asset.smoothAlongSpline = true;
@@ -1236,9 +1281,13 @@ bool track::importParametricStyle(const std::string& filepath) {
             }
         }
     }
-    customStyleFile = filepath;
+    customTrackFile = filepath;
     requestUpdateTrack(0, 0);
     return true;
+}
+
+bool track::importTrainStyle(const std::string& filepath) {
+    return train.load(filepath, this);
 }
 
 bool track::exportMeasurementPoints(const std::string& filepath) {

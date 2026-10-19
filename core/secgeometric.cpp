@@ -18,7 +18,6 @@
 */
 
 #include "secgeometric.h"
-#include "common.h"
 #include "exportfuncs.h"
 #include "dummies.h"
 #include <algorithm>
@@ -151,12 +150,6 @@ int secgeometric::updateSection(int node) {
         double requestedPitchForce = normForce->getValue((float)(i + 1) / F_HZ);
         double requestedYawForce = latForce->getValue((float)(i + 1) / F_HZ);
 
-        if (parent->enableForceLimits) {
-            if (requestedPitchForce > parent->fMaxPosNormal || requestedPitchForce < parent->fMaxNegNormal || requestedYawForce > parent->fMaxLateral || requestedYawForce < parent->fMinLateral) {
-                restricted = true;
-            }
-        }
-
         float pitchChange = requestedPitchForce / F_HZ;
         float yawChange = requestedYawForce / F_HZ;
         int sign = 1;
@@ -287,6 +280,15 @@ int secgeometric::updateSection(int node) {
         }
         curNode->forceNormal = -glm::dot(forceVec, glm::normalize(curNode->vNorm));
         curNode->forceLateral = -glm::dot(forceVec, glm::normalize(curNode->vLat));
+
+        if (parent->enableForceLimits) {
+            if (curNode->forceNormal > parent->fMaxPosNormal ||
+                curNode->forceNormal < parent->fMaxNegNormal ||
+                curNode->forceLateral > parent->fMaxLateral ||
+                curNode->forceLateral < parent->fMinLateral) {
+                restricted = true;
+            }
+        }
     }
     if (lNodes.size() > (size_t)(1 + i)) {
         lNodes.erase(lNodes.begin() + 1 + i, lNodes.end());
@@ -391,12 +393,6 @@ int secgeometric::updateDistanceSection(int node) {
 
         double requestedPitchForce = normForce->getValue(length + curNode->fVel / F_HZ);
         double requestedYawForce = latForce->getValue(length + curNode->fVel / F_HZ);
-
-        if (parent->enableForceLimits) {
-            if (requestedPitchForce > parent->fMaxPosNormal || requestedPitchForce < parent->fMaxNegNormal || requestedYawForce > parent->fMaxLateral || requestedYawForce < parent->fMinLateral) {
-                restricted = true;
-            }
-        }
 
         float pitchChange = requestedPitchForce * (curNode->fVel / F_HZ);
         float yawChange = requestedYawForce * (curNode->fVel / F_HZ);
@@ -528,6 +524,15 @@ int secgeometric::updateDistanceSection(int node) {
         }
         curNode->forceNormal = -glm::dot(forceVec, glm::normalize(curNode->vNorm));
         curNode->forceLateral = -glm::dot(forceVec, glm::normalize(curNode->vLat));
+
+        if (parent->enableForceLimits) {
+            if (curNode->forceNormal > parent->fMaxPosNormal ||
+                curNode->forceNormal < parent->fMaxNegNormal ||
+                curNode->forceLateral > parent->fMaxLateral ||
+                curNode->forceLateral < parent->fMinLateral) {
+                restricted = true;
+            }
+        }
 
         this->length += curNode->fDistFromLast;
         ++i;

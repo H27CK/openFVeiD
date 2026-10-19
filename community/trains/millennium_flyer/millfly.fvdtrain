@@ -1,0 +1,17 @@
+AUTHOR "nerfer10"
+MANUFACTURER "GCI"
+TYPE "Millennium Flyer"
+
+ASSET zero "millflyzero.glb"
+ASSET main "millfly.glb"
+ASSET front_bogie "millflyfrontbogie.glb"
+ASSET rear_bogie "millflyrearbogie.glb"
+
+CAR_TYPE zero_car zero
+WHEEL zero_car front_bogie
+WHEEL zero_car rear_bogie
+
+CAR_TYPE main_car main
+WHEEL main_car rear_bogie
+
+LAYOUT zero_car (main_car)

@@ -20,12 +20,13 @@
 #define LOGGER_H
 
 #include <string>
+#include <cstdint>
 
 namespace common {
-enum class LogLevel { Debug,
-                      Info,
-                      Warn,
-                      Error };
+enum class LogLevel : uint8_t { Debug,
+                                Info,
+                                Warn,
+                                Error };
 
 void InitLogger(const std::string& filename);
 void Log(LogLevel level, const char* fmt, ...);

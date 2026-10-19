@@ -10,10 +10,10 @@ DummyGLView* glView = new DummyGLView();
 Viewport* gViewport = nullptr;
 Application* gApplication = nullptr;
 
-int main(int, char**) {
+int main(int argc, char** argv) {
     Application app;
     gApplication = &app;
-    if (!app.Initialize()) {
+    if (!app.Initialize(argc, argv)) {
         return 1;
     }
 

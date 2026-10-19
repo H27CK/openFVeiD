@@ -27,15 +27,14 @@
 #include "core/application.h"
 #include "core/globalundohandler.h"
 #include "common.h"
-#include <iostream>
 #include <cmath>
 
 TransitionView::TransitionView() {}
 TransitionView::~TransitionView() {}
 
-#define BEGIN_PROP_TABLE(id)                                                                        \
-    if (ImGui::BeginTable(id, 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) { \
-        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);                 \
+#define BEGIN_PROP_TABLE(id)                                                        \
+    if (ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingFixedFit)) {                 \
+        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f); \
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
 #define PROP_ROW(label, ...)           \
@@ -73,14 +72,14 @@ void TransitionView::render(trackHandler* hTrack, subfunc* sf, Application* app)
         renderTimewarpProperties(hTrack, sf, app);
         END_PROP_TABLE()
 
-        ImGui::Separator();
+        ImGui::Spacing();
         renderActions(hTrack, sf, app);
-        ImGui::Separator();
+        ImGui::Spacing();
         renderTargetSolver(hTrack, sf, app);
-        ImGui::Separator();
+        ImGui::Spacing();
     } else {
         ImGui::TextDisabled("Select a transition from the list or graph to edit properties.");
-        ImGui::Separator();
+        ImGui::Spacing();
     }
 
     renderSelectionList(hTrack, sf, app);
@@ -109,11 +108,13 @@ void TransitionView::renderSelectionList(trackHandler* hTrack, subfunc* currentS
         if (ImGui::TreeNodeEx(label)) {
             for (int i = 0; i < (int)f->funcList.size(); ++i) {
                 subfunc* sf = f->funcList[i];
+                if (!sf)
+                    continue;
                 bool isSelected = (sf == currentSf);
                 char buf[128];
 
                 float lenFactor = 1.0f;
-                if (sf->parent->secParent->type != curved && (sf->parent->secParent->type == straight || sf->parent->secParent->bArgument != TIME) && gloParent) {
+                if (sf->parent && sf->parent->secParent && sf->parent->secParent->type != curved && (sf->parent->secParent->type == straight || sf->parent->secParent->bArgument != TIME) && gloParent) {
                     lenFactor = gloParent->mOptions->getLengthFactor();
                 }
                 double rawLength = sf->maxArgument - sf->minArgument;
@@ -178,7 +179,7 @@ void TransitionView::renderSelectionList(trackHandler* hTrack, subfunc* currentS
         renderFuncList(isGeoLike ? "Pitch Transitions" : "Normal Force Transitions", sec->normForce);
         renderFuncList(isGeoLike ? "Yaw Transitions" : "Lateral Force Transitions", sec->latForce);
     }
-    ImGui::Separator();
+    ImGui::Spacing();
 }
 
 void TransitionView::renderBasicProperties(trackHandler* hTrack, subfunc* sf, Application* app) {
@@ -546,9 +547,68 @@ void TransitionView::renderTargetSolver(trackHandler* hTrack, subfunc* sf, Appli
                 solverTargetVar = (int)availableVars[selectedComboIdx].second;
             };)
 
+        bool showAnchorBtn = (app && app->trackList.size() > 1);
         PROP_ROW(
             "Target Value",
-            ImGui::DragFloat("##TargetValue", &solverTargetValue, 0.1f, -360.0f, 360.0f, ("%.3f" + valSuffix).c_str());)
+            if (showAnchorBtn) {
+                float frameH = ImGui::GetFrameHeight();
+                float btnWidth = ImGui::CalcTextSize("From Anchor").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f;
+                float totalReserved = btnWidth + ImGui::GetStyle().ItemSpacing.x;
+                ImGui::SetNextItemWidth(-totalReserved);
+                ImGui::DragFloat("##TargetValue", &solverTargetValue, 0.1f, -360.0f, 360.0f, ("%.3f" + valSuffix).c_str());
+                ImGui::SameLine();
+                if (ImGui::Button("From Anchor", ImVec2(btnWidth, frameH))) {
+                    ImGui::OpenPopup("MatchTrackAnchorPopup");
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Copy the target value from another track's starting anchor.");
+                }
+                if (ImGui::BeginPopup("MatchTrackAnchorPopup")) {
+                    ImGui::Text("Set target to start of:");
+                    ImGui::Separator();
+                    for (auto otherTrackHandler : app->trackList) {
+                        if (otherTrackHandler == hTrack)
+                            continue;
+                        track* otherTrack = otherTrackHandler->trackData;
+                        if (!otherTrack || otherTrack->isReferenceTrack())
+                            continue;
+                        if (ImGui::MenuItem(otherTrack->name.c_str())) {
+                            switch ((TargetVariable)solverTargetVar) {
+                            case TargetVariable::Roll:
+                                solverTargetValue = static_cast<float>(otherTrack->anchorNode->fRoll);
+                                break;
+                            case TargetVariable::Pitch:
+                                solverTargetValue = static_cast<float>(otherTrack->startPitch);
+                                break;
+                            case TargetVariable::Yaw:
+                                solverTargetValue = static_cast<float>(otherTrack->startYaw);
+                                break;
+                            case TargetVariable::Speed: {
+                                double spd = otherTrack->anchorNode->fVel;
+                                if (gloParent && gloParent->mOptions->measures == 1)
+                                    spd *= 3.6;
+                                else if (gloParent && gloParent->mOptions->measures == 2)
+                                    spd *= 2.23694;
+                                solverTargetValue = static_cast<float>(spd);
+                                break;
+                            }
+                            case TargetVariable::RollRate:
+                                solverTargetValue = static_cast<float>(otherTrack->anchorNode->fRollSpeed);
+                                break;
+                            case TargetVariable::PitchRate:
+                                solverTargetValue = static_cast<float>(otherTrack->anchorNode->getPitchChange());
+                                break;
+                            case TargetVariable::YawRate:
+                                solverTargetValue = static_cast<float>(otherTrack->anchorNode->getYawChange());
+                                break;
+                            }
+                        }
+                    }
+                    ImGui::EndPopup();
+                }
+            } else {
+                ImGui::DragFloat("##TargetValue", &solverTargetValue, 0.1f, -360.0f, 360.0f, ("%.3f" + valSuffix).c_str());
+            })
 
         PROP_ROW(
             "Adjust Parameter",

@@ -18,10 +18,12 @@
 */
 
 #include "core/application.h"
+#include "core/keybinds.h"
 #include "imgui_internal.h"
 #include "core/workingdirectory.h"
-#include "customstyle.h"
+#include "core/dockstyle.h"
 #include "smoothhandler.h"
+#include "vfs.h"
 #include "core/secnlcsv.h"
 
 #ifdef _WIN32
@@ -31,6 +33,12 @@
 #include <GLFW/glfw3native.h>
 #include <timeapi.h>
 #endif
+
+#define NANOSVG_ALL_COLOR_KEYWORDS
+#define NANOSVG_IMPLEMENTATION
+#include "ext/nanosvg.h"
+#define NANOSVGRAST_IMPLEMENTATION
+#include "ext/nanosvgrast.h"
 
 #include <algorithm>
 #include <fstream>
@@ -173,11 +181,11 @@ void Application::triggerUpdateCheck() {
         // Find and parse "tag_name" key from the JSON response
         size_t pos = response.find("\"tag_name\"");
         if (pos != std::string::npos) {
-            size_t colon = response.find(":", pos);
+            size_t colon = response.find(':', pos);
             if (colon != std::string::npos) {
-                size_t firstQuote = response.find("\"", colon);
+                size_t firstQuote = response.find('\"', colon);
                 if (firstQuote != std::string::npos) {
-                    size_t secondQuote = response.find("\"", firstQuote + 1);
+                    size_t secondQuote = response.find('\"', firstQuote + 1);
                     if (secondQuote != std::string::npos) {
                         std::string remoteVer = response.substr(firstQuote + 1, secondQuote - firstQuote - 1);
                         remoteVer.erase(remoteVer.find_last_not_of(" \n\r\t") + 1);
@@ -205,7 +213,208 @@ Application::~Application() {
     delete mUndoHandler;
 }
 
-bool Application::Initialize() {
+static void ApplyThemeSoftDark() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImVec4* colors = style.Colors;
+
+    ImGui::StyleColorsDark();
+
+    // Base background colors (soft slate charcoal, low fatigue)
+    colors[ImGuiCol_Text] = ImVec4(0.86f, 0.87f, 0.88f, 1.00f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.52f, 0.54f, 1.00f);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.18f, 0.18f, 0.19f, 1.00f);
+    colors[ImGuiCol_ChildBg] = ImVec4(0.15f, 0.15f, 0.16f, 1.00f);
+    colors[ImGuiCol_PopupBg] = ImVec4(0.20f, 0.20f, 0.22f, 1.00f);
+    colors[ImGuiCol_Border] = ImVec4(1.00f, 1.00f, 1.00f, 0.14f);
+    colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+
+    // Frame inputs (sliders, checkboxes, textfields)
+    colors[ImGuiCol_FrameBg] = ImVec4(0.13f, 0.13f, 0.14f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.22f, 0.23f, 0.25f, 1.00f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.25f, 0.26f, 0.28f, 1.00f);
+
+    // Titlebar
+    colors[ImGuiCol_TitleBg] = ImVec4(0.15f, 0.15f, 0.16f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.20f, 0.20f, 0.22f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.15f, 0.15f, 0.16f, 0.75f);
+
+    // Menu and Menubar
+    colors[ImGuiCol_MenuBarBg] = ImVec4(0.16f, 0.16f, 0.17f, 1.00f);
+
+    // Scrollbar
+    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.28f, 0.29f, 0.31f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.35f, 0.36f, 0.38f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.42f, 0.43f, 0.45f, 1.00f);
+
+    // Checkmark & Sliders
+    colors[ImGuiCol_CheckMark] = ImVec4(0.46f, 0.65f, 0.85f, 1.00f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.38f, 0.50f, 0.65f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.46f, 0.65f, 0.85f, 1.00f);
+
+    // Buttons
+    colors[ImGuiCol_Button] = ImVec4(0.24f, 0.25f, 0.27f, 1.00f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.30f, 0.32f, 0.35f, 1.00f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.36f, 0.40f, 0.45f, 1.00f);
+
+    // Headers (CollapsingHeader, Selectable, TreeNode)
+    colors[ImGuiCol_Header] = ImVec4(0.22f, 0.23f, 0.25f, 1.00f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.28f, 0.30f, 0.33f, 1.00f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.33f, 0.36f, 0.40f, 1.00f);
+
+    // Separators
+    colors[ImGuiCol_Separator] = ImVec4(0.26f, 0.26f, 0.28f, 1.00f);
+    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.35f, 0.42f, 0.50f, 1.00f);
+    colors[ImGuiCol_SeparatorActive] = ImVec4(0.45f, 0.55f, 0.68f, 1.00f);
+
+    // Tabs
+    colors[ImGuiCol_Tab] = ImVec4(0.16f, 0.16f, 0.17f, 1.00f);
+    colors[ImGuiCol_TabHovered] = ImVec4(0.26f, 0.27f, 0.30f, 1.00f);
+    colors[ImGuiCol_TabSelected] = ImVec4(0.22f, 0.23f, 0.25f, 1.00f);
+    colors[ImGuiCol_TabDimmed] = ImVec4(0.14f, 0.14f, 0.15f, 1.00f);
+    colors[ImGuiCol_TabDimmedSelected] = ImVec4(0.18f, 0.19f, 0.20f, 1.00f);
+
+    // Tables
+    colors[ImGuiCol_TableHeaderBg] = ImVec4(0.16f, 0.16f, 0.17f, 1.00f);
+    colors[ImGuiCol_TableBorderStrong] = ImVec4(0.26f, 0.27f, 0.29f, 1.00f);
+    colors[ImGuiCol_TableBorderLight] = ImVec4(0.22f, 0.23f, 0.24f, 1.00f);
+    colors[ImGuiCol_TableRowBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_TableRowBgAlt] = ImVec4(1.00f, 1.00f, 1.00f, 0.02f);
+
+    ImPlot::StyleColorsDark();
+}
+
+static void ApplyThemeSoftLight() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImVec4* colors = style.Colors;
+
+    ImGui::StyleColorsLight();
+
+    // Base background colors (soft muted off-white/silver, low glare)
+    colors[ImGuiCol_Text] = ImVec4(0.18f, 0.19f, 0.20f, 1.00f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.52f, 0.54f, 0.56f, 1.00f);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.91f, 0.92f, 0.93f, 1.00f);
+    colors[ImGuiCol_ChildBg] = ImVec4(0.94f, 0.95f, 0.96f, 1.00f);
+    colors[ImGuiCol_PopupBg] = ImVec4(0.96f, 0.96f, 0.97f, 1.00f);
+    colors[ImGuiCol_Border] = ImVec4(0.00f, 0.00f, 0.00f, 0.15f);
+    colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+
+    // Frame inputs (sliders, checkboxes, textfields)
+    colors[ImGuiCol_FrameBg] = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.88f, 0.90f, 0.92f, 1.00f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.82f, 0.85f, 0.88f, 1.00f);
+
+    // Titlebar
+    colors[ImGuiCol_TitleBg] = ImVec4(0.85f, 0.86f, 0.88f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.80f, 0.82f, 0.84f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.85f, 0.86f, 0.88f, 0.75f);
+
+    // Menu and Menubar
+    colors[ImGuiCol_MenuBarBg] = ImVec4(0.86f, 0.87f, 0.89f, 1.00f);
+
+    // Scrollbar
+    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.72f, 0.74f, 0.76f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.62f, 0.65f, 0.68f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.50f, 0.53f, 0.56f, 1.00f);
+
+    // Checkmark & Sliders
+    colors[ImGuiCol_CheckMark] = ImVec4(0.24f, 0.44f, 0.68f, 1.00f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.55f, 0.65f, 0.78f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.28f, 0.48f, 0.72f, 1.00f);
+
+    // Buttons
+    colors[ImGuiCol_Button] = ImVec4(0.82f, 0.84f, 0.86f, 1.00f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.75f, 0.78f, 0.81f, 1.00f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.65f, 0.70f, 0.76f, 1.00f);
+
+    // Headers (CollapsingHeader, Selectable, TreeNode)
+    colors[ImGuiCol_Header] = ImVec4(0.82f, 0.84f, 0.86f, 1.00f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.76f, 0.80f, 0.84f, 1.00f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.70f, 0.74f, 0.80f, 1.00f);
+
+    // Separators
+    colors[ImGuiCol_Separator] = ImVec4(0.74f, 0.76f, 0.78f, 1.00f);
+    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.52f, 0.62f, 0.74f, 1.00f);
+    colors[ImGuiCol_SeparatorActive] = ImVec4(0.35f, 0.48f, 0.64f, 1.00f);
+
+    // Tabs
+    colors[ImGuiCol_Tab] = ImVec4(0.84f, 0.85f, 0.87f, 1.00f);
+    colors[ImGuiCol_TabHovered] = ImVec4(0.76f, 0.79f, 0.83f, 1.00f);
+    colors[ImGuiCol_TabSelected] = ImVec4(0.91f, 0.92f, 0.93f, 1.00f);
+    colors[ImGuiCol_TabDimmed] = ImVec4(0.86f, 0.87f, 0.89f, 1.00f);
+    colors[ImGuiCol_TabDimmedSelected] = ImVec4(0.89f, 0.90f, 0.91f, 1.00f);
+
+    // Tables
+    colors[ImGuiCol_TableHeaderBg] = ImVec4(0.84f, 0.85f, 0.87f, 1.00f);
+    colors[ImGuiCol_TableBorderStrong] = ImVec4(0.72f, 0.74f, 0.76f, 1.00f);
+    colors[ImGuiCol_TableBorderLight] = ImVec4(0.80f, 0.82f, 0.84f, 1.00f);
+    colors[ImGuiCol_TableRowBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.00f, 0.00f, 0.00f, 0.03f);
+
+    ImPlot::StyleColorsLight();
+}
+
+static glm::vec3 GetDefaultTabHighlightColor(int theme) {
+    switch (theme) {
+    case 0:                                    // Dark
+        return glm::vec3(0.26f, 0.59f, 0.98f); // ImGui classic electric blue
+    case 1:                                    // Light
+        return glm::vec3(0.60f, 0.78f, 0.96f); // Bright sky blue (high contrast for dark/black text)
+    case 2:                                    // Classic
+        return glm::vec3(0.50f, 0.32f, 0.75f); // Classic purple / amethyst
+    case 3:                                    // Soft Dark
+        return glm::vec3(0.28f, 0.52f, 0.76f); // Soft slate cyan / blue
+    case 4:                                    // Soft Light
+        return glm::vec3(0.65f, 0.78f, 0.92f); // Pastel steel/cerulean (high contrast for dark/black text)
+    default:
+        return glm::vec3(0.26f, 0.59f, 0.98f);
+    }
+}
+
+static void ApplyTheme(int theme) {
+    if (theme == 0) {
+        ImGui::StyleColorsDark();
+        ImPlot::StyleColorsDark();
+    } else if (theme == 1) {
+        ImGui::StyleColorsLight();
+        ImPlot::StyleColorsLight();
+    } else if (theme == 2) {
+        ImGui::StyleColorsClassic();
+        ImPlot::StyleColorsClassic();
+    } else if (theme == 3) {
+        ApplyThemeSoftDark();
+    } else if (theme == 4) {
+        ApplyThemeSoftLight();
+    }
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    if (theme < 3) {
+        style.Colors[ImGuiCol_Border].w = 0.35f;
+    }
+
+    glm::vec3 thCol = (gloParent && gloParent->mOptions) ? gloParent->mOptions->tabHighlightColor : GetDefaultTabHighlightColor(theme);
+    ImVec4 tabColor(thCol.x, thCol.y, thCol.z, 1.0f);
+    ImVec4 tabDimmedColor(thCol.x * 0.85f, thCol.y * 0.85f, thCol.z * 0.85f, 0.90f);
+    style.Colors[ImGuiCol_TabSelected] = tabColor;
+    style.Colors[ImGuiCol_TabDimmedSelected] = tabDimmedColor;
+    style.Colors[ImGuiCol_TabSelectedOverline] = tabColor;
+    style.Colors[ImGuiCol_TabDimmedSelectedOverline] = tabDimmedColor;
+    style.TabBarOverlineSize = 2.0f;
+
+    style.FrameBorderSize = 1.0f;
+    style.FrameRounding = 3.0f;
+    style.GrabRounding = 3.0f;
+    style.PopupRounding = 4.0f;
+    style.ScrollbarSize = 9.0f;
+    style.ScrollbarRounding = 4.5f;
+    style.TabRounding = 5.0f;
+    style.WindowRounding = 5.0f;
+    style.ChildRounding = 4.0f;
+}
+
+bool Application::Initialize(int argc, char** argv) {
 #ifdef _WIN32
     timeBeginPeriod(1);
 #endif
@@ -222,8 +431,8 @@ bool Application::Initialize() {
     gloParent->mOptions->keyOverlayWarnings = ImGuiKey_X;
     gloParent->mOptions->keyOverlayScenery = ImGuiKey_Z;
 
-    if (!std::filesystem::exists("track_styles")) {
-        std::filesystem::create_directory("track_styles");
+    if (!std::filesystem::exists("tracks")) {
+        std::filesystem::create_directory("tracks");
     }
 
     if (!std::filesystem::exists("skybox")) {
@@ -235,6 +444,7 @@ bool Application::Initialize() {
     }
 
     gloParent->mOptions->load("options.cfg");
+    KeybindManager::instance().load("keybinds.cfg");
     gloParent->resetEnvironment();
     loadRecentFiles();
 
@@ -267,16 +477,26 @@ bool Application::Initialize() {
 
 #ifdef _WIN32
     HWND hwnd = glfwGetWin32Window(window);
-    HICON hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(101));
-    if (hIcon) {
-        SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
-        SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+    HINSTANCE hInstance = GetModuleHandle(NULL);
+    HICON hIconBig = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(101), IMAGE_ICON,
+                                      GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR);
+    HICON hIconSmall = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(101), IMAGE_ICON,
+                                        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
+    if (!hIconBig) {
+        hIconBig = LoadIcon(hInstance, MAKEINTRESOURCE(101));
+    }
+    if (hIconBig) {
+        SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIconBig);
+    }
+    if (hIconSmall) {
+        SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconSmall);
+    } else if (hIconBig) {
+        SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconBig);
     }
 #endif
 
     glfwMaximizeWindow(window);
 
-    vulkanContext.setVSync(gloParent->mOptions->vSync);
     if (!vulkanContext.initialize(window)) {
         std::cerr << "Failed to initialize Vulkan!" << std::endl;
         return false;
@@ -309,24 +529,13 @@ bool Application::Initialize() {
         io.Fonts->AddFontDefault(&font_cfg);
     }
 
-    ImGui::StyleColorsDark();
+    ApplyTheme(gloParent->mOptions->theme);
     ImGuiStyle& style = ImGui::GetStyle();
 
-    // Apply theme from options
-    if (gloParent->mOptions->theme == 0) {
-        ImGui::StyleColorsDark();
-        ImPlot::StyleColorsDark();
-    } else if (gloParent->mOptions->theme == 1) {
-        ImGui::StyleColorsLight();
-        ImPlot::StyleColorsLight();
-    } else if (gloParent->mOptions->theme == 2) {
-        ImGui::StyleColorsClassic();
-        ImPlot::StyleColorsClassic();
-    }
-
     style.ScaleAllSizes(currentFontSize / 15.0f);
+    style.ScrollbarSize = 9.0f * (currentFontSize / 15.0f);
+    style.ScrollbarRounding = style.ScrollbarSize * 0.5f;
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-        style.WindowRounding = 0.0f;
         style.Colors[ImGuiCol_WindowBg].w = 1.0f;
     }
 
@@ -358,6 +567,7 @@ bool Application::Initialize() {
 
     gViewport = &viewport;
     viewport.initialize(1280, 720);
+    initWelcomeSvgTexture();
 
     for (const auto& glb : gloParent->projectGlbs) {
         viewport.addGlbMesh(glb.path);
@@ -388,6 +598,18 @@ bool Application::Initialize() {
 
     triggerUpdateCheck();
 
+    if (argc > 1 && argv && argv[1]) {
+        std::string arg1 = argv[1];
+        if (std::filesystem::exists(arg1) && !std::filesystem::is_directory(arg1)) {
+            loadProjectFile(arg1);
+            showWelcomeScreen = false;
+        } else {
+            showWelcomeScreen = true;
+        }
+    } else {
+        showWelcomeScreen = true;
+    }
+
     return true;
 }
 
@@ -396,8 +618,6 @@ void Application::Run() {
     double nextFrameTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(window) || showExitPopup) {
-        double frameStartTime = glfwGetTime();
-
         // 1. Process OS Events
         // If we are navigating the camera, we poll as fast as possible.
         // Otherwise, we poll once and move to rendering.
@@ -408,6 +628,9 @@ void Application::Run() {
         }
 
         if (glfwWindowShouldClose(window)) {
+            if (showWelcomeScreen) {
+                break;
+            }
             if (viewportActive) {
                 viewportActive = false;
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -521,40 +744,35 @@ void Application::Run() {
             ImGui::RenderPlatformWindowsDefault();
         }
 
-        // 5. Frame Pacing (VSync OFF path)
-        if (!gloParent->mOptions->vSync) {
-            targetDuration = 1.0 / (double)std::max(1, gloParent->mOptions->targetFPS);
-            nextFrameTime += targetDuration;
+        // 5. Frame Pacing
+        targetDuration = 1.0 / (double)std::max(1, gloParent->mOptions->targetFPS);
+        nextFrameTime += targetDuration;
 
-            double now = glfwGetTime();
-            if (now < nextFrameTime) {
-                // If the application is idle, use WaitEvents to save CPU.
-                // If we are navigating the camera, use Sleep to keep OS responsive but spin for precision.
-                if (!viewportActive) {
-                    double waitTime = (nextFrameTime - now);
-                    // Leave 0.5ms for precision spin-lock
-                    if (waitTime > 0.0005) {
-                        glfwWaitEventsTimeout(waitTime - 0.0005);
-                    }
-                } else {
-                    double sleepTime = (nextFrameTime - now);
-                    // Leave 1.0ms for precision spin-lock during interaction
-                    if (sleepTime > 0.001) {
-                        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<long long>((sleepTime - 0.001) * 1000000.0)));
-                    }
+        double now = glfwGetTime();
+        if (now < nextFrameTime) {
+            // If the application is idle, use WaitEvents to save CPU.
+            // If we are navigating the camera, use Sleep to keep OS responsive but spin for precision.
+            if (!viewportActive) {
+                double waitTime = (nextFrameTime - now);
+                // Leave 0.5ms for precision spin-lock
+                if (waitTime > 0.0005) {
+                    glfwWaitEventsTimeout(waitTime - 0.0005);
                 }
-
-                // Final precision spin-lock to hit the exact microsecond target
-                while (glfwGetTime() < nextFrameTime) {
-                    // Do nothing, just wait.
+            } else {
+                double sleepTime = (nextFrameTime - now);
+                // Leave 1.0ms for precision spin-lock during interaction
+                if (sleepTime > 0.001) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(static_cast<long long>((sleepTime - 0.001) * 1000000.0)));
                 }
-            } else if (now > nextFrameTime + 1.0) {
-                // If we fall behind by more than 1 second, reset the target
-                nextFrameTime = now;
             }
-        } else {
-            // With VSync ON, we reset nextFrameTime to current to avoid massive catch-up attempts if toggled off
-            nextFrameTime = glfwGetTime();
+
+            // Final precision spin-lock to hit the exact microsecond target
+            while (glfwGetTime() < nextFrameTime) {
+                // Do nothing, just wait.
+            }
+        } else if (now > nextFrameTime + 1.0) {
+            // If we fall behind by more than 1 second, reset the target
+            nextFrameTime = now;
         }
     }
 }
@@ -584,192 +802,223 @@ void Application::HandleShortcuts() {
         }
     };
 
-    if (!ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl) {
-        if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
-            if (ImGui::GetIO().KeyShift) {
-                if (mUndoHandler)
-                    mUndoHandler->doRedo();
-            } else {
-                if (mUndoHandler)
-                    mUndoHandler->doUndo();
-            }
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
-            if (mUndoHandler)
-                mUndoHandler->doRedo();
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_S, false)) {
-            if (ImGui::GetIO().KeyAlt) {
-                PerformIncrementalSave();
-            } else {
-                if (currentFilePath.empty()) {
-                    exitViewport();
-                    auto f = pfd::save_file("Save project", ".", {"FVD++ Projects", "*.fvd", "All Files", "*"}).result();
-                    if (!f.empty()) {
-                        if (f.find(".fvd") == std::string::npos)
-                            f += ".fvd";
-                        currentFilePath = f;
-                    }
-                }
-                if (!currentFilePath.empty()) {
-                    saver saveObj(currentFilePath, trackList);
-                    saveObj.doSave();
-                    LOG_INFO("Saved project: %s", currentFilePath.c_str());
-                    std::string filename = currentFilePath;
-                    size_t lastSlash = filename.find_last_of("/\\");
-                    if (lastSlash != std::string::npos) {
-                        filename = filename.substr(lastSlash + 1);
-                    }
-                    showInAppNotification("Project Saved: " + filename);
-                }
-            }
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
-            bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
-            if (hasActiveTrack) {
-                if (!lastExportPath.empty()) {
-                    PerformExport(lastExportPath);
-                } else {
-                    exitViewport();
-                    showExportPopup = true;
-                }
-            }
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_1, false))
-            viewport.setTrackShaderMode(0);
-        if (ImGui::IsKeyPressed(ImGuiKey_2, false))
-            viewport.setTrackShaderMode(1);
-        if (ImGui::IsKeyPressed(ImGuiKey_3, false))
-            viewport.setTrackShaderMode(2);
-        if (ImGui::IsKeyPressed(ImGuiKey_4, false))
-            viewport.setTrackShaderMode(3);
-        if (ImGui::IsKeyPressed(ImGuiKey_5, false))
-            viewport.setTrackShaderMode(4);
-        if (ImGui::IsKeyPressed(ImGuiKey_6, false))
-            viewport.setTrackShaderMode(5);
+    if (ImGui::GetIO().WantTextInput)
+        return;
 
-        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) && !viewportActive) {
-            bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
-            if (hasActiveTrack) {
-                track* curTrack = trackList[activeTrackIdx]->trackData;
-                int currentSec = leftPanel.selectedSectionIdx;
-                if (currentSec > -1) {
-                    leftPanel.selectedSectionIdx--;
-                    curTrack->activeSection = (leftPanel.selectedSectionIdx == -1) ? nullptr : curTrack->lSections[leftPanel.selectedSectionIdx];
-                    if (viewport.getPOVMode()) {
-                        viewport.setPOVMode(false);
-                    }
-                    viewport.markSceneDirty();
-                    if (gloParent->mOptions->autoFocusOnSelection)
-                        viewport.focusOnSection(leftPanel.selectedSectionIdx);
-                }
+    auto& kb = KeybindManager::instance();
+
+    if (kb.isTriggered(KeyAction::Undo)) {
+        if (mUndoHandler)
+            mUndoHandler->doUndo();
+    }
+    if (kb.isTriggered(KeyAction::Redo)) {
+        if (mUndoHandler)
+            mUndoHandler->doRedo();
+    }
+    if (kb.isTriggered(KeyAction::IncrementalSave)) {
+        PerformIncrementalSave();
+    } else if (kb.isTriggered(KeyAction::SaveProject)) {
+        if (currentFilePath.empty()) {
+            exitViewport();
+            auto f = pfd::save_file("Save project", ".", {"FVD++ Projects", "*.fvd", "All Files", "*"}).result();
+            if (!f.empty()) {
+                if (f.find(".fvd") == std::string::npos)
+                    f += ".fvd";
+                currentFilePath = f;
             }
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) && !viewportActive) {
-            bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
-            if (hasActiveTrack) {
-                track* curTrack = trackList[activeTrackIdx]->trackData;
-                int maxSec = (int)curTrack->lSections.size();
-                int currentSec = leftPanel.selectedSectionIdx;
-                if (currentSec < maxSec - 1) {
-                    leftPanel.selectedSectionIdx++;
-                    curTrack->activeSection = curTrack->lSections[leftPanel.selectedSectionIdx];
-                    if (viewport.getPOVMode()) {
-                        viewport.setPOVMode(false);
-                    }
-                    viewport.markSceneDirty();
-                    if (gloParent->mOptions->autoFocusOnSelection)
-                        viewport.focusOnSection(leftPanel.selectedSectionIdx);
+        if (!currentFilePath.empty()) {
+            saver saveObj(currentFilePath, trackList);
+            saveObj.doSave();
+            LOG_INFO("Saved project: %s", currentFilePath.c_str());
+            std::string filename = currentFilePath;
+            size_t lastSlash = filename.find_last_of("/\\");
+            if (lastSlash != std::string::npos) {
+                filename = filename.substr(lastSlash + 1);
+            }
+            showInAppNotification("Project Saved: " + filename);
+        }
+    }
+    if (kb.isTriggered(KeyAction::ExportTrack)) {
+        bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+        if (hasActiveTrack) {
+            if (!lastExportPath.empty()) {
+                PerformExport(lastExportPath);
+            } else {
+                exitViewport();
+                showExportPopup = true;
+            }
+        }
+    }
+    if (kb.isTriggered(KeyAction::MeasurementPointsWindow)) {
+        bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+        if (hasActiveTrack) {
+            showMeasurementPoints = !showMeasurementPoints;
+        }
+    }
+    if (kb.isTriggered(KeyAction::ShaderNothing))
+        viewport.setTrackShaderMode(0);
+    if (kb.isTriggered(KeyAction::ShaderVelocity))
+        viewport.setTrackShaderMode(1);
+    if (kb.isTriggered(KeyAction::ShaderRollSpeed))
+        viewport.setTrackShaderMode(2);
+    if (kb.isTriggered(KeyAction::ShaderNormalForce))
+        viewport.setTrackShaderMode(3);
+    if (kb.isTriggered(KeyAction::ShaderLateralForce))
+        viewport.setTrackShaderMode(4);
+    if (kb.isTriggered(KeyAction::ShaderTrackFlexion))
+        viewport.setTrackShaderMode(5);
+
+    if (kb.isTriggered(KeyAction::SelectPrevSection) && !viewportActive) {
+        bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+        if (hasActiveTrack) {
+            track* curTrack = trackList[activeTrackIdx]->trackData;
+            int currentSec = leftPanel.selectedSectionIdx;
+            if (currentSec > -1) {
+                leftPanel.selectedSectionIdx--;
+                curTrack->activeSection = (leftPanel.selectedSectionIdx == -1) ? nullptr : curTrack->lSections[leftPanel.selectedSectionIdx];
+                if (viewport.getPOVMode()) {
+                    viewport.setPOVMode(false);
                 }
+                viewport.markSceneDirty();
+                if (gloParent->mOptions->autoFocusOnSelection)
+                    viewport.focusOnSection(leftPanel.selectedSectionIdx);
+            }
+        }
+    }
+    if (kb.isTriggered(KeyAction::SelectNextSection) && !viewportActive) {
+        bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+        if (hasActiveTrack) {
+            track* curTrack = trackList[activeTrackIdx]->trackData;
+            int maxSec = (int)curTrack->lSections.size();
+            int currentSec = leftPanel.selectedSectionIdx;
+            if (currentSec < maxSec - 1) {
+                leftPanel.selectedSectionIdx++;
+                curTrack->activeSection = curTrack->lSections[leftPanel.selectedSectionIdx];
+                if (viewport.getPOVMode()) {
+                    viewport.setPOVMode(false);
+                }
+                viewport.markSceneDirty();
+                if (gloParent->mOptions->autoFocusOnSelection)
+                    viewport.focusOnSection(leftPanel.selectedSectionIdx);
             }
         }
     }
 
-    if (!ImGui::GetIO().WantTextInput) {
-        if (gloParent->mOptions->keyViewPerspective != ImGuiKey_None && ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyViewPerspective, false)) {
-            viewport.setViewMode(Viewport::ViewMode::Perspective);
+    if (kb.isTriggered(KeyAction::ViewPerspective)) {
+        viewport.setViewMode(Viewport::ViewMode::Perspective);
+    }
+    if (kb.isTriggered(KeyAction::ViewTopOrtho)) {
+        viewport.setViewMode(Viewport::ViewMode::Top);
+    }
+    if (kb.isTriggered(KeyAction::ViewSideOrtho)) {
+        viewport.setViewMode(Viewport::ViewMode::Side);
+    }
+    if (kb.isTriggered(KeyAction::ViewFrontOrtho)) {
+        viewport.setViewMode(Viewport::ViewMode::Front);
+    }
+    if (kb.isTriggered(KeyAction::SaveScreenshot)) {
+        exitViewport();
+        auto f = pfd::save_file("Save screenshot", "screenshot.png", {"Image Files", "*.png", "All Files", "*"}).result();
+        if (!f.empty()) {
+            if (f.find(".png") == std::string::npos)
+                f += ".png";
+            viewport.captureScreenshot(gloParent->mOptions->screenshotMultiplier, f, trackList);
         }
-        if (gloParent->mOptions->keyViewTop != ImGuiKey_None && ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyViewTop, false)) {
-            viewport.setViewMode(Viewport::ViewMode::Top);
-        }
-        if (gloParent->mOptions->keyViewSide != ImGuiKey_None && ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyViewSide, false)) {
-            viewport.setViewMode(Viewport::ViewMode::Side);
-        }
-        if (gloParent->mOptions->keyViewFront != ImGuiKey_None && ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyViewFront, false)) {
-            viewport.setViewMode(Viewport::ViewMode::Front);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) {
-            exitViewport();
-            auto f = pfd::save_file("Save screenshot", "screenshot.png", {"Image Files", "*.png", "All Files", "*"}).result();
-            if (!f.empty()) {
-                if (f.find(".png") == std::string::npos)
-                    f += ".png";
-                viewport.captureScreenshot(gloParent->mOptions->screenshotMultiplier, f, trackList);
+    }
+    if (kb.isTriggered(KeyAction::ResetView)) {
+        viewport.resetView();
+    }
+    if (kb.isTriggered(KeyAction::DeleteGlbMesh)) {
+        if (viewport.hasSelectedGlb()) {
+            std::string removedPath = "";
+            for (const auto& gm : viewport.glbMeshes) {
+                if (gm.selected) {
+                    removedPath = gm.path;
+                    break;
+                }
             }
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_Period, false)) {
-            viewport.resetView();
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
-            if (viewport.hasSelectedGlb()) {
-                std::string removedPath = "";
-                for (const auto& gm : viewport.glbMeshes) {
-                    if (gm.selected) {
-                        removedPath = gm.path;
+            if (!removedPath.empty()) {
+                for (auto it = gloParent->projectGlbs.begin(); it != gloParent->projectGlbs.end(); ++it) {
+                    if (it->path == removedPath) {
+                        gloParent->projectGlbs.erase(it);
                         break;
                     }
                 }
-                if (!removedPath.empty()) {
-                    for (auto it = gloParent->projectGlbs.begin(); it != gloParent->projectGlbs.end(); ++it) {
-                        if (it->path == removedPath) {
-                            gloParent->projectGlbs.erase(it);
-                            break;
-                        }
-                    }
-                }
-                viewport.deleteSelectedGlb();
+            }
+            viewport.deleteSelectedGlb();
+            pushUndo();
+        }
+    }
+    if (kb.isTriggered(KeyAction::DeleteSection) && !viewportActive) {
+        bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+        if (hasActiveTrack) {
+            track* curTrack = trackList[activeTrackIdx]->trackData;
+            bool canDelete = (leftPanel.selectedSectionIdx >= 0);
+            if (canDelete) {
+                curTrack->removeSection(leftPanel.selectedSectionIdx);
+                leftPanel.selectedSectionIdx--;
+                if (leftPanel.selectedSectionIdx < -1)
+                    leftPanel.selectedSectionIdx = -1;
+                if (leftPanel.selectedSectionIdx >= 0)
+                    curTrack->activeSection = curTrack->lSections.at(leftPanel.selectedSectionIdx);
+                else
+                    curTrack->activeSection = nullptr;
+                viewport.markSceneDirty();
+                if (gloParent->mOptions->autoFocusOnSelection)
+                    viewport.focusOnSection(leftPanel.selectedSectionIdx);
                 pushUndo();
             }
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !viewportActive) {
-            bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
-            if (hasActiveTrack) {
-                track* curTrack = trackList[activeTrackIdx]->trackData;
-                bool canDelete = (leftPanel.selectedSectionIdx >= 0);
-                if (canDelete) {
-                    curTrack->removeSection(leftPanel.selectedSectionIdx);
-                    leftPanel.selectedSectionIdx--;
-                    if (leftPanel.selectedSectionIdx < -1)
-                        leftPanel.selectedSectionIdx = -1;
-                    if (leftPanel.selectedSectionIdx >= 0)
-                        curTrack->activeSection = curTrack->lSections.at(leftPanel.selectedSectionIdx);
-                    else
-                        curTrack->activeSection = nullptr;
-                    viewport.markSceneDirty();
-                    if (gloParent->mOptions->autoFocusOnSelection)
-                        viewport.focusOnSection(leftPanel.selectedSectionIdx);
-                    pushUndo();
-                }
-            }
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) && !viewportActive) {
-            bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
-            if (hasActiveTrack && gloParent->selectedFunc) {
-                subfunc* sf = gloParent->selectedFunc;
-                func* fParent = sf->parent;
-                if (fParent && fParent->funcList.size() > 1) {
-                    int idx = fParent->getSubfuncNumber(sf);
-                    fParent->removeSubFunction(idx);
-                    if (!fParent->funcList.empty()) {
-                        int newIdx = (idx > 0) ? idx - 1 : 0;
-                        if (newIdx < (int)fParent->funcList.size()) {
-                            gloParent->selectedFunc = fParent->funcList[newIdx];
-                        } else {
-                            gloParent->selectedFunc = nullptr;
-                        }
+    }
+    if (kb.isTriggered(KeyAction::DeleteTransition) && !viewportActive) {
+        bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+        if (hasActiveTrack && gloParent->selectedFunc) {
+            subfunc* sf = gloParent->selectedFunc;
+            func* fParent = sf->parent;
+            if (fParent && fParent->funcList.size() > 1) {
+                int idx = fParent->getSubfuncNumber(sf);
+                fParent->removeSubFunction(idx);
+                if (!fParent->funcList.empty()) {
+                    int newIdx = (idx > 0) ? idx - 1 : 0;
+                    if (newIdx < (int)fParent->funcList.size()) {
+                        gloParent->selectedFunc = fParent->funcList[newIdx];
                     } else {
                         gloParent->selectedFunc = nullptr;
                     }
+                } else {
+                    gloParent->selectedFunc = nullptr;
+                }
+                track* curTrack = trackList[activeTrackIdx]->trackData;
+                curTrack->requestUpdateTrack(fParent->secParent, 0);
+                viewport.markSceneDirty();
+                pushUndo();
+            }
+        }
+    }
+    if (gloParent->selectedFunc && !viewportActive) {
+        bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
+        if (hasActiveTrack) {
+            if (kb.isTriggered(KeyAction::PrependTransition)) {
+                subfunc* sf = gloParent->selectedFunc;
+                func* fParent = sf->parent;
+                if (fParent) {
+                    int idx = fParent->getSubfuncNumber(sf);
+                    fParent->appendSubFunction(1.0f, idx - 1);
+                    gloParent->selectedFunc = fParent->funcList[idx];
+                    track* curTrack = trackList[activeTrackIdx]->trackData;
+                    curTrack->requestUpdateTrack(fParent->secParent, 0);
+                    viewport.markSceneDirty();
+                    pushUndo();
+                }
+            }
+            if (kb.isTriggered(KeyAction::AppendTransition)) {
+                subfunc* sf = gloParent->selectedFunc;
+                func* fParent = sf->parent;
+                if (fParent) {
+                    int idx = fParent->getSubfuncNumber(sf);
+                    fParent->appendSubFunction(1.0f, idx);
+                    gloParent->selectedFunc = fParent->funcList[idx + 1];
                     track* curTrack = trackList[activeTrackIdx]->trackData;
                     curTrack->requestUpdateTrack(fParent->secParent, 0);
                     viewport.markSceneDirty();
@@ -777,41 +1026,18 @@ void Application::HandleShortcuts() {
                 }
             }
         }
-        if (gloParent->selectedFunc && !viewportActive) {
-            bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size();
-            if (hasActiveTrack) {
-                if (ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyPrependTransition, false)) {
-                    subfunc* sf = gloParent->selectedFunc;
-                    func* fParent = sf->parent;
-                    if (fParent) {
-                        int idx = fParent->getSubfuncNumber(sf);
-                        fParent->appendSubFunction(1.0f, idx - 1);
-                        gloParent->selectedFunc = fParent->funcList[idx];
-                        track* curTrack = trackList[activeTrackIdx]->trackData;
-                        curTrack->requestUpdateTrack(fParent->secParent, 0);
-                        viewport.markSceneDirty();
-                        pushUndo();
-                    }
-                }
-                if (ImGui::IsKeyPressed((ImGuiKey)gloParent->mOptions->keyAppendTransition, false)) {
-                    subfunc* sf = gloParent->selectedFunc;
-                    func* fParent = sf->parent;
-                    if (fParent) {
-                        int idx = fParent->getSubfuncNumber(sf);
-                        fParent->appendSubFunction(1.0f, idx);
-                        gloParent->selectedFunc = fParent->funcList[idx + 1];
-                        track* curTrack = trackList[activeTrackIdx]->trackData;
-                        curTrack->requestUpdateTrack(fParent->secParent, 0);
-                        viewport.markSceneDirty();
-                        pushUndo();
-                    }
-                }
-            }
-        }
     }
 }
 
 void Application::Render(float deltaTime) {
+    if (showWelcomeScreen) {
+        RenderWelcomeScreen();
+        if (showOptions) {
+            RenderOptionsWindow();
+        }
+        return;
+    }
+
     bool viewportOverlayZTrigger = false;
     auto exitViewport = [&]() {
         if (viewportActive) {
@@ -825,23 +1051,7 @@ void Application::Render(float deltaTime) {
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("New Project")) {
-                for (auto t : trackList)
-                    delete t;
-                trackList.clear();
-                activeTrackIdx = -1;
-                gloParent->selectedFunc = nullptr;
-                currentFilePath = "";
-                gloParent->resetEnvironment();
-                viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
-                viewport.setGroundHeight(gloParent->projectGrdHeight);
-                viewport.loadGroundTexture(gloParent->projectGroundTex);
-                viewport.applyProjectEnvironment();
-                while (!viewport.glbMeshes.empty())
-                    viewport.removeGlbMesh(0);
-                if (mUndoHandler) {
-                    mUndoHandler->clearActions();
-                    mUndoHandler->pushSnapshot();
-                }
+                CreateNewProject();
             }
             if (ImGui::MenuItem("Open...")) {
                 exitViewport();
@@ -938,11 +1148,11 @@ void Application::Render(float deltaTime) {
                     showExportPopup = true;
                 }
                 ImGui::SeparatorText("Reference & Styles");
-                if (ImGui::MenuItem("Parametric Track Style...", nullptr, false, hasActiveTrack)) {
+                if (ImGui::MenuItem("Custom Track Model...", nullptr, false, hasActiveTrack)) {
                     exitViewport();
-                    auto f = pfd::save_file("Export Parametric Style", "custom.fvdstyle", {"FVD Style Files", "*.fvdstyle"}).result();
+                    auto f = pfd::save_file("Export Custom Track", "custom.fvdtrack", {"FVD Track Files", "*.fvdtrack"}).result();
                     if (!f.empty())
-                        trackList[activeTrackIdx]->trackData->exportParametricStyle(f);
+                        trackList[activeTrackIdx]->trackData->exportCustomTrack(f);
                 }
                 if (ImGui::MenuItem("Measurement Points...", nullptr, false, hasActiveTrack)) {
                     exitViewport();
@@ -1062,7 +1272,8 @@ void Application::Render(float deltaTime) {
             if (ImGui::MenuItem("Environment...", nullptr, &showEnvironmentWindow)) {
                 exitViewport();
             }
-            if (ImGui::MenuItem("Measurement Points...", nullptr, &showMeasurementPoints, hasActiveTrack)) {
+            std::string scMeasure = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::MeasurementPointsWindow));
+            if (ImGui::MenuItem("Measurement Points...", scMeasure == "None" ? nullptr : scMeasure.c_str(), &showMeasurementPoints, hasActiveTrack)) {
                 exitViewport();
             }
             if (ImGui::MenuItem("Parametric Track Editor...", nullptr, &showParametricTrackEditor, hasActiveTrack)) {
@@ -1077,7 +1288,55 @@ void Application::Render(float deltaTime) {
                 gloParent->selectedFunc = nullptr;
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                ImGui::SetTooltip("Fork the active track at the current playhead/POV position into a new, separate track branch.");
+                if (!hasActiveTrack) {
+                    ImGui::SetTooltip("Fork Track (at Playhead)\n\nBranches off a new, empty track starting from the playhead's current 3D position, heading, and speed, leaving the original track untouched.\n\n(Disabled: No active track selected)");
+                } else if (!gViewport || gViewport->getPOVNode() == nullptr) {
+                    ImGui::SetTooltip("Fork Track (at Playhead)\n\nBranches off a new, empty track starting from the playhead's current 3D position, heading, and speed, leaving the original track untouched.\n\n(Disabled: Position the timeline/POV playhead on the track to choose fork point)");
+                } else {
+                    ImGui::SetTooltip("Fork Track (at Playhead)\n\nBranches off a new, empty track starting from the playhead's current 3D position, heading, and speed, leaving the original track untouched.");
+                }
+            }
+
+            bool canSplit = (hasActiveTrack && leftPanel.selectedSectionIdx > 0 &&
+                             !trackList[activeTrackIdx]->trackData->isReferenceTrack());
+            if (ImGui::MenuItem("Split Track at Selected Section", nullptr, false, canSplit)) {
+                splitTrack(trackList[activeTrackIdx], leftPanel.selectedSectionIdx);
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                if (!hasActiveTrack) {
+                    ImGui::SetTooltip("Split Track (at Section)\n\nCuts this track into two independent tracks: the selected section and all following sections become a new track anchored in place.\n\n(Disabled: No active track selected)");
+                } else if (leftPanel.selectedSectionIdx <= 0) {
+                    ImGui::SetTooltip("Split Track (at Section)\n\nCuts this track into two independent tracks: the selected section and all following sections become a new track anchored in place.\n\n(Disabled: Select section 1 or later to choose split point)");
+                } else {
+                    ImGui::SetTooltip("Split Track (at Section)\n\nCuts the active track at section %d into two independent tracks. The selected section and all following sections move into Part 2, anchored in world space.", leftPanel.selectedSectionIdx);
+                }
+            }
+
+            bool canMerge = (hasActiveTrack && trackList.size() > 1 &&
+                             !trackList[activeTrackIdx]->trackData->isReferenceTrack());
+            if (ImGui::BeginMenu("Merge Track Into Active...", canMerge)) {
+                for (int i = 0; i < static_cast<int>(trackList.size()); i++) {
+                    if (i == activeTrackIdx)
+                        continue;
+                    if (trackList[i]->trackData->isReferenceTrack())
+                        continue;
+                    if (ImGui::MenuItem(trackList[i]->trackData->name.c_str())) {
+                        mergeTracks(trackList[activeTrackIdx], trackList[i]);
+                        break;
+                    }
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                if (!hasActiveTrack) {
+                    ImGui::SetTooltip("Merge Track Into Active\n\nAppends another track's sections onto the end of the active track, combining them into a single continuous track.\n\n(Disabled: No active track selected)");
+                } else if (trackList.size() <= 1) {
+                    ImGui::SetTooltip("Merge Track Into Active\n\nAppends another track's sections onto the end of the active track, combining them into a single continuous track.\n\n(Disabled: Requires at least 2 tracks in the project)");
+                } else if (trackList[activeTrackIdx]->trackData->isReferenceTrack()) {
+                    ImGui::SetTooltip("Merge Track Into Active\n\nAppends another track's sections onto the end of the active track, combining them into a single continuous track.\n\n(Disabled: Cannot merge into a reference track)");
+                } else {
+                    ImGui::SetTooltip("Merge Track Into Active\n\nAppends another track's sections onto the end of '%s', combining them into a single continuous track.", trackList[activeTrackIdx]->trackData->name.c_str());
+                }
             }
             ImGui::EndMenu();
         }
@@ -1190,12 +1449,18 @@ void Application::Render(float deltaTime) {
             ImGuiID dock_id_top_half, dock_id_bottom_half;
             ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Up, 0.60f, &dock_id_top_half, &dock_id_bottom_half);
 
+            float metricsLineHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
+            float topHalfHeight = ImGui::GetMainViewport()->Size.y * 0.60f;
+            float metricsRatio = (topHalfHeight > 0.0f) ? std::clamp(metricsLineHeight / topHalfHeight, 0.01f, 0.15f) : 0.05f;
+
             ImGuiID dock_id_metrics, dock_id_top_content;
-            ImGui::DockBuilderSplitNode(dock_id_top_half, ImGuiDir_Down, 0.10f, &dock_id_metrics, &dock_id_top_content);
+            ImGui::DockBuilderSplitNode(dock_id_top_half, ImGuiDir_Down, metricsRatio, &dock_id_metrics, &dock_id_top_content);
 
             ImGuiDockNode* metrics_node = ImGui::DockBuilderGetNode(dock_id_metrics);
-            if (metrics_node)
-                metrics_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+            if (metrics_node) {
+                metrics_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_NoResizeY;
+                metrics_node->SizeRef.y = metricsLineHeight;
+            }
 
             ImGuiID dock_id_left_top, dock_id_viewport;
             ImGui::DockBuilderSplitNode(dock_id_top_content, ImGuiDir_Left, 0.17f, &dock_id_left_top, &dock_id_viewport);
@@ -1283,496 +1548,7 @@ void Application::Render(float deltaTime) {
     }
 
     if (showOptions) {
-        ImGui::SetNextWindowSize(ImVec2(400, 450), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Size.x / 2.0f - 200.0f, ImGui::GetMainViewport()->Size.y / 2.0f - 225.0f), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Options", &showOptions, ImGuiWindowFlags_NoDocking);
-
-        if (ImGui::CollapsingHeader("General", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::BeginTable("OptionsGeneralTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                static float initialFontSize = gloParent->mOptions->fontSize;
-                bool fontSizeChanged = (gloParent->mOptions->fontSize != initialFontSize);
-                if (fontSizeChanged) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
-                }
-                ImGui::Text("Font Size");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Requires application restart for settings to take effect.");
-                }
-                if (fontSizeChanged) {
-                    ImGui::PopStyleColor();
-                }
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (fontSizeChanged) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
-                }
-                if (ImGui::SliderFloat("##FontSize", &gloParent->mOptions->fontSize, 10.0f, 32.0f, "%.1f px")) {
-                    gloParent->mOptions->fontSize = std::clamp(gloParent->mOptions->fontSize, 10.0f, 32.0f);
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Requires application restart for settings to take effect.");
-                }
-                if (fontSizeChanged) {
-                    ImGui::PopStyleColor();
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Max Undo Steps");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::SliderInt("##MaxUndo", &gloParent->mOptions->maxUndoChanges, 5, 200)) {
-                    gloParent->mOptions->maxUndoChanges = std::clamp(gloParent->mOptions->maxUndoChanges, 5, 200);
-                    if (mUndoHandler)
-                        mUndoHandler->setMaxStackSize(gloParent->mOptions->maxUndoChanges);
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Theme");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                static int themeIdx = gloParent->mOptions->theme;
-                const char* themes[] = {"Dark", "Light", "Classic"};
-                if (ImGui::Combo("##Theme", &themeIdx, themes, IM_ARRAYSIZE(themes))) {
-                    gloParent->mOptions->theme = themeIdx;
-                    if (themeIdx == 0) {
-                        ImGui::StyleColorsDark();
-                        ImPlot::StyleColorsDark();
-                    } else if (themeIdx == 1) {
-                        ImGui::StyleColorsLight();
-                        ImPlot::StyleColorsLight();
-                    } else if (themeIdx == 2) {
-                        ImGui::StyleColorsClassic();
-                        ImPlot::StyleColorsClassic();
-                    }
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Transparent Graphs");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Make graph backgrounds transparent so they blend into the panel background.");
-                }
-                ImGui::TableNextColumn();
-                ImGui::Checkbox("##TransparentGraphs", &gloParent->mOptions->transparentGraphs);
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Units");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                ImGui::Combo("##Measure", &gloParent->mOptions->measures, "Metric (m, m/s)\0Metric (m, km/h)\0English (ft, mph)\0");
-
-                ImGui::EndTable();
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Default Transitions", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::BeginTable("OptionsTransitionsTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                const char* typesRoll[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "ToZero", "Custom"};
-                const char* typesForce[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "Custom"};
-
-                // 1. Roll Rate
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Roll Rate");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                int rIdx = gloParent->mOptions->defaultTransitionRoll;
-                if (rIdx == 9)
-                    rIdx = 8;
-                if (ImGui::Combo("##DefaultTransitionRoll", &rIdx, typesRoll, IM_ARRAYSIZE(typesRoll))) {
-                    if (rIdx == 8)
-                        rIdx = 9;
-                    gloParent->mOptions->defaultTransitionRoll = rIdx;
-                }
-
-                // 2. Normal Force
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Normal Force");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                int nIdx = gloParent->mOptions->defaultTransitionNormal;
-                if (nIdx == 9)
-                    nIdx = 7;
-                if (ImGui::Combo("##DefaultTransitionNormal", &nIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
-                    if (nIdx == 7)
-                        nIdx = 9;
-                    gloParent->mOptions->defaultTransitionNormal = nIdx;
-                }
-
-                // 3. Lateral Force
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Lateral Force");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                int lIdx = gloParent->mOptions->defaultTransitionLateral;
-                if (lIdx == 9)
-                    lIdx = 7;
-                if (ImGui::Combo("##DefaultTransitionLateral", &lIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
-                    if (lIdx == 7)
-                        lIdx = 9;
-                    gloParent->mOptions->defaultTransitionLateral = lIdx;
-                }
-
-                // 4. Pitch
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Pitch");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                int pIdx = gloParent->mOptions->defaultTransitionPitch;
-                if (pIdx == 9)
-                    pIdx = 7;
-                if (ImGui::Combo("##DefaultTransitionPitch", &pIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
-                    if (pIdx == 7)
-                        pIdx = 9;
-                    gloParent->mOptions->defaultTransitionPitch = pIdx;
-                }
-
-                // 5. Yaw
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Yaw");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                int yIdx = gloParent->mOptions->defaultTransitionYaw;
-                if (yIdx == 9)
-                    yIdx = 7;
-                if (ImGui::Combo("##DefaultTransitionYaw", &yIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
-                    if (yIdx == 7)
-                        yIdx = 9;
-                    gloParent->mOptions->defaultTransitionYaw = yIdx;
-                }
-
-                ImGui::EndTable();
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Viewport", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::BeginTable("OptionsGraphicsTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Anti-Aliasing");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                static int msaaIdx = 0;
-                if (gloParent->mOptions->msaaSamples == 0)
-                    msaaIdx = 0;
-                else if (gloParent->mOptions->msaaSamples == 2)
-                    msaaIdx = 1;
-                else if (gloParent->mOptions->msaaSamples == 4)
-                    msaaIdx = 2;
-                else if (gloParent->mOptions->msaaSamples == 8)
-                    msaaIdx = 3;
-                if (ImGui::Combo("##MSAA", &msaaIdx, "Off\0 2x\0 4x\0 8x\0")) {
-                    if (msaaIdx == 0)
-                        gloParent->mOptions->msaaSamples = 0;
-                    else if (msaaIdx == 1)
-                        gloParent->mOptions->msaaSamples = 2;
-                    else if (msaaIdx == 2)
-                        gloParent->mOptions->msaaSamples = 4;
-                    else if (msaaIdx == 3)
-                        gloParent->mOptions->msaaSamples = 8;
-                    viewport.setMSAASamples(gloParent->mOptions->msaaSamples);
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Auto Focus");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Automatically focus/zoom the graph viewports onto the selected track section.");
-                }
-                ImGui::TableNextColumn();
-                ImGui::Checkbox("##AutoFocus", &gloParent->mOptions->autoFocusOnSelection);
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Automatically focus/zoom the graph viewports onto the selected track section.");
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Field of View");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::SliderFloat("##FOV", &gloParent->mOptions->fov, 60.0f, 175.0f, "%.1f")) {
-                    gloParent->mOptions->fov = std::clamp(gloParent->mOptions->fov, 60.0f, 175.0f);
-                    viewport.setFOV(gloParent->mOptions->fov);
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Floor Color");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::ColorEdit3("##FloorColor", &gloParent->mOptions->floorColor.x)) {
-                    viewport.markSceneDirty();
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("FPS Limit");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                ImGui::SliderInt("##FPSLimit", &gloParent->mOptions->targetFPS, 30, 400, "%d FPS");
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Limits the maximum frame rate to save CPU/GPU power.\nOnly active when VSync is OFF.");
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Look-ahead Smoothing");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Smooths out camera when in POV mode. Turn off to match the behaviour of old FVD.");
-                }
-                ImGui::TableNextColumn();
-                ImGui::Checkbox("##LookAheadSmoothing", &gloParent->mOptions->lookAheadPovSmoothing);
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Smooths out camera when in POV mode. Turn off to match the behaviour of old FVD.");
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Mesh Quality");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::Combo("##MeshQuality", &gloParent->mOptions->meshQuality, "Low\0Medium\0High\0Extreme\0Insane\0")) {
-                    for (auto track : trackList)
-                        if (track->mMesh)
-                            track->mMesh->buildMeshes(0);
-                    viewport.markSceneDirty();
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Scenery Shadows (Exp.)");
-                ImGui::TableNextColumn();
-                if (ImGui::Checkbox("##GlbShadows", &gloParent->mOptions->glbShadowsEnabled)) {
-                    viewport.markSceneDirty();
-                }
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("EXPERIMENTAL: Enables planar shadows for imported scenery geometry.\nMay impact performance on large models.");
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Screenshot Res.");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Multiplies the viewport resolution (up to 8x) to capture high-definition, anti-aliased screenshots. Press F12 to capture.");
-                }
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                ImGui::SliderInt("##ScreenshotMult", &gloParent->mOptions->screenshotMultiplier, 1, 8, "%dx");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Multiplies the viewport resolution (up to 8x) to capture high-definition, anti-aliased screenshots. Press F12 to capture.");
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Show FPS");
-                ImGui::TableNextColumn();
-                ImGui::Checkbox("##ShowFPS", &gloParent->mOptions->showFPS);
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("VSync");
-                ImGui::TableNextColumn();
-                if (ImGui::Checkbox("##VSync", &gloParent->mOptions->vSync))
-                    vulkanContext.setVSync(gloParent->mOptions->vSync);
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Synchronizes the frame rate with your monitor's refresh rate.\nEliminates screen tearing but may add minor input lag.");
-                ImGui::EndTable();
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Track Editor", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::BeginTable("OptionsEditorTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Graph Spacing");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Sets the minimum spatial distance (meters) between plotted points on the Resulting Graphs. Prevents rendering lag in long tracks.");
-                }
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::SliderFloat("##GraphSpacingLimit", &gloParent->mOptions->graphSpacingLimit, 0.001f, 1.0f, "%.3f m")) {
-                    gloParent->mOptions->graphSpacingLimit = std::max(0.001f, std::min(gloParent->mOptions->graphSpacingLimit, 1.0f));
-                    for (auto track : trackList) {
-                        if (track->trackData) {
-                            track->trackData->graphChanged = true;
-                        }
-                    }
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Stall Speed");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Sets the threshold speed below which the train simulator will consider the train stalled.");
-                }
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::InputFloat("##StallSpeed", &gloParent->mOptions->stallSpeed, 0.01f, 0.1f, "%.2f m/s")) {
-                    gloParent->mOptions->stallSpeed = std::max(0.01f, std::min(gloParent->mOptions->stallSpeed, 10.0f));
-                    for (auto track : trackList)
-                        if (track->trackData)
-                            track->trackData->requestUpdateTrack(0, 0);
-                }
-
-                ImGui::EndTable();
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::BeginTable("OptionsControlsTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Mouse Sens.");
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::SliderFloat("##MouseSens", &gloParent->mOptions->mouseSensitivity, 0.1f, 5.0f, "%.2f")) {
-                    gloParent->mOptions->mouseSensitivity = std::clamp(gloParent->mOptions->mouseSensitivity, 0.1f, 5.0f);
-                }
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Sprint Mult.");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key.");
-                }
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::SliderFloat("##SprintMult", &gloParent->mOptions->sprintMultiplier, 1.0f, 10.0f, "%.1fx")) {
-                    gloParent->mOptions->sprintMultiplier = std::clamp(gloParent->mOptions->sprintMultiplier, 1.0f, 10.0f);
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key.");
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Incr. Scroll");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Sets the multiplier for the scroll wheel step size over input fields (default: 1.0).");
-                }
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::InputFloat("##ScrollInc", &gloParent->mOptions->scrollIncrement, 0.01f, 1.0f, "%.3f")) {
-                    gloParent->mOptions->scrollIncrement = std::max(0.0001f, gloParent->mOptions->scrollIncrement);
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Incr. Ctrl");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Sets the multiplier for the Ctrl + Scroll Wheel step size over input fields (default: 1.0).");
-                }
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::InputFloat("##CtrlScrollInc", &gloParent->mOptions->scrollCtrlIncrement, 0.001f, 0.1f, "%.3f")) {
-                    gloParent->mOptions->scrollCtrlIncrement = std::max(0.0001f, gloParent->mOptions->scrollCtrlIncrement);
-                }
-
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("Incr. Shift");
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Sets the multiplier for the Shift + Scroll Wheel step size over input fields (default: 10.0).");
-                }
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::InputFloat("##ShiftScrollInc", &gloParent->mOptions->scrollShiftIncrement, 0.1f, 10.0f, "%.3f")) {
-                    gloParent->mOptions->scrollShiftIncrement = std::max(0.0001f, gloParent->mOptions->scrollShiftIncrement);
-                }
-
-                auto KeyBindButton = [](const char* label, int& key) {
-                    ImGui::PushID(label);
-                    ImGui::TableNextRow();
-                    ImGui::TableNextColumn();
-                    ImGui::AlignTextToFramePadding();
-                    ImGui::Text("%s", label);
-                    ImGui::TableNextColumn();
-                    ImGui::SetNextItemWidth(-FLT_MIN);
-                    const char* keyName = ImGui::GetKeyName((ImGuiKey)key);
-                    char buf[64];
-                    snprintf(buf, sizeof(buf), "%s##btn", keyName ? keyName : "Unknown");
-                    static int* awaitingKey = nullptr;
-                    if (awaitingKey == &key) {
-                        ImGui::Button("Press any key...##btn", ImVec2(-FLT_MIN, 0));
-                        for (int i = ImGuiKey_NamedKey_BEGIN; i < ImGuiKey_NamedKey_END; i++) {
-                            if (ImGui::IsKeyPressed((ImGuiKey)i)) {
-                                if (i != ImGuiKey_Escape)
-                                    key = i;
-                                awaitingKey = nullptr;
-                                break;
-                            }
-                        }
-                        if (ImGui::IsMouseClicked(0) && !ImGui::IsItemHovered())
-                            awaitingKey = nullptr;
-                    } else if (ImGui::Button(buf, ImVec2(-FLT_MIN, 0)))
-                        awaitingKey = &key;
-                    ImGui::PopID();
-                };
-                KeyBindButton("Move Forward", gloParent->mOptions->keyForward);
-                KeyBindButton("Move Backward", gloParent->mOptions->keyBackward);
-                KeyBindButton("Move Left", gloParent->mOptions->keyLeft);
-                KeyBindButton("Move Right", gloParent->mOptions->keyRight);
-                KeyBindButton("Warnings Overlay", gloParent->mOptions->keyOverlayWarnings);
-                KeyBindButton("Scenery Overlay", gloParent->mOptions->keyOverlayScenery);
-                KeyBindButton("Prepend Transition", gloParent->mOptions->keyPrependTransition);
-                KeyBindButton("Append Transition", gloParent->mOptions->keyAppendTransition);
-                KeyBindButton("View: Perspective", gloParent->mOptions->keyViewPerspective);
-                KeyBindButton("View: Top Ortho", gloParent->mOptions->keyViewTop);
-                KeyBindButton("View: Side Ortho", gloParent->mOptions->keyViewSide);
-                KeyBindButton("View: Front Ortho", gloParent->mOptions->keyViewFront);
-                ImGui::EndTable();
-            }
-        }
-        ImGui::End();
+        RenderOptionsWindow();
     }
 
     if (showTrainGenerator) {
@@ -1922,7 +1698,7 @@ void Application::Render(float deltaTime) {
     {
         leftPanel.render(this);
         ImGuiWindowFlags commonFlags = 0;
-        ImGui::Begin("Transition Editor", nullptr, commonFlags);
+        DockStyle::Begin("Transition Editor", nullptr, commonFlags);
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
             auto track = trackList[activeTrackIdx];
             if (track->trackData->isReferenceTrack()) {
@@ -1965,7 +1741,7 @@ void Application::Render(float deltaTime) {
             ImGui::Text("No active track.");
         ImGui::End();
 
-        ImGui::Begin("Viewport", nullptr, commonFlags);
+        DockStyle::Begin("Viewport", nullptr, commonFlags);
         ImVec2 imagePos(0.0f, 0.0f);
         ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
         if (viewportPanelSize.x > 0 && viewportPanelSize.y > 0) {
@@ -2021,7 +1797,7 @@ void Application::Render(float deltaTime) {
             }
 
             if (viewportActive) {
-                if (ImGui::IsKeyPressed(ImGuiKey_Space) && !viewport.getOrthoMode())
+                if (KeybindManager::instance().isTriggered(KeyAction::TogglePOVMode) && !viewport.getOrthoMode())
                     viewport.setPOVMode(!viewport.getPOVMode());
 
                 if (viewport.getOrthoMode()) {
@@ -2037,13 +1813,13 @@ void Application::Render(float deltaTime) {
                     float moveSpeed = 30.0f * deltaTime;
                     if (ImGui::IsKeyDown(ImGuiKey_LeftShift))
                         moveSpeed *= gloParent->mOptions->sprintMultiplier;
-                    if (ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyForward))
+                    if (KeybindManager::instance().isHeld(KeyAction::MoveForward))
                         moveDelta.z += moveSpeed;
-                    if (ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyBackward))
+                    if (KeybindManager::instance().isHeld(KeyAction::MoveBackward))
                         moveDelta.z -= moveSpeed;
-                    if (ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyLeft))
+                    if (KeybindManager::instance().isHeld(KeyAction::MoveLeft))
                         moveDelta.x -= moveSpeed;
-                    if (ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyRight))
+                    if (KeybindManager::instance().isHeld(KeyAction::MoveRight))
                         moveDelta.x += moveSpeed;
                     if (ImGui::GetIO().MouseWheel != 0.0f) {
                         float boost = ImGui::IsKeyDown(ImGuiKey_LeftShift) ? gloParent->mOptions->sprintMultiplier : 1.0f;
@@ -2053,17 +1829,17 @@ void Application::Render(float deltaTime) {
                 if (viewport.getPOVMode()) {
                     float boost = ImGui::IsKeyDown(ImGuiKey_LeftShift) ? gloParent->mOptions->sprintMultiplier : 1.0f;
                     float zMovement = 0.0f;
-                    if (ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyForward))
+                    if (KeybindManager::instance().isHeld(KeyAction::MoveForward))
                         zMovement += 1.0f;
-                    if (ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyBackward))
+                    if (KeybindManager::instance().isHeld(KeyAction::MoveBackward))
                         zMovement -= 1.0f;
                     viewport.movePOVCamera(zMovement * boost, deltaTime);
                     float heightSpeed = 5.0f * deltaTime * boost;
-                    if (ImGui::IsKeyDown(ImGuiKey_PageUp))
+                    if (KeybindManager::instance().isHeld(KeyAction::POVHeightUp))
                         viewport.adjustPOVHeight(heightSpeed);
-                    if (ImGui::IsKeyDown(ImGuiKey_PageDown))
+                    if (KeybindManager::instance().isHeld(KeyAction::POVHeightDown))
                         viewport.adjustPOVHeight(-heightSpeed);
-                    if (ImGui::IsKeyDown(ImGuiKey_Home))
+                    if (KeybindManager::instance().isTriggered(KeyAction::POVHeightReset))
                         viewport.resetPOVHeight();
                     if (ImGui::GetIO().MouseWheel != 0.0f)
                         viewport.adjustPOVHeight(ImGui::GetIO().MouseWheel * 0.5f * boost);
@@ -2084,7 +1860,7 @@ void Application::Render(float deltaTime) {
         }
         ImGui::End();
 
-        if (viewportOverlayZTrigger && ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyOverlayScenery)) {
+        if (viewportOverlayZTrigger && KeybindManager::instance().isHeld(KeyAction::OverlayScenery)) {
             int numMeshes = (int)viewport.glbMeshes.size();
             static int highlightIdx = 0;
             if (numMeshes > 0) {
@@ -2093,17 +1869,17 @@ void Application::Render(float deltaTime) {
                 if (highlightIdx < 0)
                     highlightIdx = 0;
 
-                if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+                if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryPrev)) {
                     highlightIdx = (highlightIdx - 1 + numMeshes) % numMeshes;
                 }
-                if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+                if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryNext)) {
                     highlightIdx = (highlightIdx + 1) % numMeshes;
                 }
-                if (ImGui::IsKeyPressed(ImGuiKey_H, false)) {
+                if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryToggleVis)) {
                     viewport.glbMeshes[highlightIdx].visible = !viewport.glbMeshes[highlightIdx].visible;
                     viewport.markSceneDirty();
                 }
-                if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+                if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryDelete)) {
                     pendingDeleteSceneryIdx = highlightIdx;
                     numMeshes--;
                     if (highlightIdx >= numMeshes)
@@ -2122,8 +1898,8 @@ void Application::Render(float deltaTime) {
                                      ImGuiWindowFlags_NoNav;
 
             if (ImGui::Begin("SceneryOverlay", nullptr, flags)) {
-                const char* sceneryKeyName = ImGui::GetKeyName((ImGuiKey)gloParent->mOptions->keyOverlayScenery);
-                ImGui::Text("Scenery Meshes (%s Held)", sceneryKeyName ? sceneryKeyName : "Key");
+                std::string sceneryKeyName = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::OverlayScenery));
+                ImGui::Text("Scenery Meshes (%s Held)", sceneryKeyName.c_str());
                 ImGui::TextDisabled("Up/Down: select; H: toggle; X: delete");
                 ImGui::Separator();
 
@@ -2157,7 +1933,7 @@ void Application::Render(float deltaTime) {
                 }
                 ImGui::End();
             }
-        } else if (viewportOverlayZTrigger && ImGui::IsKeyDown((ImGuiKey)gloParent->mOptions->keyOverlayWarnings)) {
+        } else if (viewportOverlayZTrigger && KeybindManager::instance().isHeld(KeyAction::OverlayWarnings)) {
             // Render Track Safety Warnings overlay in the exact same top-left spot and with the same style as SceneryOverlay
             if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
                 track* curTrack = trackList[activeTrackIdx]->trackData;
@@ -2196,38 +1972,42 @@ void Application::Render(float deltaTime) {
                     if (sec->isStalled) {
                         safetyWarnings.push_back({secLabel + ": Train stalled! Speed clamped.", ImVec4(1.0f, 0.4f, 0.4f, 1.0f)}); // Red
                     }
-                    if (sec->isRestricted) {
-                        bool forceViolated = false;
-                        if (curTrack->enableForceLimits) {
-                            for (const auto& node : sec->lNodes) {
-                                if (node.forceNormal > curTrack->fMaxPosNormal ||
-                                    node.forceNormal < curTrack->fMaxNegNormal ||
-                                    node.forceLateral > curTrack->fMaxLateral ||
-                                    node.forceLateral < curTrack->fMinLateral) {
-                                    forceViolated = true;
-                                    break;
-                                }
+
+                    bool forceViolated = false;
+                    if (curTrack->enableForceLimits) {
+                        for (const auto& node : sec->lNodes) {
+                            if (node.forceNormal > curTrack->fMaxPosNormal ||
+                                node.forceNormal < curTrack->fMaxNegNormal ||
+                                node.forceLateral > curTrack->fMaxLateral ||
+                                node.forceLateral < curTrack->fMinLateral) {
+                                forceViolated = true;
+                                break;
                             }
                         }
-                        if (forceViolated) {
-                            safetyWarnings.push_back({secLabel + ": Forces exceed safety limits!", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)}); // Orange
-                        }
+                    }
+                    if (forceViolated) {
+                        safetyWarnings.push_back({secLabel + ": Forces exceed safety limits!", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)}); // Orange
+                    }
 
-                        bool radiusViolated = false;
-                        if (curTrack->enforceMinRadius && curTrack->minRadius > 0.0f) {
-                            for (const auto& node : sec->lNodes) {
-                                double estVel = node.fVel;
-                                double maxForceRadius = (estVel * estVel) / curTrack->minRadius;
-                                double currentForce = sqrt(node.forceNormal * node.forceNormal * F_G * F_G + node.forceLateral * node.forceLateral * F_G * F_G);
-                                if (currentForce > maxForceRadius && currentForce > 1e-4) {
+                    bool radiusViolated = false;
+                    if (curTrack->enforceMinRadius && curTrack->minRadius > 0.0f) {
+                        for (size_t ni = 1; ni < sec->lNodes.size(); ++ni) {
+                            const mnode& currNode = sec->lNodes[ni];
+                            const mnode& prevNode = sec->lNodes[ni - 1];
+                            double dotProd = glm::dot(currNode.vDir, prevNode.vDir);
+                            double deltaThetaRad = std::acos(std::clamp(dotProd, -1.0, 1.0));
+                            double ds = currNode.fDistFromLast;
+                            if (deltaThetaRad > 1e-7) {
+                                double physicalRadius = ds / deltaThetaRad;
+                                if (physicalRadius < curTrack->minRadius) {
                                     radiusViolated = true;
                                     break;
                                 }
                             }
                         }
-                        if (radiusViolated) {
-                            safetyWarnings.push_back({secLabel + ": Exceeds minimum radius limit!", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)}); // Orange
-                        }
+                    }
+                    if (radiusViolated) {
+                        safetyWarnings.push_back({secLabel + ": Exceeds minimum radius limit!", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)}); // Orange
                     }
                 }
 
@@ -2244,8 +2024,8 @@ void Application::Render(float deltaTime) {
                                          ImGuiWindowFlags_NoNav;
 
                 if (ImGui::Begin("WarningOverlay", nullptr, flags)) {
-                    const char* warnKeyName = ImGui::GetKeyName((ImGuiKey)gloParent->mOptions->keyOverlayWarnings);
-                    ImGui::Text("Track State (%s Held)", warnKeyName ? warnKeyName : "Key");
+                    std::string warnKeyName = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::OverlayWarnings));
+                    ImGui::Text("Track State (%s Held)", warnKeyName.c_str());
                     ImGui::TextDisabled("Displays active safety warnings and constraints");
                     ImGui::Separator();
 
@@ -2263,7 +2043,7 @@ void Application::Render(float deltaTime) {
             }
         }
 
-        ImGui::Begin("Graph List", nullptr, commonFlags);
+        DockStyle::Begin("Graph List", nullptr, commonFlags);
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
             if (trackList[activeTrackIdx]->trackData->isReferenceTrack())
                 ImGui::Text("Reference Track (Graphs Disabled)");
@@ -2275,7 +2055,7 @@ void Application::Render(float deltaTime) {
 
         bool focusResulting = graphView.getAndClearSwitchToResultingTab();
 
-        ImGui::Begin("Graphs", nullptr, commonFlags);
+        DockStyle::Begin("Graphs", nullptr, commonFlags);
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
             if (trackList[activeTrackIdx]->trackData->isReferenceTrack())
                 ImGui::Text("Reference Track (Graphs Disabled)");
@@ -2289,7 +2069,7 @@ void Application::Render(float deltaTime) {
 
         if (focusResulting)
             ImGui::SetNextWindowFocus();
-        ImGui::Begin("Resulting Graphs", nullptr, commonFlags);
+        DockStyle::Begin("Resulting Graphs", nullptr, commonFlags);
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
             if (trackList[activeTrackIdx]->trackData->isReferenceTrack())
                 ImGui::Text("Reference Track (Graphs Disabled)");
@@ -2301,7 +2081,7 @@ void Application::Render(float deltaTime) {
             ImGui::Text("No active track.");
         ImGui::End();
 
-        ImGui::Begin("Measurement Graphs", nullptr, commonFlags);
+        DockStyle::Begin("Measurement Graphs", nullptr, commonFlags);
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
             if (trackList[activeTrackIdx]->trackData->isReferenceTrack())
                 ImGui::Text("Reference Track (Graphs Disabled)");
@@ -2316,7 +2096,16 @@ void Application::Render(float deltaTime) {
             ImGui::Text("No active track.");
         ImGui::End();
 
-        ImGui::Begin("Metrics", nullptr, commonFlags | ImGuiWindowFlags_NoTitleBar);
+        DockStyle::Begin("Metrics", nullptr, commonFlags | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar);
+        ImGuiDockNode* metricsDockNode = ImGui::GetWindowDockNode();
+        if (metricsDockNode) {
+            float targetHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
+            if (metricsDockNode->SizeRef.y != targetHeight) {
+                metricsDockNode->SizeRef.y = targetHeight;
+                metricsDockNode->WantLockSizeOnce = true;
+            }
+            metricsDockNode->LocalFlags |= ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_NoResizeY;
+        }
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
             trackHandler* hTrack = trackList[activeTrackIdx];
             if (hTrack->trackData->isReferenceTrack()) {
@@ -2458,16 +2247,47 @@ void Application::Render(float deltaTime) {
                 bool hasWarnings = curTrack->isAnyNodeNearGimbalLock;
                 if (!hasWarnings) {
                     for (section* sec : curTrack->lSections) {
-                        if (sec->isStalled || sec->isRestricted) {
+                        if (sec->isStalled) {
                             hasWarnings = true;
                             break;
+                        }
+                        if (curTrack->enableForceLimits) {
+                            for (const auto& node : sec->lNodes) {
+                                if (node.forceNormal > curTrack->fMaxPosNormal ||
+                                    node.forceNormal < curTrack->fMaxNegNormal ||
+                                    node.forceLateral > curTrack->fMaxLateral ||
+                                    node.forceLateral < curTrack->fMinLateral) {
+                                    hasWarnings = true;
+                                    break;
+                                }
+                            }
+                            if (hasWarnings)
+                                break;
+                        }
+                        if (curTrack->enforceMinRadius && curTrack->minRadius > 0.0f) {
+                            for (size_t ni = 1; ni < sec->lNodes.size(); ++ni) {
+                                const mnode& currNode = sec->lNodes[ni];
+                                const mnode& prevNode = sec->lNodes[ni - 1];
+                                double dotProd = glm::dot(currNode.vDir, prevNode.vDir);
+                                double deltaThetaRad = std::acos(std::clamp(dotProd, -1.0, 1.0));
+                                double ds = currNode.fDistFromLast;
+                                if (deltaThetaRad > 1e-7) {
+                                    double physicalRadius = ds / deltaThetaRad;
+                                    if (physicalRadius < curTrack->minRadius) {
+                                        hasWarnings = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (hasWarnings)
+                                break;
                         }
                     }
                 }
 
                 if (hasWarnings) {
-                    const char* warnKeyName = ImGui::GetKeyName((ImGuiKey)gloParent->mOptions->keyOverlayWarnings);
-                    ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.4f, 1.0f), "Warning: Safety warnings or issues detected (press %s in viewport)", warnKeyName ? warnKeyName : "Key");
+                    std::string warnKeyName = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::OverlayWarnings));
+                    ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.4f, 1.0f), "Warning: Safety warnings or issues detected (press %s in viewport)", warnKeyName.c_str());
                 } else {
                     ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "System Status: Ready");
                 }
@@ -2547,9 +2367,635 @@ void Application::Render(float deltaTime) {
     }
 }
 
+void Application::RenderOptionsWindow() {
+    if (!showOptions)
+        return;
+
+    ImGui::SetNextWindowSize(ImVec2(540, 580), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Size.x / 2.0f - 270.0f, ImGui::GetMainViewport()->Size.y / 2.0f - 290.0f), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Options", &showOptions, ImGuiWindowFlags_NoDocking);
+
+    if (ImGui::CollapsingHeader("General", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::BeginTable("OptionsGeneralTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            static float initialFontSize = gloParent->mOptions->fontSize;
+            bool fontSizeChanged = (gloParent->mOptions->fontSize != initialFontSize);
+            if (fontSizeChanged) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
+            }
+            ImGui::Text("Font Size");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Requires application restart for settings to take effect.");
+            }
+            if (fontSizeChanged) {
+                ImGui::PopStyleColor();
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (fontSizeChanged) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
+            }
+            if (ImGui::SliderFloat("##FontSize", &gloParent->mOptions->fontSize, 10.0f, 32.0f, "%.1f px")) {
+                gloParent->mOptions->fontSize = std::clamp(gloParent->mOptions->fontSize, 10.0f, 32.0f);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Requires application restart for settings to take effect.");
+            }
+            if (fontSizeChanged) {
+                ImGui::PopStyleColor();
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Max Undo Steps");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderInt("##MaxUndo", &gloParent->mOptions->maxUndoChanges, 5, 200)) {
+                gloParent->mOptions->maxUndoChanges = std::clamp(gloParent->mOptions->maxUndoChanges, 5, 200);
+                if (mUndoHandler)
+                    mUndoHandler->setMaxStackSize(gloParent->mOptions->maxUndoChanges);
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Theme");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            int themeIdx = gloParent->mOptions->theme;
+            const char* themes[] = {"Dark", "Light", "Classic", "Soft Dark", "Soft Light"};
+            if (ImGui::Combo("##Theme", &themeIdx, themes, IM_ARRAYSIZE(themes))) {
+                gloParent->mOptions->theme = themeIdx;
+                gloParent->mOptions->tabHighlightColor = GetDefaultTabHighlightColor(themeIdx);
+                ApplyTheme(themeIdx);
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Tab Highlight Color");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::ColorEdit3("##TabHighlightColor", &gloParent->mOptions->tabHighlightColor.x, ImGuiColorEditFlags_NoInputs)) {
+                ApplyTheme(gloParent->mOptions->theme);
+            }
+            if (ImGui::BeginPopupContextItem("##TabHighlightContext")) {
+                if (ImGui::MenuItem("Reset to Theme Default")) {
+                    gloParent->mOptions->tabHighlightColor = GetDefaultTabHighlightColor(gloParent->mOptions->theme);
+                    ApplyTheme(gloParent->mOptions->theme);
+                }
+                ImGui::EndPopup();
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Transparent Graphs");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Make graph backgrounds transparent so they blend into the panel background.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##TransparentGraphs", &gloParent->mOptions->transparentGraphs);
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Units");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::Combo("##Measure", &gloParent->mOptions->measures, "Metric (m, m/s)\0Metric (m, km/h)\0English (ft, mph)\0");
+
+            ImGui::EndTable();
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Default Transitions", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::BeginTable("OptionsTransitionsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+            const char* typesRoll[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "ToZero", "Custom"};
+            const char* typesForce[] = {"Linear", "Quadratic", "Cubic", "Quartic", "Quintic", "Sinusoidal", "Plateau", "Custom"};
+
+            // 1. Roll Rate
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Roll Rate");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            int rIdx = gloParent->mOptions->defaultTransitionRoll;
+            if (rIdx == 9)
+                rIdx = 8;
+            if (ImGui::Combo("##DefaultTransitionRoll", &rIdx, typesRoll, IM_ARRAYSIZE(typesRoll))) {
+                if (rIdx == 8)
+                    rIdx = 9;
+                gloParent->mOptions->defaultTransitionRoll = rIdx;
+            }
+
+            // 2. Normal Force
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Normal Force");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            int nIdx = gloParent->mOptions->defaultTransitionNormal;
+            if (nIdx == 9)
+                nIdx = 7;
+            if (ImGui::Combo("##DefaultTransitionNormal", &nIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
+                if (nIdx == 7)
+                    nIdx = 9;
+                gloParent->mOptions->defaultTransitionNormal = nIdx;
+            }
+
+            // 3. Lateral Force
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Lateral Force");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            int lIdx = gloParent->mOptions->defaultTransitionLateral;
+            if (lIdx == 9)
+                lIdx = 7;
+            if (ImGui::Combo("##DefaultTransitionLateral", &lIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
+                if (lIdx == 7)
+                    lIdx = 9;
+                gloParent->mOptions->defaultTransitionLateral = lIdx;
+            }
+
+            // 4. Pitch
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Pitch");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            int pIdx = gloParent->mOptions->defaultTransitionPitch;
+            if (pIdx == 9)
+                pIdx = 7;
+            if (ImGui::Combo("##DefaultTransitionPitch", &pIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
+                if (pIdx == 7)
+                    pIdx = 9;
+                gloParent->mOptions->defaultTransitionPitch = pIdx;
+            }
+
+            // 5. Yaw
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Yaw");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            int yIdx = gloParent->mOptions->defaultTransitionYaw;
+            if (yIdx == 9)
+                yIdx = 7;
+            if (ImGui::Combo("##DefaultTransitionYaw", &yIdx, typesForce, IM_ARRAYSIZE(typesForce))) {
+                if (yIdx == 7)
+                    yIdx = 9;
+                gloParent->mOptions->defaultTransitionYaw = yIdx;
+            }
+
+            ImGui::EndTable();
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Viewport", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::BeginTable("OptionsGraphicsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Anti-Aliasing");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            static int msaaIdx = 0;
+            if (gloParent->mOptions->msaaSamples == 0)
+                msaaIdx = 0;
+            else if (gloParent->mOptions->msaaSamples == 2)
+                msaaIdx = 1;
+            else if (gloParent->mOptions->msaaSamples == 4)
+                msaaIdx = 2;
+            else if (gloParent->mOptions->msaaSamples == 8)
+                msaaIdx = 3;
+            if (ImGui::Combo("##MSAA", &msaaIdx, "Off\0 2x\0 4x\0 8x\0")) {
+                if (msaaIdx == 0)
+                    gloParent->mOptions->msaaSamples = 0;
+                else if (msaaIdx == 1)
+                    gloParent->mOptions->msaaSamples = 2;
+                else if (msaaIdx == 2)
+                    gloParent->mOptions->msaaSamples = 4;
+                else if (msaaIdx == 3)
+                    gloParent->mOptions->msaaSamples = 8;
+                viewport.setMSAASamples(gloParent->mOptions->msaaSamples);
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Auto Focus");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Automatically focus/zoom the graph viewports onto the selected track section.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##AutoFocus", &gloParent->mOptions->autoFocusOnSelection);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Automatically focus/zoom the graph viewports onto the selected track section.");
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Field of View");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##FOV", &gloParent->mOptions->fov, 60.0f, 175.0f, "%.1f")) {
+                gloParent->mOptions->fov = std::clamp(gloParent->mOptions->fov, 60.0f, 175.0f);
+                viewport.setFOV(gloParent->mOptions->fov);
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Floor Color");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::ColorEdit3("##FloorColor", &gloParent->mOptions->floorColor.x)) {
+                viewport.markSceneDirty();
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("FPS Limit");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::SliderInt("##FPSLimit", &gloParent->mOptions->targetFPS, 30, 400, "%d FPS");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Limits the maximum frame rate to save CPU/GPU power.");
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Look-ahead Smoothing");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Smooths out camera when in POV mode. Turn off to match the behaviour of old FVD.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##LookAheadSmoothing", &gloParent->mOptions->lookAheadPovSmoothing);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Smooths out camera when in POV mode. Turn off to match the behaviour of old FVD.");
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Mesh Quality");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::Combo("##MeshQuality", &gloParent->mOptions->meshQuality, "Low\0Medium\0High\0Extreme\0Insane\0")) {
+                for (auto track : trackList)
+                    if (track->mMesh)
+                        track->mMesh->buildMeshes(0);
+                viewport.markSceneDirty();
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Scenery Shadows (Exp.)");
+            ImGui::TableNextColumn();
+            if (ImGui::Checkbox("##GlbShadows", &gloParent->mOptions->glbShadowsEnabled)) {
+                viewport.markSceneDirty();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("EXPERIMENTAL: Enables planar shadows for imported scenery geometry.\nMay impact performance on large models.");
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Screenshot Res.");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Multiplies the viewport resolution (up to 8x) to capture high-definition, anti-aliased screenshots. Press F12 to capture.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::SliderInt("##ScreenshotMult", &gloParent->mOptions->screenshotMultiplier, 1, 8, "%dx");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Multiplies the viewport resolution (up to 8x) to capture high-definition, anti-aliased screenshots. Press F12 to capture.");
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Show FPS");
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##ShowFPS", &gloParent->mOptions->showFPS);
+            ImGui::EndTable();
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Track Editor", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::BeginTable("OptionsEditorTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Graph Spacing");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the minimum spatial distance (meters) between plotted points on the Resulting Graphs. Prevents rendering lag in long tracks.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##GraphSpacingLimit", &gloParent->mOptions->graphSpacingLimit, 0.001f, 1.0f, "%.3f m")) {
+                gloParent->mOptions->graphSpacingLimit = std::max(0.001f, std::min(gloParent->mOptions->graphSpacingLimit, 1.0f));
+                for (auto track : trackList) {
+                    if (track->trackData) {
+                        track->trackData->graphChanged = true;
+                    }
+                }
+                if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+                    graphView.updateData(trackList[activeTrackIdx]);
+                }
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Stall Speed");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the threshold speed below which the train simulator will consider the train stalled.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##StallSpeed", &gloParent->mOptions->stallSpeed, 0.01f, 0.1f, "%.2f m/s")) {
+                gloParent->mOptions->stallSpeed = std::max(0.01f, std::min(gloParent->mOptions->stallSpeed, 10.0f));
+                for (auto track : trackList)
+                    if (track->trackData)
+                        track->trackData->requestUpdateTrack(0, 0);
+            }
+
+            ImGui::EndTable();
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::BeginTable("OptionsControlsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Mouse Sens.");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##MouseSens", &gloParent->mOptions->mouseSensitivity, 0.1f, 5.0f, "%.2f")) {
+                gloParent->mOptions->mouseSensitivity = std::clamp(gloParent->mOptions->mouseSensitivity, 0.1f, 5.0f);
+            }
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Sprint Mult.");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##SprintMult", &gloParent->mOptions->sprintMultiplier, 1.0f, 10.0f, "%.1fx")) {
+                gloParent->mOptions->sprintMultiplier = std::clamp(gloParent->mOptions->sprintMultiplier, 1.0f, 10.0f);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key.");
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Scroll");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the multiplier for the scroll wheel step size over input fields (default: 1.0).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##ScrollInc", &gloParent->mOptions->scrollIncrement, 0.01f, 1.0f, "%.3f")) {
+                gloParent->mOptions->scrollIncrement = std::max(0.0001f, gloParent->mOptions->scrollIncrement);
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Ctrl");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the multiplier for the Ctrl + Scroll Wheel step size over input fields (default: 1.0).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##CtrlScrollInc", &gloParent->mOptions->scrollCtrlIncrement, 0.001f, 0.1f, "%.3f")) {
+                gloParent->mOptions->scrollCtrlIncrement = std::max(0.0001f, gloParent->mOptions->scrollCtrlIncrement);
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Shift");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the multiplier for the Shift + Scroll Wheel step size over input fields (default: 10.0).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##ShiftScrollInc", &gloParent->mOptions->scrollShiftIncrement, 0.1f, 10.0f, "%.3f")) {
+                gloParent->mOptions->scrollShiftIncrement = std::max(0.0001f, gloParent->mOptions->scrollShiftIncrement);
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    bool keybindsOpen = ImGui::CollapsingHeader("Keybinds", ImGuiTreeNodeFlags_DefaultOpen);
+    if (ImGui::BeginPopupContextItem("KeybindsResetPopup")) {
+        if (ImGui::MenuItem("Reset All Keybinds to Defaults")) {
+            KeybindManager::instance().resetToDefaults();
+            KeybindManager::instance().save();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (keybindsOpen) {
+        ImGui::TextDisabled("Tip: Right-click category headers (or Keybinds) to reset to defaults.");
+        ImGui::Spacing();
+
+        static KeyAction awaitingAction = KeyAction::None;
+
+        auto KeyBindRow = [&](KeyAction action) {
+            const auto& info = KeybindManager::instance().getInfo(action);
+            ImGui::PushID((int)action);
+            ImGui::TableNextRow();
+
+            // 1. Action name
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", info.name.c_str());
+
+            // 2. Scope
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", info.scope.c_str());
+
+            // 3. Modifier dropdown
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            int modIndex = KeybindManager::getModifierIndex(info.chord);
+            if (ImGui::Combo("##mod", &modIndex, KeybindManager::getModifierComboString())) {
+                int newModMask = KeybindManager::getModifierMaskFromIndex(modIndex);
+                ImGuiKey baseKey = KeybindManager::getBaseKey(info.chord);
+                ImGuiKeyChord newChord = KeybindManager::makeChord(newModMask, baseKey);
+                KeybindManager::instance().setChord(action, newChord);
+                KeybindManager::instance().save();
+            }
+
+            // 4. Single-key property box
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+
+            ImGuiKey baseKey = KeybindManager::getBaseKey(info.chord);
+            const char* keyName = (baseKey != ImGuiKey_None) ? ImGui::GetKeyName(baseKey) : "None";
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%s##keybtn", keyName ? keyName : "None");
+
+            if (awaitingAction == action) {
+                ImGui::Button("Press a key...##keybtn", ImVec2(-FLT_MIN, 0));
+                if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                    int curModMask = KeybindManager::getModifierMaskFromIndex(KeybindManager::getModifierIndex(info.chord));
+                    KeybindManager::instance().setChord(action, KeybindManager::makeChord(curModMask, ImGuiKey_None));
+                    KeybindManager::instance().save();
+                    awaitingAction = KeyAction::None;
+                } else {
+                    for (int i = ImGuiKey_NamedKey_BEGIN; i < ImGuiKey_NamedKey_END; i++) {
+                        if (KeybindManager::isModifierKey((ImGuiKey)i))
+                            continue;
+
+                        if (ImGui::IsKeyPressed((ImGuiKey)i)) {
+                            int curModMask = KeybindManager::getModifierMaskFromIndex(KeybindManager::getModifierIndex(info.chord));
+                            ImGuiKeyChord newChord = KeybindManager::makeChord(curModMask, (ImGuiKey)i);
+                            KeybindManager::instance().setChord(action, newChord);
+                            KeybindManager::instance().save();
+                            awaitingAction = KeyAction::None;
+                            break;
+                        }
+                    }
+                }
+                if (ImGui::IsMouseClicked(0) && !ImGui::IsItemHovered())
+                    awaitingAction = KeyAction::None;
+            } else if (ImGui::Button(buf, ImVec2(-FLT_MIN, 0))) {
+                awaitingAction = action;
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Click to set single key. Press Escape to clear (set to None).");
+            }
+            ImGui::PopID();
+        };
+
+        auto RenderCategoryTable = [&](const char* title, const std::vector<KeyAction>& actions) {
+            bool nodeOpen = ImGui::TreeNodeEx(title, ImGuiTreeNodeFlags_DefaultOpen);
+            std::string popupId = std::string("ResetPopup_") + title;
+            if (ImGui::BeginPopupContextItem(popupId.c_str())) {
+                std::string cleanName = title;
+                size_t dotPos = cleanName.find(". ");
+                if (dotPos != std::string::npos)
+                    cleanName = cleanName.substr(dotPos + 2);
+                std::string menuLabel = std::string("Reset ") + cleanName + " to Defaults";
+                if (ImGui::MenuItem(menuLabel.c_str())) {
+                    for (KeyAction act : actions) {
+                        KeybindManager::instance().resetActionToDefault(act);
+                    }
+                    KeybindManager::instance().save();
+                }
+                ImGui::EndPopup();
+            }
+
+            if (nodeOpen) {
+                std::string tableId = std::string("Table_") + title;
+                if (ImGui::BeginTable(tableId.c_str(), 4, ImGuiTableFlags_SizingFixedFit)) {
+                    ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 170.0f);
+                    ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+                    ImGui::TableSetupColumn("Modifier", ImGuiTableColumnFlags_WidthFixed, 115.0f);
+                    ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableHeadersRow();
+
+                    for (KeyAction act : actions) {
+                        KeyBindRow(act);
+                    }
+                    ImGui::EndTable();
+                }
+                ImGui::TreePop();
+            }
+        };
+
+        RenderCategoryTable("1. General & Project Actions", {KeyAction::Undo,
+                                                             KeyAction::Redo,
+                                                             KeyAction::SaveProject,
+                                                             KeyAction::IncrementalSave,
+                                                             KeyAction::ExportTrack,
+                                                             KeyAction::SaveScreenshot,
+                                                             KeyAction::MeasurementPointsWindow,
+                                                             KeyAction::ResetView,
+                                                             KeyAction::DeleteGlbMesh});
+
+        RenderCategoryTable("2. Section & Transition Editing", {KeyAction::SelectPrevSection,
+                                                                KeyAction::SelectNextSection,
+                                                                KeyAction::DeleteSection,
+                                                                KeyAction::DeleteTransition,
+                                                                KeyAction::PrependTransition,
+                                                                KeyAction::AppendTransition});
+
+        RenderCategoryTable("3. Track Shading Modes", {KeyAction::ShaderNothing,
+                                                       KeyAction::ShaderVelocity,
+                                                       KeyAction::ShaderRollSpeed,
+                                                       KeyAction::ShaderNormalForce,
+                                                       KeyAction::ShaderLateralForce,
+                                                       KeyAction::ShaderTrackFlexion});
+
+        RenderCategoryTable("4. Camera Views & Viewport Navigation", {KeyAction::TogglePOVMode,
+                                                                      KeyAction::MoveForward,
+                                                                      KeyAction::MoveBackward,
+                                                                      KeyAction::MoveLeft,
+                                                                      KeyAction::MoveRight,
+                                                                      KeyAction::POVHeightUp,
+                                                                      KeyAction::POVHeightDown,
+                                                                      KeyAction::POVHeightReset,
+                                                                      KeyAction::ViewPerspective,
+                                                                      KeyAction::ViewTopOrtho,
+                                                                      KeyAction::ViewSideOrtho,
+                                                                      KeyAction::ViewFrontOrtho});
+
+        RenderCategoryTable("5. Viewport In-Scene Overlays", {KeyAction::OverlayScenery,
+                                                              KeyAction::OverlayWarnings,
+                                                              KeyAction::OverlaySceneryPrev,
+                                                              KeyAction::OverlaySceneryNext,
+                                                              KeyAction::OverlaySceneryToggleVis,
+                                                              KeyAction::OverlaySceneryDelete});
+
+        RenderCategoryTable("6. Graph View & Playhead", {KeyAction::PlayheadPlayPause,
+                                                         KeyAction::PlayheadStepBackward,
+                                                         KeyAction::PlayheadStepForward});
+    }
+    ImGui::End();
+}
+
 void Application::RenderTrainGeneratorWindow() {
-    ImGui::SetNextWindowSize(ImVec2(350, 270), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Size.x / 2.0f - 175.0f, ImGui::GetMainViewport()->Size.y / 2.0f - 135.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(350, 360), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Size.x / 2.0f - 175.0f, ImGui::GetMainViewport()->Size.y / 2.0f - 180.0f), ImGuiCond_FirstUseEver);
 
     if (!ImGui::Begin("Train Generator", &showTrainGenerator, ImGuiWindowFlags_NoDocking)) {
         ImGui::End();
@@ -2565,12 +3011,116 @@ void Application::RenderTrainGeneratorWindow() {
     trackHandler* hTrack = trackList[activeTrackIdx];
     track* myTrack = hTrack->trackData;
 
+    if (ImGui::CollapsingHeader("Train Model", ImGuiTreeNodeFlags_DefaultOpen)) {
+        // Scan trains for *.fvdtrain files recursively with cache (max once every 2 seconds)
+        static std::vector<std::string> cachedTrainStyles;
+        static double lastTrainScanTime = -10.0;
+        double currentTime = ImGui::GetTime();
+        if (cachedTrainStyles.empty() || currentTime - lastTrainScanTime > 2.0) {
+            cachedTrainStyles = VFS::get().listFiles("trains", {".fvdtrain"});
+            lastTrainScanTime = currentTime;
+        }
+
+        auto getTrainDisplayName = [](const std::string& fullPath) -> std::string {
+            std::filesystem::path p(fullPath);
+            std::string pathStr = p.lexically_normal().string();
+            size_t pos = pathStr.find("trains");
+            if (pos != std::string::npos) {
+                std::string sub = pathStr.substr(pos + 6);
+                if (!sub.empty() && (sub[0] == '/' || sub[0] == '\\')) {
+                    sub = sub.substr(1);
+                }
+                return sub;
+            }
+            return p.filename().string();
+        };
+
+        std::string currentTrainLabel = "None";
+        if (myTrack->train.isLoaded()) {
+            currentTrainLabel = getTrainDisplayName(myTrack->train.getFilePath());
+        }
+
+        if (ImGui::BeginTable("TrainModelTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Model");
+            ImGui::TableNextColumn();
+
+            float buttonWidth = 70.0f;
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - buttonWidth - ImGui::GetStyle().ItemSpacing.x);
+
+            if (ImGui::BeginCombo("##TrainModelDropdown", currentTrainLabel.c_str())) {
+                if (ImGui::Selectable("None", !myTrack->train.isLoaded())) {
+                    myTrack->train.clear();
+                    myTrack->requestUpdateTrack(0, 0);
+                }
+                for (const auto& trainPath : cachedTrainStyles) {
+                    std::string trainName = getTrainDisplayName(trainPath);
+                    bool isSelected = (myTrack->train.getFilePath() == trainPath);
+                    if (ImGui::Selectable(trainName.c_str(), isSelected)) {
+                        myTrack->importTrainStyle(trainPath);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Browse...", ImVec2(buttonWidth, 0))) {
+                auto selection = pfd::open_file("Select Train Configuration", ".", {"FVD Train Files", "*.fvdtrain"}).result();
+                if (!selection.empty()) {
+                    myTrack->importTrainStyle(selection[0]);
+                }
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Middle Cars");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderInt("##MiddleCars", &myTrack->train.middleCarCount, 0, 20)) {
+                myTrack->train.setMiddleCarCount(myTrack->train.middleCarCount, myTrack);
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("POV Camera");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            std::string povCamLabel = "Heartline (Default)";
+            if (myTrack->train.boundCameraIndex >= 0 && myTrack->train.boundCameraIndex < (int)myTrack->train.getCameras().size()) {
+                povCamLabel = myTrack->train.getCameras()[myTrack->train.boundCameraIndex].name;
+            }
+            if (ImGui::BeginCombo("##POVCameraDropdown", povCamLabel.c_str())) {
+                if (ImGui::Selectable("Heartline (Default)", myTrack->train.boundCameraIndex == -1)) {
+                    myTrack->train.boundCameraIndex = -1;
+                }
+                for (size_t i = 0; i < myTrack->train.getCameras().size(); ++i) {
+                    ImGui::PushID((int)i);
+                    bool isSelected = (myTrack->train.boundCameraIndex == (int)i);
+                    if (ImGui::Selectable(myTrack->train.getCameras()[i].name, isSelected)) {
+                        myTrack->train.boundCameraIndex = (int)i;
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::EndTable();
+        }
+    }
+
     static int arrCars = 5, arrRows = 2, arrSeats = 2;
     static glm::vec3 arrSpacing(0.9f, 0.0f, -0.9f);
     static float arrCarSpacing = 2.8f;
 
     if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (ImGui::BeginTable("TrainGenTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
+        if (ImGui::BeginTable("TrainGenTable", 2, ImGuiTableFlags_SizingFixedFit)) {
             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
@@ -2768,7 +3318,7 @@ void Application::RenderParametricTrackEditorWindow() {
     track* myTrack = hTrack->trackData;
 
     auto beginPropTable = [](const char* name) {
-        return ImGui::BeginTable(name, 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit);
+        return ImGui::BeginTable(name, 2, ImGuiTableFlags_SizingFixedFit);
     };
     auto propRow = [](const char* label, auto contentFunc) {
         ImGui::TableNextRow();
@@ -2779,6 +3329,46 @@ void Application::RenderParametricTrackEditorWindow() {
         ImGui::SetNextItemWidth(-FLT_MIN);
         contentFunc();
     };
+
+    if (ImGui::CollapsingHeader("Track Metadata", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (beginPropTable("MetadataTable")) {
+            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+            propRow("Author", [&]() {
+                char buf[128];
+                snprintf(buf, sizeof(buf), "%s", myTrack->trackAuthor.c_str());
+                if (ImGui::InputText("##Author", buf, sizeof(buf))) {
+                    myTrack->trackAuthor = buf;
+                }
+            });
+
+            propRow("Manufacturer", [&]() {
+                const char* curMfg = myTrack->trackManufacturer.empty() ? "Unset" : myTrack->trackManufacturer.c_str();
+                if (ImGui::BeginCombo("##Manufacturer", curMfg)) {
+                    for (const char* mfg : kTrackManufacturers) {
+                        bool isSel = (myTrack->trackManufacturer == mfg);
+                        if (ImGui::Selectable(mfg, isSel)) {
+                            myTrack->trackManufacturer = mfg;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            });
+
+            propRow("Type", [&]() {
+                char buf[128];
+                snprintf(buf, sizeof(buf), "%s", myTrack->trackCoasterType.c_str());
+                if (ImGui::InputText("##Type", buf, sizeof(buf))) {
+                    myTrack->trackCoasterType = buf;
+                }
+            });
+
+            ImGui::EndTable();
+        }
+    }
+
+    ImGui::Separator();
 
     if (ImGui::CollapsingHeader("Parametric Extrusions", ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::Button("Add Extrusion##AddExt")) {
@@ -2826,13 +3416,18 @@ void Application::RenderParametricTrackEditorWindow() {
                 ImGui::EndTable();
             }
 
+            bool removed = false;
             if (ImGui::Button("Remove Extrusion")) {
                 myTrack->customExtrusions.erase(myTrack->customExtrusions.begin() + i);
                 myTrack->requestUpdateTrack(0, 0);
-                i--;
+                removed = true;
             }
-            ImGui::Separator();
+            if (!removed && i < (int)myTrack->customExtrusions.size() - 1) {
+                ImGui::Separator();
+            }
             ImGui::PopID();
+            if (removed)
+                break;
         }
     }
 
@@ -2931,6 +3526,7 @@ void Application::RenderParametricTrackEditorWindow() {
                 ImGui::EndTable();
             }
 
+            bool removed = false;
             if (ImGui::Button("Remove Asset")) {
                 if (asset.loadedModel) {
                     delete asset.loadedModel;
@@ -2938,10 +3534,14 @@ void Application::RenderParametricTrackEditorWindow() {
                 }
                 myTrack->customAssets.erase(myTrack->customAssets.begin() + i);
                 myTrack->requestUpdateTrack(0, 0);
-                i--;
+                removed = true;
             }
-            ImGui::Separator();
+            if (!removed && i < (int)myTrack->customAssets.size() - 1) {
+                ImGui::Separator();
+            }
             ImGui::PopID();
+            if (removed)
+                break;
         }
     }
 
@@ -3013,6 +3613,7 @@ void Application::PerformExport(const std::string& path) {
 
 void Application::Shutdown() {
     gloParent->mOptions->save("options.cfg");
+    KeybindManager::instance().save("keybinds.cfg");
     LOG_INFO("FVD++ shutting down...");
 
     vulkanContext.waitIdle();
@@ -3021,6 +3622,7 @@ void Application::Shutdown() {
     trackList.clear();
 
     viewport.shutdown();
+    destroyWelcomeSvgTexture();
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -3055,7 +3657,7 @@ static std::string incrementFilename(const std::string& path) {
     if (digits.empty()) {
         // If there are no trailing digits, check if it ends with '_'. If not, append '_'
         if (base.empty() || base.back() != '_') {
-            base += "_";
+            base += '_';
         }
         stem = base + "001";
     } else {
@@ -3166,21 +3768,21 @@ void Application::forkTrack(trackHandler* sourceTrack, int nodeIdx) {
     double calculatedRoll = glm::atan(localLat.y, -localNorm.y) * 180.0 / F_PI;
 
     // Inherit physical properties to ensure smooth transitions
-    newTrack->anchorNode->fEnergy = forkNode->fEnergy;
-    newTrack->anchorNode->forceLateral = forkNode->forceLateral;
-    newTrack->anchorNode->forceNormal = forkNode->forceNormal;
-    newTrack->anchorNode->fPitchFromLast = forkNode->fPitchFromLast;
-    newTrack->anchorNode->fRoll = calculatedRoll;
-    newTrack->anchorNode->fRollSpeed = forkNode->fRollSpeed;
-    newTrack->anchorNode->fSmoothSpeed = forkNode->fSmoothSpeed;
-    newTrack->anchorNode->fVel = forkNode->fVel;
-    newTrack->anchorNode->fYawFromLast = forkNode->fYawFromLast;
-
     mnode* anchor = newTrack->anchorNode;
     anchor->vPos = glm::dvec3(0.0, 0.0, 0.0);
     anchor->vDir = glm::normalize(localDir);
     anchor->vLat = glm::normalize(localLat);
     anchor->updateNorm();
+
+    anchor->forceLateral = forkNode->forceLateral;
+    anchor->forceNormal = forkNode->forceNormal;
+    anchor->fPitchFromLast = forkNode->fPitchFromLast;
+    anchor->fRoll = calculatedRoll;
+    anchor->fRollSpeed = forkNode->fRollSpeed;
+    anchor->fSmoothSpeed = forkNode->fSmoothSpeed;
+    anchor->fVel = forkNode->fVel;
+    anchor->fYawFromLast = forkNode->fYawFromLast;
+    anchor->fEnergy = 0.5 * forkNode->fVel * forkNode->fVel + F_G * anchor->fPosHearty(0.9 * origTrack->fHeart);
 
     // Copy global track parameters
     newTrack->fHeart = origTrack->fHeart;
@@ -3220,6 +3822,213 @@ void Application::forkTrack(trackHandler* sourceTrack, int nodeIdx) {
     pushUndo();
 }
 
+void Application::splitTrack(trackHandler* sourceTrack, int sectionIdx) {
+    if (!sourceTrack)
+        return;
+
+    track* origTrack = sourceTrack->trackData;
+    if (!origTrack)
+        return;
+
+    if (sectionIdx <= 0 || sectionIdx >= static_cast<int>(origTrack->lSections.size())) {
+        return;
+    }
+
+    origTrack->processPendingUpdates();
+
+    // The split point is between sectionIdx - 1 and sectionIdx.
+    // The start state of the new track is the end node of sectionIdx - 1.
+    section* prevSection = origTrack->lSections[sectionIdx - 1];
+    if (prevSection->lNodes.empty())
+        return;
+    mnode* splitNode = &prevSection->lNodes.back();
+
+    // Create the new track handler
+    std::string newName = origTrack->name + " (Part 2)";
+    trackHandler* newTrackHandler = new trackHandler(newName, static_cast<int>(trackList.size()) + 1);
+    track* newTrack = newTrackHandler->trackData;
+
+    // Calculate world-space position and orientation at the split node
+    glm::dmat4 origAnchorBase = glm::translate(glm::dmat4(1.0), origTrack->startPos) *
+                                glm::rotate(glm::dmat4(1.0), (double)TO_RAD(origTrack->startYaw - 90.0), glm::dvec3(0.0, 1.0, 0.0));
+    glm::dvec3 splitWorldPos = glm::dvec3(origAnchorBase * glm::dvec4(splitNode->vPos, 1.0));
+
+    glm::dmat4 origRot = glm::rotate(glm::dmat4(1.0), (double)TO_RAD(origTrack->startYaw - 90.0), glm::dvec3(0.0, 1.0, 0.0));
+    glm::dvec3 splitWorldDir = glm::dvec3(origRot * glm::dvec4(splitNode->vDir, 0.0));
+    glm::dvec3 splitWorldLat = glm::dvec3(origRot * glm::dvec4(splitNode->vLat, 0.0));
+    glm::dvec3 splitWorldNorm = glm::dvec3(origRot * glm::dvec4(splitNode->vNorm, 0.0));
+
+    double newYaw = (glm::atan(-splitWorldDir.x, -splitWorldDir.z) * 180.0 / F_PI) + 90.0;
+    while (newYaw > 180.0)
+        newYaw -= 360.0;
+    while (newYaw < -180.0)
+        newYaw += 360.0;
+    double newPitch = glm::atan(splitWorldDir.y, glm::sqrt(splitWorldDir.x * splitWorldDir.x + splitWorldDir.z * splitWorldDir.z)) * 180.0 / F_PI;
+
+    // Set the properties of the new track's anchor
+    newTrack->startPos = splitWorldPos;
+    newTrack->startYaw = newYaw;
+    newTrack->startPitch = newPitch;
+
+    // Project world-space vectors of the split point back into the new track's starting frame
+    glm::dmat4 invRot = glm::rotate(glm::dmat4(1.0), (double)TO_RAD(-(newYaw - 90.0)), glm::dvec3(0.0, 1.0, 0.0));
+    glm::dvec3 localDir = glm::dvec3(invRot * glm::dvec4(splitWorldDir, 0.0));
+    glm::dvec3 localLat = glm::dvec3(invRot * glm::dvec4(splitWorldLat, 0.0));
+    glm::dvec3 localNorm = glm::dvec3(invRot * glm::dvec4(splitWorldNorm, 0.0));
+
+    // Calculate correct local roll relative to the new starting system
+    double calculatedRoll = glm::atan(localLat.y, -localNorm.y) * 180.0 / F_PI;
+
+    // Inherit physical properties to ensure smooth transitions
+    mnode* anchor = newTrack->anchorNode;
+    anchor->vPos = glm::dvec3(0.0, 0.0, 0.0);
+    anchor->vDir = glm::normalize(localDir);
+    anchor->vLat = glm::normalize(localLat);
+    anchor->updateNorm();
+
+    anchor->forceLateral = splitNode->forceLateral;
+    anchor->forceNormal = splitNode->forceNormal;
+    anchor->fPitchFromLast = splitNode->fPitchFromLast;
+    anchor->fRoll = calculatedRoll;
+    anchor->fRollSpeed = splitNode->fRollSpeed;
+    anchor->fSmoothSpeed = splitNode->fSmoothSpeed;
+    anchor->fVel = splitNode->fVel;
+    anchor->fYawFromLast = splitNode->fYawFromLast;
+    anchor->fEnergy = 0.5 * splitNode->fVel * splitNode->fVel + F_G * anchor->fPosHearty(0.9 * origTrack->fHeart);
+
+    // Copy global track parameters
+    newTrack->fHeart = origTrack->fHeart;
+    newTrack->fFriction = origTrack->fFriction;
+    newTrack->fResistance = origTrack->fResistance;
+    newTrack->enableForceLimits = origTrack->enableForceLimits;
+    newTrack->fMaxPosNormal = origTrack->fMaxPosNormal;
+    newTrack->fMaxNegNormal = origTrack->fMaxNegNormal;
+    newTrack->fMaxLateral = origTrack->fMaxLateral;
+    newTrack->style = origTrack->style;
+    newTrack->customStyleFile = origTrack->customStyleFile;
+    newTrack->customExtrusions = origTrack->customExtrusions;
+    newTrack->customAssets = origTrack->customAssets;
+    newTrack->trainOffsets = origTrack->trainOffsets;
+
+    // Move sections starting from sectionIdx to newTrack
+    size_t countToMove = origTrack->lSections.size() - sectionIdx;
+    for (size_t i = sectionIdx; i < origTrack->lSections.size(); ++i) {
+        section* sec = origTrack->lSections[i];
+        sec->parent = newTrack;
+        newTrack->lSections.push_back(sec);
+        newTrack->smoothList.push_back(new smoothHandler(newTrack, static_cast<int>(newTrack->lSections.size()) - 1));
+    }
+
+    // Clean up smoothList on origTrack
+    for (size_t i = 0; i < countToMove; ++i) {
+        delete origTrack->smoothList.back();
+        origTrack->smoothList.pop_back();
+    }
+
+    // Erase sections from origTrack (do not delete the sections!)
+    origTrack->lSections.erase(origTrack->lSections.begin() + sectionIdx, origTrack->lSections.end());
+
+    // Update activeSection pointers
+    origTrack->activeSection = origTrack->lSections.empty() ? nullptr : origTrack->lSections.back();
+    newTrack->activeSection = newTrack->lSections.empty() ? nullptr : newTrack->lSections.front();
+
+    // Update both tracks
+    origTrack->updateTrack(0, 0);
+    if (sourceTrack->mMesh) {
+        sourceTrack->mMesh->buildMeshes(0);
+    }
+
+    newTrack->updateTrack(0, 0);
+    if (newTrackHandler->mMesh) {
+        newTrackHandler->mMesh->buildMeshes(0);
+    }
+
+    // Add new track to list and activate it
+    trackList.push_back(newTrackHandler);
+    activeTrackIdx = static_cast<int>(trackList.size()) - 1;
+    leftPanel.selectedSectionIdx = 0;
+    gloParent->selectedFunc = nullptr;
+
+    if (gViewport) {
+        gViewport->markSceneDirty();
+        gViewport->setPOVPos(0);
+    }
+
+    pushUndo();
+    showInAppNotification("Track split into: " + newName);
+}
+
+void Application::mergeTracks(trackHandler* trackA, trackHandler* trackB) {
+    if (!trackA || !trackB || trackA == trackB)
+        return;
+
+    track* tA = trackA->trackData;
+    track* tB = trackB->trackData;
+    if (!tA || !tB)
+        return;
+
+    if (tA->isReferenceTrack() || tB->isReferenceTrack())
+        return;
+
+    tA->processPendingUpdates();
+    tB->processPendingUpdates();
+
+    // If Track A has no sections, Track A inherits Track B's anchor completely
+    if (tA->lSections.empty()) {
+        tA->startPos = tB->startPos;
+        tA->startYaw = tB->startYaw;
+        tA->startPitch = tB->startPitch;
+        *tA->anchorNode = *tB->anchorNode;
+    }
+
+    // Move all sections from Track B to Track A
+    for (size_t i = 0; i < tB->lSections.size(); ++i) {
+        section* sec = tB->lSections[i];
+        sec->parent = tA;
+        tA->lSections.push_back(sec);
+        tA->smoothList.push_back(new smoothHandler(tA, static_cast<int>(tA->lSections.size()) - 1));
+    }
+
+    // Clear Track B's section pointers so they aren't deleted on track destruction
+    tB->lSections.clear();
+
+    std::string mergedName = tB->name;
+
+    // Find trackB in trackList
+    auto it = std::find(trackList.begin(), trackList.end(), trackB);
+    if (it != trackList.end()) {
+        delete trackB;
+        trackList.erase(it);
+
+        // Adjust activeTrackIdx
+        auto itA = std::find(trackList.begin(), trackList.end(), trackA);
+        if (itA != trackList.end()) {
+            activeTrackIdx = static_cast<int>(std::distance(trackList.begin(), itA));
+        } else {
+            activeTrackIdx = trackList.empty() ? -1 : 0;
+        }
+    }
+
+    // Set active section on trackA
+    tA->activeSection = tA->lSections.empty() ? nullptr : tA->lSections.back();
+    leftPanel.selectedSectionIdx = tA->lSections.empty() ? -1 : static_cast<int>(tA->lSections.size()) - 1;
+    gloParent->selectedFunc = nullptr;
+
+    // Recalculate track A
+    tA->updateTrack(0, 0);
+    if (trackA->mMesh) {
+        trackA->mMesh->buildMeshes(0);
+    }
+
+    if (gViewport) {
+        gViewport->markSceneDirty();
+        gViewport->setPOVPos(0);
+    }
+
+    pushUndo();
+    showInAppNotification("Merged '" + mergedName + "' into: " + tA->name);
+}
+
 void Application::importReferenceTrack(const std::string& path) {
     // 1. Get file name from path
     std::string newName = path;
@@ -3228,7 +4037,7 @@ void Application::importReferenceTrack(const std::string& path) {
         newName = newName.substr(lastSlash + 1);
     }
     // strip extension
-    size_t lastDot = newName.find_last_of(".");
+    size_t lastDot = newName.find_last_of('.');
     if (lastDot != std::string::npos) {
         newName = newName.substr(0, lastDot);
     }
@@ -3322,6 +4131,7 @@ void Application::loadProjectFile(const std::string& path) {
     activeTrackIdx = trackList.empty() ? -1 : 0;
     gloParent->selectedFunc = nullptr;
     currentFilePath = path;
+    showWelcomeScreen = false;
     LOG_INFO("Loaded project: %s", currentFilePath.c_str());
 
     viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
@@ -3338,6 +4148,19 @@ void Application::loadProjectFile(const std::string& path) {
         }
     }
     gloParent->projectGlbs = validGlbs;
+    for (auto* th : trackList) {
+        if (th && th->trackData) {
+            th->trackData->requestUpdateTrack(0, 0);
+            th->trackData->processPendingUpdates();
+        }
+    }
+    if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+        track* curTrack = trackList[activeTrackIdx]->trackData;
+        if (curTrack->activeSection && curTrack->activeSection->rollFunc && !curTrack->activeSection->rollFunc->funcList.empty()) {
+            gloParent->selectedFunc = curTrack->activeSection->rollFunc->funcList.front();
+        }
+    }
+    viewport.markSceneDirty();
     if (mUndoHandler) {
         mUndoHandler->clearActions();
         mUndoHandler->pushSnapshot();
@@ -3348,4 +4171,351 @@ void Application::loadProjectFile(const std::string& path) {
 void Application::showInAppNotification(const std::string& msg) {
     notificationMessage = msg;
     notificationTimer = 3.0f;
+}
+
+void Application::CreateNewProject() {
+    for (auto t : trackList)
+        delete t;
+    trackList.clear();
+    activeTrackIdx = -1;
+    gloParent->selectedFunc = nullptr;
+    currentFilePath = "";
+    gloParent->resetEnvironment();
+    viewport.setGroundTextureSize(gloParent->projectGrdTexSize);
+    viewport.setGroundHeight(gloParent->projectGrdHeight);
+    viewport.loadGroundTexture(gloParent->projectGroundTex);
+    viewport.applyProjectEnvironment();
+    while (!viewport.glbMeshes.empty())
+        viewport.removeGlbMesh(0);
+
+    // Auto-create initial Track 1 with straight section
+    trackHandler* initialTrack = new trackHandler("Track 1", 1);
+    trackList.push_back(initialTrack);
+    activeTrackIdx = 0;
+    track* myTrack = initialTrack->trackData;
+    myTrack->newSection(straight, -1);
+    if (!myTrack->lSections.empty()) {
+        myTrack->activeSection = myTrack->lSections.front();
+        if (myTrack->activeSection->rollFunc && !myTrack->activeSection->rollFunc->funcList.empty()) {
+            gloParent->selectedFunc = myTrack->activeSection->rollFunc->funcList.front();
+        }
+    }
+    myTrack->requestUpdateTrack(0, 0);
+    myTrack->processPendingUpdates();
+    viewport.markSceneDirty();
+
+    if (mUndoHandler) {
+        mUndoHandler->clearActions();
+        mUndoHandler->pushSnapshot();
+    }
+
+    showWelcomeScreen = false;
+}
+
+void Application::initWelcomeSvgTexture() {
+    const AssetData* asset = getEmbeddedAsset("resources/icons/fvd_path_welcome.svg");
+    if (!asset || !asset->data || asset->size == 0) {
+        asset = getEmbeddedAsset("resources/icons/fvd_path.svg");
+    }
+    if (!asset || !asset->data || asset->size == 0) {
+        asset = getEmbeddedAsset("resources/icons/fvd.svg");
+    }
+    std::string svgString;
+    if (asset && asset->data && asset->size > 0) {
+        svgString.assign(reinterpret_cast<const char*>(asset->data), asset->size);
+    } else {
+        std::ifstream in("resources/icons/fvd_path_welcome.svg");
+        if (!in) {
+            in.open("resources/icons/fvd_path.svg");
+        }
+        if (!in) {
+            in.open("resources/icons/fvd.svg");
+        }
+        if (in) {
+            std::stringstream buffer;
+            buffer << in.rdbuf();
+            svgString = buffer.str();
+        }
+    }
+
+    if (svgString.empty()) {
+        LOG_WARN("initWelcomeSvgTexture: fvd_path_welcome.svg not found");
+        return;
+    }
+
+    std::vector<char> svgCopy(svgString.begin(), svgString.end());
+    svgCopy.push_back('\0');
+
+    NSVGimage* svgImg = nsvgParse(svgCopy.data(), "px", 96.0f);
+    if (!svgImg || svgImg->width <= 0.0f || svgImg->height <= 0.0f) {
+        LOG_WARN("initWelcomeSvgTexture: failed to parse SVG");
+        if (svgImg)
+            nsvgDelete(svgImg);
+        return;
+    }
+
+    const int texWidth = 1024;
+    const int texHeight = 1024;
+    NSVGrasterizer* rast = nsvgCreateRasterizer();
+    if (!rast) {
+        nsvgDelete(svgImg);
+        return;
+    }
+
+    std::vector<uint8_t> pixels(texWidth * texHeight * 4, 0);
+    float scale = (float)texWidth / svgImg->width;
+    nsvgRasterize(rast, svgImg, 0, 0, scale, pixels.data(), texWidth, texHeight, texWidth * 4);
+    nsvgDeleteRasterizer(rast);
+    nsvgDelete(svgImg);
+
+    welcomeSvgTexture.create2d(vulkanContext, texWidth, texHeight, pixels.data(), false);
+    welcomeSvgDescriptorSet = ImGui_ImplVulkan_AddTexture(
+        welcomeSvgTexture.sampler, welcomeSvgTexture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
+void Application::destroyWelcomeSvgTexture() {
+    if (welcomeSvgDescriptorSet != VK_NULL_HANDLE) {
+        ImGui_ImplVulkan_RemoveTexture(welcomeSvgDescriptorSet);
+        welcomeSvgDescriptorSet = VK_NULL_HANDLE;
+    }
+    welcomeSvgTexture.destroy();
+}
+
+static void openUrl(const std::string& url) {
+#if defined(_WIN32)
+    ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+    std::string cmd = "open " + url;
+    [[maybe_unused]] int result = std::system(cmd.c_str());
+#else
+    std::string cmd = "xdg-open " + url;
+    [[maybe_unused]] int result = std::system(cmd.c_str());
+#endif
+}
+
+void Application::RenderWelcomeScreen() {
+    if (!showWelcomeScreen)
+        return;
+
+    ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    // 1. Full-screen backdrop using active theme WindowBg dimmed
+    ImGui::SetNextWindowPos(mainViewport->Pos);
+    ImGui::SetNextWindowSize(mainViewport->Size);
+    ImGuiWindowFlags bgFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
+                               ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+    ImVec4 bgCol = style.Colors[ImGuiCol_WindowBg];
+    bgCol.x *= 0.65f;
+    bgCol.y *= 0.65f;
+    bgCol.z *= 0.65f;
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, bgCol);
+    ImGui::Begin("##WelcomeBackdrop", nullptr, bgFlags);
+
+    if (welcomeSvgDescriptorSet != VK_NULL_HANDLE) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        float logoSize = mainViewport->Size.y * 0.75f;
+        ImVec2 center = mainViewport->GetCenter();
+        ImVec2 pMin(center.x - logoSize * 0.5f, center.y - logoSize * 0.5f);
+        ImVec2 pMax(center.x + logoSize * 0.5f, center.y + logoSize * 0.5f);
+
+        ImU32 watermarkCol = IM_COL32(255, 255, 255, 45);
+        drawList->AddImage((ImTextureID)welcomeSvgDescriptorSet, pMin, pMax,
+                           ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f), watermarkCol);
+    }
+
+    ImGui::End();
+    ImGui::PopStyleColor();
+
+    // 2. Compact centered card (width: 390px)
+    float cardWidth = std::min(390.0f, mainViewport->Size.x - 20.0f);
+    float cardHeight = std::min(275.0f, mainViewport->Size.y - 20.0f);
+    ImGui::SetNextWindowPos(mainViewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(cardWidth, cardHeight), ImGuiCond_Always);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, style.Colors[ImGuiCol_PopupBg]);
+    ImGui::PushStyleColor(ImGuiCol_Border, style.Colors[ImGuiCol_Border]);
+
+    ImGuiWindowFlags cardFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
+
+    if (ImGui::Begin("##WelcomeCard", nullptr, cardFlags)) {
+        // --- Header with Pill Badges ---
+        // Theme-compliant pill badges (using FrameBg, slightly larger)
+        ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_FrameBg]);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, style.Colors[ImGuiCol_FrameBg]);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, style.Colors[ImGuiCol_FrameBg]);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(9.0f, 3.5f));
+
+        std::string verStr = FVD_VERSION;
+        if (verStr.empty() || (verStr[0] != 'v' && verStr[0] != 'V')) {
+            verStr = "v" + verStr;
+        }
+        ImGui::Button(verStr.c_str());
+
+        if (gVulkanContext && !gVulkanContext->getGpuName().empty()) {
+            ImGui::SameLine();
+            std::string gpu = gVulkanContext->getGpuName();
+            if (gpu.rfind("NVIDIA ", 0) == 0) {
+                gpu = gpu.substr(7);
+            }
+            if (gpu.length() > 14) {
+                gpu = gpu.substr(0, 12) + "..";
+            }
+            ImGui::Button(gpu.c_str());
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s", gVulkanContext->getGpuName().c_str());
+            }
+        }
+
+        if (updateAvailable) {
+            ImGui::SameLine();
+            ImGui::PopStyleColor(3);
+            ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_HeaderActive]);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, style.Colors[ImGuiCol_HeaderHovered]);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, style.Colors[ImGuiCol_HeaderActive]);
+            if (ImGui::Button("Update")) {
+                openUrl("https://github.com/H27CK/openFVeiD/releases/latest");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Update available: %s", remoteVersion.c_str());
+            }
+        }
+
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(3);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // --- Body Split Section ---
+        if (ImGui::BeginTable("WelcomeLayoutTable", 2, ImGuiTableFlags_None)) {
+            ImGui::TableSetupColumn("LeftPane", ImGuiTableColumnFlags_WidthFixed, 115.0f);
+            ImGui::TableSetupColumn("RightPane", ImGuiTableColumnFlags_WidthStretch);
+
+            // === Left Column: Actions ===
+            ImGui::TableNextColumn();
+            {
+                const float btnHeight = 25.0f;
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+
+                if (ImGui::Button("New Project", ImVec2(-1, btnHeight))) {
+                    CreateNewProject();
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Start a new design with an initial Track 1 straight section");
+                }
+
+                ImGui::Spacing();
+
+                if (ImGui::Button("Open Project...", ImVec2(-1, btnHeight))) {
+                    auto f = pfd::open_file("Choose project file", ".", {"FVD++ Projects", "*.fvd", "All Files", "*"}).result();
+                    if (!f.empty()) {
+                        loadProjectFile(f[0]);
+                        showWelcomeScreen = false;
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Open an existing .fvd coaster project from disk");
+                }
+
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                if (ImGui::Button("Options", ImVec2(-1, btnHeight))) {
+                    showOptions = true;
+                }
+
+                ImGui::Spacing();
+
+                if (ImGui::Button("GitHub", ImVec2(-1, btnHeight))) {
+                    openUrl("https://github.com/H27CK/openFVeiD");
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("https://github.com/H27CK/openFVeiD");
+                }
+
+                ImGui::Spacing();
+
+                if (ImGui::Button("Exit", ImVec2(-1, btnHeight))) {
+                    glfwSetWindowShouldClose(window, GLFW_TRUE);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Exit application");
+                }
+
+                ImGui::PopStyleVar();
+            }
+
+            // === Right Column: Recent Projects ===
+            ImGui::TableNextColumn();
+            {
+                ImGui::TextDisabled("RECENT PROJECTS");
+                ImGui::Spacing();
+
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, style.Colors[ImGuiCol_FrameBg]);
+                ImGui::PushStyleColor(ImGuiCol_Border, style.Colors[ImGuiCol_Border]);
+                ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 5.0f);
+
+                if (ImGui::BeginChild("WelcomeRecentList", ImVec2(0, 0), true)) {
+                    if (recentFiles.empty()) {
+                        float availH = ImGui::GetContentRegionAvail().y;
+                        ImGui::Dummy(ImVec2(0, availH * 0.35f));
+                        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize("No recent projects.").x) * 0.5f);
+                        ImGui::TextDisabled("No recent projects.");
+                    } else {
+                        ImU32 colText = ImGui::GetColorU32(ImGuiCol_Text);
+                        ImU32 colTextMuted = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+                        for (size_t i = 0; i < recentFiles.size(); ++i) {
+                            const auto& path = recentFiles[i];
+                            std::string filename = path;
+                            std::string dir = "";
+                            size_t lastSlash = filename.find_last_of("/\\");
+                            if (lastSlash != std::string::npos) {
+                                dir = filename.substr(0, lastSlash);
+                                filename = filename.substr(lastSlash + 1);
+                            }
+                            if (dir.length() > 24) {
+                                dir = "..." + dir.substr(dir.length() - 21);
+                            }
+
+                            ImGui::PushID((int)i);
+                            if (ImGui::Selectable("##RecentCard", false, 0, ImVec2(0, 32.0f))) {
+                                loadProjectFile(path);
+                                showWelcomeScreen = false;
+                            }
+                            if (ImGui::IsItemHovered()) {
+                                ImGui::SetTooltip("%s", path.c_str());
+                            }
+
+                            ImVec2 cardMin = ImGui::GetItemRectMin();
+                            ImDrawList* drawList = ImGui::GetWindowDrawList();
+                            drawList->AddText(ImVec2(cardMin.x + 6.0f, cardMin.y + 2.0f), colText, filename.c_str());
+                            drawList->AddText(ImVec2(cardMin.x + 6.0f, cardMin.y + 16.0f), colTextMuted, dir.c_str());
+
+                            ImGui::PopID();
+                        }
+                    }
+                }
+                ImGui::EndChild();
+
+                ImGui::PopStyleVar();
+                ImGui::PopStyleColor(2);
+            }
+
+            ImGui::EndTable();
+        }
+    }
+    ImGui::End();
+
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(3);
 }

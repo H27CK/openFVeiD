@@ -18,6 +18,7 @@
 */
 
 #include "workingdirectory.h"
+#include "vfs.h"
 
 #include <filesystem>
 
@@ -47,10 +48,10 @@ static void initializeAppleWorkingDirectory() {
     std::filesystem::path userDataDirectory = std::filesystem::path(home) / "Library/Application Support/FVD++";
     std::filesystem::create_directories(userDataDirectory, ignored);
 
-    std::filesystem::path shippedTrackStyles = bundleResourcesDirectory() / "track_styles";
-    if (!std::filesystem::exists(userDataDirectory / "track_styles", ignored) &&
-        std::filesystem::exists(shippedTrackStyles, ignored)) {
-        std::filesystem::copy(shippedTrackStyles, userDataDirectory / "track_styles",
+    std::filesystem::path shippedTracks = bundleResourcesDirectory() / "tracks";
+    if (!std::filesystem::exists(userDataDirectory / "tracks", ignored) &&
+        std::filesystem::exists(shippedTracks, ignored)) {
+        std::filesystem::copy(shippedTracks, userDataDirectory / "tracks",
                               std::filesystem::copy_options::recursive, ignored);
     }
 
@@ -67,10 +68,11 @@ std::string platformResourcesDirectory() {
 }
 
 void initializeWorkingDirectory() {
-    std::error_code ignored;
-    if (std::filesystem::exists("track_styles", ignored))
-        return;
+    VFS::get().init();
 #ifdef __APPLE__
     initializeAppleWorkingDirectory();
+#else
+    std::error_code ignored;
+    std::filesystem::current_path(VFS::get().getExecutableDir(), ignored);
 #endif
 }

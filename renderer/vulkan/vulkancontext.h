@@ -21,6 +21,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
+#include <string>
 
 struct GLFWwindow;
 
@@ -36,7 +37,9 @@ public:
 
     void waitIdle();
 
-    void setVSync(bool enabled);
+    const std::string& getGpuName() const {
+        return gpuName;
+    }
 
     uint32_t findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties);
     VkSampleCountFlagBits clampSampleCount(int requestedSamples);
@@ -117,8 +120,7 @@ private:
     int currentFrame = 0;
     uint32_t currentImageIndex = 0;
     bool frameActive = false;
-    bool vsyncEnabled = true;
-    bool presentModeChangePending = false;
+    std::string gpuName;
 };
 
 extern VulkanContext* gVulkanContext;

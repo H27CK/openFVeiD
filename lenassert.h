@@ -29,8 +29,8 @@
 #define F_DEG (57.29577951308232)
 #define F_RAD (0.0174532925199432958)
 
-#define TO_RAD(angle) ((angle)*F_RAD)
-#define TO_DEG(angle) ((angle)*F_DEG)
+#define TO_RAD(angle) ((angle) * F_RAD)
+#define TO_DEG(angle) ((angle) * F_DEG)
 
 #define F_G (9.80665)
 

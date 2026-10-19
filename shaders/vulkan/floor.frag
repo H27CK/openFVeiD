@@ -1,8 +1,6 @@
 #version 450
 
-layout(location = 0) in vec2 rasterCoord;
-layout(location = 1) in vec2 floorCoord;
-layout(location = 2) in vec4 bPosition;
+layout(location = 0) in vec3 vRayDir;
 
 layout(location = 0) out vec4 oFragColor;
 
@@ -28,7 +26,8 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     float sunStrength;
     float gridMajorThickness;
     float gridMinorThickness;
-} u;
+}
+u;
 
 layout(set = 0, binding = 1) uniform sampler2D rasterTex;
 layout(set = 0, binding = 2) uniform sampler2D floorTex;
@@ -41,10 +40,23 @@ float gridFactor(vec2 uv, float lineThickness) {
     return 1.0 - clamp(line / lineThickness, 0.0, 1.0);
 }
 
-void main(void)
-{
+void main(void) {
+    // Blender-Style Ray-Plane Analytical Intersection (Zero-Seam Continuous Coordinates)
+    float dy = abs(vRayDir.y) > 0.00001 ? vRayDir.y : (vRayDir.y >= 0.0 ? 0.00001 : -0.00001);
+    float t = (u.floorHeight - u.eyePos.y) / dy;
+    if (t <= 0.0)
+        discard;
+
+    // Exact world-space surface coordinate
+    vec3 worldPos = u.eyePos.xyz + vRayDir * t;
+    vec2 worldXZ = worldPos.zx;
+
+    vec2 rasterCoord = 0.1 * (worldXZ + vec2(5.0, 5.0));
+    vec2 floorCoord = (worldXZ + vec2(u.grdTexSize)) / u.grdTexSize - vec2(0.5, 0.5);
+
     bool outsideBorder = (floorCoord.x > 1.0 || floorCoord.y > 1.0 ||
-                          floorCoord.x < 0.0 || floorCoord.y < 0.0) && u.border == 1;
+                          floorCoord.x < 0.0 || floorCoord.y < 0.0) &&
+                         u.border == 1;
 
     // Decoupled surface color: inside border draws texture, outside border draws plain floor color
     vec3 surfaceColor;
@@ -79,8 +91,7 @@ void main(void)
 
     // Apply mist
     if (u.mistEnabled != 0) {
-        // bPosition is in camera-relative world space
-        float dist = length(bPosition.xyz);
+        float dist = length(worldPos - u.eyePos.xyz);
         float mistRange = max(u.mistFar - u.mistNear, 0.0001);
         float mistFactor = clamp((dist - u.mistNear) / mistRange, 0.0, 1.0);
         finalColor = mix(finalColor, u.mistColor.rgb, mistFactor);

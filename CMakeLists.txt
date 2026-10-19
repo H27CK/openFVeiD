@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
-project(FVDPlusPlus VERSION 0.9.3 LANGUAGES C CXX)
+project(FVDPlusPlus VERSION 0.9.9 LANGUAGES C CXX)
 
 set(FVD_VERSION "" CACHE STRING "Version string shown in the app, injected by the release workflow")
 if(FVD_VERSION STREQUAL "")
-    execute_process(COMMAND git describe --tags --always --dirty
+    execute_process(COMMAND git describe --tags --match "v*" --dirty
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         OUTPUT_VARIABLE FVD_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 endif()
@@ -22,6 +22,11 @@ if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     if(MSVC)
         add_compile_options(/MP)
+        # Generate PDB debug symbols for Release builds without disabling optimizations
+        add_compile_options("$<$<CONFIG:Release>:/Zi>")
+        add_link_options("$<$<CONFIG:Release>:/DEBUG>")
+        add_link_options("$<$<CONFIG:Release>:/OPT:REF>")
+        add_link_options("$<$<CONFIG:Release>:/OPT:ICF>")
     endif()
 endif()
 
@@ -114,9 +119,16 @@ add_executable(bin2c resources/tools/bin2c.cpp)
 file(GLOB ASSETS_FONTS RELATIVE ${CMAKE_SOURCE_DIR} "resources/fonts/*")
 set(ASSETS
     ${ASSETS_FONTS}
-    assets/textures/metal_normal.png
-    assets/textures/metal_roughness.jpg
+    resources/textures/metal_normal.png
+    resources/textures/metal_roughness.jpg
 )
+if(EXISTS "${CMAKE_SOURCE_DIR}/resources/icons/fvd_path_welcome.svg")
+    list(APPEND ASSETS resources/icons/fvd_path_welcome.svg)
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/resources/icons/fvd_path.svg")
+    list(APPEND ASSETS resources/icons/fvd_path.svg)
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/resources/icons/fvd.svg")
+    list(APPEND ASSETS resources/icons/fvd.svg)
+endif()
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/embedded_assets.cpp
@@ -148,6 +160,7 @@ add_executable(fvd
     ${CORE_SOURCES}
     ${RENDERER_SOURCES}
     ext/tinyexpr.c
+    ext/miniz.c
     ui/graphview.cpp
     ui/resultinggraphprocessor.cpp
     ui/measurementgraphprocessor.cpp
@@ -196,7 +209,33 @@ if(UNIX AND NOT APPLE)
         dl
     )
     target_link_options(fvd PRIVATE -rdynamic)
-elseif(APPLE)
+endif()
+
+add_custom_target(
+    package_community ALL
+    COMMAND ${CMAKE_COMMAND} -E tar cf community.fvdpack --format=zip tracks trains clearance_envelopes
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/community
+    COMMENT "Packaging community/community.fvdpack"
+)
+
+if(WIN32)
+    add_custom_target(
+        sync_community_assets ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/community/community.fvdpack ${CMAKE_CURRENT_BINARY_DIR}/community.fvdpack
+        DEPENDS package_community
+        COMMENT "Copying community.fvdpack to build directory"
+    )
+else()
+    add_custom_target(
+        sync_community_assets ALL
+        COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_SOURCE_DIR}/community/community.fvdpack ${CMAKE_CURRENT_BINARY_DIR}/community.fvdpack
+        DEPENDS package_community
+        COMMENT "Symlinking community.fvdpack to build directory"
+    )
+endif()
+add_dependencies(fvd sync_community_assets)
+
+if(APPLE)
     find_library(COREFOUNDATION_LIBRARY CoreFoundation REQUIRED)
     find_library(MOLTENVK_LIBRARY NAMES MoltenVK
         HINTS /opt/homebrew/opt/molten-vk/lib /usr/local/opt/molten-vk/lib REQUIRED)
@@ -220,14 +259,14 @@ elseif(APPLE)
         INSTALL_RPATH "@loader_path/../Frameworks"
     )
     add_custom_command(TARGET fvd POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/community/track_styles
-            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/track_styles
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/community/community.fvdpack
+            $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/community.fvdpack
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_BINARY_DIR}/shaders_vulkan
             $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/shaders_vulkan
         COMMAND ${CMAKE_COMMAND} -E copy
-            ${CMAKE_SOURCE_DIR}/resources/icons/fvd_orig.icns
+            ${CMAKE_SOURCE_DIR}/resources/icons/fvd.icns
             $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Resources/fvd.icns
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_BUNDLE_CONTENT_DIR:fvd>/Frameworks

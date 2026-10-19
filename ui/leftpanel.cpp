@@ -22,7 +22,6 @@
 #include "trackhandler.h"
 #include "trackmesh.h"
 #include "track.h"
-#include "customstyle.h"
 #include "section.h"
 #include "secstraight.h"
 #include "seccurved.h"
@@ -32,14 +31,15 @@
 #include "dummies.h"
 #include "portable-file-dialogs.h"
 #include "common.h"
-#include <iostream>
+#include "core/dockstyle.h"
+#include "vfs.h"
 #include <algorithm>
 #include <filesystem>
 #include <glm/gtx/rotate_vector.hpp>
 
-#define BEGIN_PROP_TABLE(id)                                                                        \
-    if (ImGui::BeginTable(id, 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) { \
-        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);                 \
+#define BEGIN_PROP_TABLE(id)                                                        \
+    if (ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingFixedFit)) {                 \
+        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f); \
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
 #define PROP_ROW(label, ...)           \
@@ -80,18 +80,211 @@ static void syncAnchorForcesToDerivs(mnode* anchor) {
     anchor->fYawFromLast = glm::dot(forceVec, yawVec) / anchor->fVel * 1.8 / F_PI;
 }
 
-static std::string getStyleDisplayName(const std::string& fullPath) {
+static std::string getTrackDisplayName(const std::string& fullPath) {
     std::filesystem::path p(fullPath);
     std::string pathStr = p.lexically_normal().string();
-    size_t pos = pathStr.find("track_styles");
+    size_t pos = pathStr.find("clearance_envelopes");
     if (pos != std::string::npos) {
-        std::string sub = pathStr.substr(pos + 12); // "track_styles" has length 12
+        std::string sub = pathStr.substr(pos + 19);
         if (!sub.empty() && (sub[0] == '/' || sub[0] == '\\')) {
             sub = sub.substr(1);
         }
-        return sub;
+        std::filesystem::path sp(sub);
+        return "Clearance / " + sp.stem().string();
     }
-    return p.filename().string();
+    pos = pathStr.find("tracks");
+    if (pos != std::string::npos) {
+        std::string sub = pathStr.substr(pos + 6); // "tracks" has length 6
+        if (!sub.empty() && (sub[0] == '/' || sub[0] == '\\')) {
+            sub = sub.substr(1);
+        }
+        std::filesystem::path sp(sub);
+        if (sp.has_parent_path() && sp.parent_path().string() != sp.stem().string()) {
+            return sp.parent_path().string() + " / " + sp.stem().string();
+        }
+        return sp.stem().string();
+    }
+    pos = pathStr.find("track_styles");
+    if (pos != std::string::npos) {
+        std::string sub = pathStr.substr(pos + 12);
+        if (!sub.empty() && (sub[0] == '/' || sub[0] == '\\')) {
+            sub = sub.substr(1);
+        }
+        std::filesystem::path sp(sub);
+        return sp.stem().string();
+    }
+    return p.stem().string();
+}
+
+static std::string getTrainDisplayName(const std::string& fullPath) {
+    std::filesystem::path p(fullPath);
+    std::string pathStr = p.lexically_normal().string();
+    size_t pos = pathStr.find("trains");
+    if (pos != std::string::npos) {
+        std::string sub = pathStr.substr(pos + 6); // "trains" has length 6
+        if (!sub.empty() && (sub[0] == '/' || sub[0] == '\\')) {
+            sub = sub.substr(1);
+        }
+        std::filesystem::path sp(sub);
+        return sp.stem().string();
+    }
+    return p.stem().string();
+}
+
+struct TrackStyleMetadata {
+    std::string path;
+    std::string manufacturer = "Unset";
+    std::string styleName;
+    std::string author = "Unset";
+    std::string type = "Unset";
+    std::string displayLabel;
+};
+
+static TrackStyleMetadata getTrackStyleMetadata(const std::string& path) {
+    TrackStyleMetadata meta;
+    meta.path = path;
+    std::filesystem::path p(path);
+    meta.styleName = p.stem().string();
+
+    std::string content;
+    if (VFS::get().readFileText(path, content)) {
+        std::stringstream in(content);
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty())
+                continue;
+            std::stringstream ss(line);
+            std::string tag;
+            ss >> tag;
+            if (tag == "AUTHOR") {
+                std::string rem;
+                std::getline(ss, rem);
+                size_t q1 = rem.find('\"');
+                size_t q2 = rem.find_last_of('\"');
+                if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                    meta.author = rem.substr(q1 + 1, q2 - q1 - 1);
+                else {
+                    std::stringstream rss(rem);
+                    rss >> meta.author;
+                }
+            } else if (tag == "MANUFACTURER") {
+                std::string rem;
+                std::getline(ss, rem);
+                size_t q1 = rem.find('\"');
+                size_t q2 = rem.find_last_of('\"');
+                if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                    meta.manufacturer = rem.substr(q1 + 1, q2 - q1 - 1);
+                else {
+                    std::stringstream rss(rem);
+                    rss >> meta.manufacturer;
+                }
+            } else if (tag == "TYPE" || tag == "COASTER_TYPE") {
+                std::string rem;
+                std::getline(ss, rem);
+                size_t q1 = rem.find('\"');
+                size_t q2 = rem.find_last_of('\"');
+                if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                    meta.type = rem.substr(q1 + 1, q2 - q1 - 1);
+                else {
+                    std::stringstream rss(rem);
+                    rss >> meta.type;
+                }
+                if (meta.type == "Wooden*" || meta.type == "Wooden")
+                    meta.type = "Traditional Wooden";
+            }
+        }
+    }
+
+    if (meta.manufacturer == "Wooden")
+        meta.manufacturer = "GCI";
+    if (meta.manufacturer.empty())
+        meta.manufacturer = "Unset";
+    if (meta.author.empty())
+        meta.author = "Unset";
+    if (meta.type.empty())
+        meta.type = "Unset";
+
+    std::string typeOrName = (meta.type != "Unset" && !meta.type.empty()) ? meta.type : meta.styleName;
+    meta.displayLabel = meta.manufacturer + "/" + typeOrName + "/" + meta.author;
+    return meta;
+}
+
+struct TrainStyleMetadata {
+    std::string path;
+    std::string manufacturer = "Unset";
+    std::string styleName;
+    std::string author = "Unset";
+    std::string type = "Unset";
+    std::string displayLabel;
+};
+
+static TrainStyleMetadata getTrainStyleMetadata(const std::string& path) {
+    TrainStyleMetadata meta;
+    meta.path = path;
+    std::filesystem::path p(path);
+    meta.styleName = p.stem().string();
+
+    std::string content;
+    if (VFS::get().readFileText(path, content)) {
+        std::stringstream in(content);
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty() || line[0] == '#')
+                continue;
+            std::stringstream ss(line);
+            std::string tag;
+            ss >> tag;
+            if (tag == "AUTHOR") {
+                std::string rem;
+                std::getline(ss, rem);
+                size_t q1 = rem.find('\"');
+                size_t q2 = rem.find_last_of('\"');
+                if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                    meta.author = rem.substr(q1 + 1, q2 - q1 - 1);
+                else {
+                    std::stringstream rss(rem);
+                    rss >> meta.author;
+                }
+            } else if (tag == "MANUFACTURER") {
+                std::string rem;
+                std::getline(ss, rem);
+                size_t q1 = rem.find('\"');
+                size_t q2 = rem.find_last_of('\"');
+                if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                    meta.manufacturer = rem.substr(q1 + 1, q2 - q1 - 1);
+                else {
+                    std::stringstream rss(rem);
+                    rss >> meta.manufacturer;
+                }
+            } else if (tag == "TYPE" || tag == "COASTER_TYPE") {
+                std::string rem;
+                std::getline(ss, rem);
+                size_t q1 = rem.find('\"');
+                size_t q2 = rem.find_last_of('\"');
+                if (q1 != std::string::npos && q2 != std::string::npos && q1 != q2)
+                    meta.type = rem.substr(q1 + 1, q2 - q1 - 1);
+                else {
+                    std::stringstream rss(rem);
+                    rss >> meta.type;
+                }
+                if (meta.type == "Wooden*" || meta.type == "Wooden")
+                    meta.type = "Traditional Wooden";
+            }
+        }
+    }
+
+    if (meta.manufacturer == "Wooden")
+        meta.manufacturer = "GCI";
+    if (meta.manufacturer.empty())
+        meta.manufacturer = "Unset";
+    if (meta.author.empty())
+        meta.author = "Unset";
+    if (meta.type.empty())
+        meta.type = "Unset";
+
+    std::string typeOrName = (meta.type != "Unset" && !meta.type.empty()) ? meta.type : meta.styleName;
+    meta.displayLabel = meta.manufacturer + "/" + typeOrName + "/" + meta.author;
+    return meta;
 }
 
 void LeftPanel::syncAnchorNode(trackHandler* hTrack) {
@@ -131,13 +324,13 @@ void LeftPanel::render(Application* app) {
     bool hasActiveTrack = activeTrackIdx >= 0 && activeTrackIdx < static_cast<int>(trackList.size());
 
     // 1. Tracks Window
-    if (ImGui::Begin("Tracks", nullptr, 0)) {
+    if (DockStyle::Begin("Tracks", nullptr, 0)) {
         renderProjectTab(app);
     }
     ImGui::End();
 
     // 2. Sections Window
-    if (ImGui::Begin("Sections", nullptr, 0)) {
+    if (DockStyle::Begin("Sections", nullptr, 0)) {
         if (!hasActiveTrack) {
             ImGui::TextDisabled("Please select or create a track first.");
         } else if (trackList[activeTrackIdx]->trackData->isReferenceTrack()) {
@@ -150,7 +343,7 @@ void LeftPanel::render(Application* app) {
 
     /*
     // 3. Smoothing Window
-    if (ImGui::Begin("Smoothing", nullptr, 0)) {
+    if (DockStyle::Begin("Smoothing", nullptr, 0)) {
         if (!hasActiveTrack) {
             ImGui::TextDisabled("Please select or create a track first.");
         } else {
@@ -165,7 +358,7 @@ void LeftPanel::render(Application* app) {
     */
 
     // 4. Colors Window
-    if (ImGui::Begin("Colors", nullptr, 0)) {
+    if (DockStyle::Begin("Colors", nullptr, 0)) {
         if (!hasActiveTrack) {
             ImGui::TextDisabled("Please select or create a track first.");
         } else {
@@ -180,6 +373,7 @@ void LeftPanel::render(Application* app) {
 }
 
 void LeftPanel::renderProjectTab(Application* app) {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
     std::vector<trackHandler*>& trackList = app->trackList;
     int& activeTrackIdx = app->activeTrackIdx;
     if (ImGui::BeginTable("TrackList", 1, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(0, 150))) {
@@ -245,6 +439,43 @@ void LeftPanel::renderProjectTab(Application* app) {
     if (!hasSelection)
         ImGui::EndDisabled();
 
+    ImGui::SameLine();
+    bool canMerge = hasSelection && trackList.size() > 1 && !trackList[activeTrackIdx]->trackData->isReferenceTrack();
+    if (!canMerge)
+        ImGui::BeginDisabled();
+    if (ImGui::Button("Merge...")) {
+        ImGui::OpenPopup("MergeTrackPopup");
+    }
+    if (!canMerge)
+        ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (!hasSelection) {
+            ImGui::SetTooltip("Merge Track\n\nAppends another track's sections onto the end of the active track, combining them into a single continuous track.\n\n(Disabled: No track selected)");
+        } else if (trackList.size() <= 1) {
+            ImGui::SetTooltip("Merge Track\n\nAppends another track's sections onto the end of the active track, combining them into a single continuous track.\n\n(Disabled: Requires at least 2 tracks in the project)");
+        } else if (trackList[activeTrackIdx]->trackData->isReferenceTrack()) {
+            ImGui::SetTooltip("Merge Track\n\nAppends another track's sections onto the end of the active track, combining them into a single continuous track.\n\n(Disabled: Cannot merge into a reference track)");
+        } else {
+            ImGui::SetTooltip("Merge Track\n\nAppends another track's sections onto the end of '%s', combining them into a single continuous track.", trackList[activeTrackIdx]->trackData->name.c_str());
+        }
+    }
+
+    if (ImGui::BeginPopup("MergeTrackPopup")) {
+        ImGui::Text("Append onto '%s':", trackList[activeTrackIdx]->trackData->name.c_str());
+        ImGui::Separator();
+        for (int i = 0; i < static_cast<int>(trackList.size()); i++) {
+            if (i == activeTrackIdx)
+                continue;
+            if (trackList[i]->trackData->isReferenceTrack())
+                continue;
+            if (ImGui::MenuItem(trackList[i]->trackData->name.c_str())) {
+                app->mergeTracks(trackList[activeTrackIdx], trackList[i]);
+                break;
+            }
+        }
+        ImGui::EndPopup();
+    }
+
     // Recalculate selection status after potential modifications
     hasSelection = (activeTrackIdx >= 0 && activeTrackIdx < static_cast<int>(trackList.size()));
 
@@ -256,6 +487,7 @@ void LeftPanel::renderProjectTab(Application* app) {
     } else {
         ImGui::Text("No track selected.");
     }
+    ImGui::PopStyleColor();
 }
 
 void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
@@ -265,7 +497,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
         ImGui::BeginDisabled();
     }
 
-    if (ImGui::TreeNodeEx("General", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("General", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("TrackPropsGeneral")
         char nameBuf[256];
         strncpy(nameBuf, myTrack->name.c_str(), sizeof(nameBuf) - 1);
@@ -275,10 +507,9 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
         PROP_ROW(
             "Draw", if (ImGui::Combo("##Draw", &myTrack->drawHeartline, drawModes, IM_ARRAYSIZE(drawModes))) { if (gViewport) gViewport->markSceneDirty(); })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
-    if (ImGui::TreeNodeEx("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("TrackPropsPhysics")
         float friction = (float)myTrack->fFriction;
         PROP_ROW(
@@ -287,90 +518,327 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
         PROP_ROW(
             "Air Res.", if (ImGui::DragFloat("##Resistance", &resistance, 0.01f, 0.0f, 10.0f, "%.2f e-005") || common::ValueScroll(&resistance, 1.0f, 0.1f)) { myTrack->fResistance = (double)std::max(0.0f, resistance) / 1e5f; myTrack->requestUpdateTrack(0, 0); })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
-    if (ImGui::TreeNodeEx("Track Properties", ImGuiTreeNodeFlags_DefaultOpen)) {
-        // Scan track_styles for *.fvdstyle files recursively with cache (max once every 2 seconds)
-        static std::vector<std::string> cachedStyles;
+    if (ImGui::CollapsingHeader("Track Properties", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static std::vector<TrackStyleMetadata> cachedTrackStyles;
+        static std::vector<TrackStyleMetadata> cachedClearanceStyles;
         static double lastScanTime = -10.0;
         double currentTime = ImGui::GetTime();
-        if (cachedStyles.empty() || currentTime - lastScanTime > 2.0) {
-            cachedStyles.clear();
-            try {
-                if (std::filesystem::exists("track_styles")) {
-                    for (const auto& entry : std::filesystem::recursive_directory_iterator("track_styles")) {
-                        if (entry.is_regular_file() && entry.path().extension() == ".fvdstyle") {
-                            cachedStyles.push_back(entry.path().string());
-                        }
-                    }
-                }
-            } catch (...) {
+        if ((cachedTrackStyles.empty() && cachedClearanceStyles.empty()) || currentTime - lastScanTime > 2.0) {
+            cachedTrackStyles.clear();
+            cachedClearanceStyles.clear();
+
+            auto rawTracks = VFS::get().listFiles("tracks", {".fvdtrack"});
+            for (const auto& tp : rawTracks) {
+                cachedTrackStyles.push_back(getTrackStyleMetadata(tp));
             }
-            std::sort(cachedStyles.begin(), cachedStyles.end());
+            std::sort(cachedTrackStyles.begin(), cachedTrackStyles.end(), [](const TrackStyleMetadata& a, const TrackStyleMetadata& b) {
+                std::string sa = a.displayLabel;
+                std::string sb = b.displayLabel;
+                for (char& c : sa)
+                    c = (char)std::tolower((unsigned char)c);
+                for (char& c : sb)
+                    c = (char)std::tolower((unsigned char)c);
+                return sa < sb;
+            });
+
+            auto envs = VFS::get().listFiles("clearance_envelopes", {".fvdtrack"});
+            for (const auto& ep : envs) {
+                cachedClearanceStyles.push_back(getTrackStyleMetadata(ep));
+            }
+            std::sort(cachedClearanceStyles.begin(), cachedClearanceStyles.end(), [](const TrackStyleMetadata& a, const TrackStyleMetadata& b) {
+                std::string sa = a.displayLabel;
+                std::string sb = b.displayLabel;
+                for (char& c : sa)
+                    c = (char)std::tolower((unsigned char)c);
+                for (char& c : sb)
+                    c = (char)std::tolower((unsigned char)c);
+                return sa < sb;
+            });
+
             lastScanTime = currentTime;
         }
 
-        // Deduce style file if empty (e.g. after loading project)
-        if (myTrack->customStyleFile.empty() && !myTrack->customAssets.empty()) {
+        // Deduce track file if empty (e.g. after loading project)
+        if (myTrack->customTrackFile.empty() && !myTrack->customAssets.empty()) {
             for (const auto& asset : myTrack->customAssets) {
                 if (!asset.filepath.empty()) {
                     std::filesystem::path assetPath(asset.filepath);
                     std::filesystem::path parentDir = assetPath.parent_path();
                     if (std::filesystem::exists(parentDir)) {
                         for (const auto& entry : std::filesystem::directory_iterator(parentDir)) {
-                            if (entry.is_regular_file() && entry.path().extension() == ".fvdstyle") {
-                                myTrack->customStyleFile = entry.path().string();
+                            if (entry.is_regular_file() && entry.path().extension() == ".fvdtrack") {
+                                myTrack->customTrackFile = entry.path().string();
                                 break;
                             }
                         }
                     }
                 }
-                if (!myTrack->customStyleFile.empty())
+                if (!myTrack->customTrackFile.empty())
                     break;
             }
         }
 
-        BEGIN_PROP_TABLE("TrackPropsSettings")
-        std::string lenFmt = "%.2f " + gloParent->mOptions->getLengthString();
-        float heart = (float)myTrack->fHeart * gloParent->mOptions->getLengthFactor();
-        PROP_ROW(
-            "Heartline", if (ImGui::DragFloat("##Heartline", &heart, 0.01f, -10.0f, 10.0f, lenFmt.c_str()) || common::ValueScroll(&heart, 1.0f, 0.1f)) { myTrack->fHeart = (double)std::clamp(heart, -10.0f * (float)gloParent->mOptions->getLengthFactor(), 10.0f * (float)gloParent->mOptions->getLengthFactor()) / gloParent->mOptions->getLengthFactor(); myTrack->requestUpdateTrack(0, 0); })
-
-        std::string currentStyleLabel = "None / Custom";
-        if (!myTrack->customStyleFile.empty()) {
-            currentStyleLabel = getStyleDisplayName(myTrack->customStyleFile);
+        // Deduce metadata from custom track file if metadata is empty
+        if (!myTrack->customTrackFile.empty() && myTrack->trackManufacturer.empty()) {
+            for (const auto& s : cachedTrackStyles) {
+                if (s.path == myTrack->customTrackFile) {
+                    myTrack->trackManufacturer = s.manufacturer;
+                    myTrack->trackCoasterType = s.type;
+                    myTrack->trackAuthor = s.author;
+                    break;
+                }
+            }
+            if (myTrack->trackManufacturer.empty()) {
+                for (const auto& s : cachedClearanceStyles) {
+                    if (s.path == myTrack->customTrackFile) {
+                        myTrack->trackManufacturer = s.manufacturer;
+                        myTrack->trackCoasterType = s.type;
+                        myTrack->trackAuthor = s.author;
+                        break;
+                    }
+                }
+            }
         }
+
+        BEGIN_PROP_TABLE("TrackPropsSettings")
 
         if (isRef) {
             ImGui::EndDisabled();
         }
 
+        auto mfgEquals = [](const std::string& a, const std::string& b) {
+            if (a.length() != b.length())
+                return false;
+            for (size_t i = 0; i < a.length(); ++i) {
+                if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i]))
+                    return false;
+            }
+            return true;
+        };
+
+        // 1. Manufacturer Predefined Dropdown
+        const char* currentMfgLabel = myTrack->trackManufacturer.empty() ? "None / Custom" : myTrack->trackManufacturer.c_str();
         PROP_ROW(
-            "Style",
-            if (ImGui::BeginCombo("##StyleDropdown", currentStyleLabel.c_str())) {
-                if (ImGui::Selectable("None / Custom", myTrack->customStyleFile.empty())) {
+            "Manufacturer",
+            if (ImGui::BeginCombo("##TrackManufacturerDropdown", currentMfgLabel)) {
+                if (ImGui::Selectable("None / Custom", myTrack->trackManufacturer.empty())) {
                     if (hTrack->mMesh) {
                         hTrack->mMesh->clearParametricStyles();
                     }
-                    myTrack->customStyleFile = "";
+                    myTrack->customTrackFile = "";
                     myTrack->customExtrusions.clear();
                     for (auto& asset : myTrack->customAssets) {
                         if (asset.loadedModel)
                             delete asset.loadedModel;
                     }
                     myTrack->customAssets.clear();
+                    myTrack->trackAuthor.clear();
+                    myTrack->trackManufacturer.clear();
+                    myTrack->trackCoasterType.clear();
                     myTrack->requestUpdateTrack(0, 0);
                 }
-                for (const auto& stylePath : cachedStyles) {
-                    std::string styleName = getStyleDisplayName(stylePath);
-                    bool isSelected = (myTrack->customStyleFile == stylePath);
-                    if (ImGui::Selectable(styleName.c_str(), isSelected)) {
-                        if (hTrack->mMesh) {
-                            hTrack->mMesh->clearParametricStyles();
+                for (const char* mfg : kTrackManufacturers) {
+                    bool isSelected = (!myTrack->trackManufacturer.empty() && mfgEquals(myTrack->trackManufacturer, mfg));
+                    if (ImGui::Selectable(mfg, isSelected)) {
+                        if (myTrack->trackManufacturer != mfg) {
+                            myTrack->trackManufacturer = mfg;
+                            // Reset style and type when changing manufacturer
+                            if (hTrack->mMesh) {
+                                hTrack->mMesh->clearParametricStyles();
+                            }
+                            myTrack->customTrackFile = "";
+                            myTrack->customExtrusions.clear();
+                            for (auto& asset : myTrack->customAssets) {
+                                if (asset.loadedModel)
+                                    delete asset.loadedModel;
+                            }
+                            myTrack->customAssets.clear();
+                            myTrack->trackAuthor.clear();
+                            myTrack->trackCoasterType.clear();
+                            myTrack->requestUpdateTrack(0, 0);
                         }
-                        myTrack->importParametricStyle(stylePath);
                     }
+                }
+                ImGui::EndCombo();
+            })
+
+        // 2. Type Dropdown (Filtered to items matching the selected manufacturer)
+        std::vector<const TrackStyleMetadata*> matchingTracks;
+        std::vector<const TrackStyleMetadata*> matchingClearances;
+        if (!myTrack->trackManufacturer.empty()) {
+            for (const auto& s : cachedTrackStyles) {
+                if (mfgEquals(s.manufacturer, myTrack->trackManufacturer)) {
+                    matchingTracks.push_back(&s);
+                }
+            }
+            for (const auto& s : cachedClearanceStyles) {
+                if (mfgEquals(s.manufacturer, myTrack->trackManufacturer)) {
+                    matchingClearances.push_back(&s);
+                }
+            }
+        }
+
+        std::string currentTypeLabel = "None / Custom";
+        if (myTrack->trackManufacturer.empty()) {
+            currentTypeLabel = "Select Manufacturer";
+        } else if (!myTrack->trackCoasterType.empty()) {
+            currentTypeLabel = myTrack->trackCoasterType;
+            if (!myTrack->trackAuthor.empty() && myTrack->trackAuthor != "Unset") {
+                currentTypeLabel += " (" + myTrack->trackAuthor + ")";
+            }
+        } else {
+            currentTypeLabel = "Select Type...";
+        }
+
+        PROP_ROW(
+            "Type",
+            bool disableType = myTrack->trackManufacturer.empty();
+            if (disableType) ImGui::BeginDisabled();
+            if (ImGui::BeginCombo("##TrackTypeDropdown", currentTypeLabel.c_str())) {
+                if (matchingTracks.empty() && matchingClearances.empty()) {
+                    ImGui::TextDisabled("No styles available for %s.", myTrack->trackManufacturer.c_str());
+                } else {
+                    for (const auto* s : matchingTracks) {
+                        std::string label = s->type;
+                        if (!s->author.empty() && s->author != "Unset")
+                            label += " (" + s->author + ")";
+                        bool isSelected = (myTrack->customTrackFile == s->path);
+                        if (ImGui::Selectable(label.c_str(), isSelected)) {
+                            if (hTrack->mMesh) {
+                                hTrack->mMesh->clearParametricStyles();
+                            }
+                            myTrack->importCustomTrack(s->path);
+                        }
+                    }
+                    if (!matchingClearances.empty()) {
+                        if (!matchingTracks.empty())
+                            ImGui::Separator();
+                        for (const auto* s : matchingClearances) {
+                            std::string label = s->type;
+                            if (!s->author.empty() && s->author != "Unset")
+                                label += " (" + s->author + ")";
+                            bool isSelected = (myTrack->customTrackFile == s->path);
+                            if (ImGui::Selectable(label.c_str(), isSelected)) {
+                                if (hTrack->mMesh) {
+                                    hTrack->mMesh->clearParametricStyles();
+                                }
+                                myTrack->importCustomTrack(s->path);
+                            }
+                        }
+                    }
+                }
+                ImGui::EndCombo();
+            } if (disableType) ImGui::EndDisabled();)
+
+        // 3. Author Row (Read-only detail label)
+        PROP_ROW(
+            "Author",
+            const char* author = myTrack->trackAuthor.empty() ? "Unset" : myTrack->trackAuthor.c_str();
+            ImGui::TextUnformatted(author);)
+
+        std::string lenFmt = "%.2f " + gloParent->mOptions->getLengthString();
+        float heart = (float)myTrack->fHeart * gloParent->mOptions->getLengthFactor();
+        PROP_ROW(
+            "Heartline", if (ImGui::DragFloat("##Heartline", &heart, 0.01f, -10.0f, 10.0f, lenFmt.c_str()) || common::ValueScroll(&heart, 1.0f, 0.1f)) { myTrack->fHeart = (double)std::clamp(heart, -10.0f * (float)gloParent->mOptions->getLengthFactor(), 10.0f * (float)gloParent->mOptions->getLengthFactor()) / gloParent->mOptions->getLengthFactor(); myTrack->requestUpdateTrack(0, 0); })
+
+        if (isRef) {
+            ImGui::BeginDisabled();
+        }
+
+        END_PROP_TABLE()
+    }
+
+    if (ImGui::CollapsingHeader("Train", ImGuiTreeNodeFlags_DefaultOpen)) {
+        double currentTime = ImGui::GetTime();
+        static std::vector<TrainStyleMetadata> cachedTrainStyles;
+        static double lastTrainScanTime = -10.0;
+        if (cachedTrainStyles.empty() || currentTime - lastTrainScanTime > 2.0) {
+            cachedTrainStyles.clear();
+            auto rawTrains = VFS::get().listFiles("trains", {".fvdtrain"});
+            for (const auto& tp : rawTrains) {
+                cachedTrainStyles.push_back(getTrainStyleMetadata(tp));
+            }
+            std::sort(cachedTrainStyles.begin(), cachedTrainStyles.end(), [](const TrainStyleMetadata& a, const TrainStyleMetadata& b) {
+                std::string sa = a.displayLabel;
+                std::string sb = b.displayLabel;
+                for (char& c : sa)
+                    c = (char)std::tolower((unsigned char)c);
+                for (char& c : sb)
+                    c = (char)std::tolower((unsigned char)c);
+                return sa < sb;
+            });
+            lastTrainScanTime = currentTime;
+        }
+
+        std::string currentTrainLabel = "None";
+        if (myTrack->train.isLoaded()) {
+            bool found = false;
+            for (const auto& ts : cachedTrainStyles) {
+                if (ts.path == myTrack->train.getFilePath()) {
+                    currentTrainLabel = ts.displayLabel;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                std::string mfg = myTrack->train.manufacturer.empty() ? "Unset" : myTrack->train.manufacturer;
+                std::string author = myTrack->train.author.empty() ? "Unset" : myTrack->train.author;
+                std::string type = myTrack->train.type.empty() ? std::filesystem::path(myTrack->train.getFilePath()).stem().string() : myTrack->train.type;
+                currentTrainLabel = mfg + "/" + type + "/" + author;
+            }
+        }
+
+        if (isRef) {
+            ImGui::EndDisabled();
+        }
+
+        BEGIN_PROP_TABLE("TrainPropsSettings")
+        PROP_ROW(
+            "Model",
+            if (ImGui::BeginCombo("##TrainModelDropdown", currentTrainLabel.c_str())) {
+                if (ImGui::Selectable("None", !myTrack->train.isLoaded())) {
+                    myTrack->train.clear();
+                    myTrack->requestUpdateTrack(0, 0);
+                }
+                for (const auto& ts : cachedTrainStyles) {
+                    bool isSelected = (myTrack->train.getFilePath() == ts.path);
+                    if (ImGui::Selectable(ts.displayLabel.c_str(), isSelected)) {
+                        myTrack->importTrainStyle(ts.path);
+                    }
+                }
+                ImGui::EndCombo();
+            })
+
+        if (myTrack->train.isLoaded()) {
+            PROP_ROW("Type", ImGui::TextUnformatted(myTrack->train.type.empty() ? "Unset" : myTrack->train.type.c_str());)
+            PROP_ROW("Manufacturer", ImGui::TextUnformatted(myTrack->train.manufacturer.empty() ? "Unset" : myTrack->train.manufacturer.c_str());)
+            PROP_ROW("Author", ImGui::TextUnformatted(myTrack->train.author.empty() ? "Unset" : myTrack->train.author.c_str());)
+            PROP_ROW(
+                "Middle Cars",
+                if (ImGui::SliderInt("##MiddleCars", &myTrack->train.middleCarCount, 0, 20)) {
+                    myTrack->train.setMiddleCarCount(myTrack->train.middleCarCount, myTrack);
+                })
+        }
+
+        std::string povCamLabel = "Heartline (Default)";
+        if (myTrack->train.boundCameraIndex >= 0 && myTrack->train.boundCameraIndex < (int)myTrack->train.getCameras().size()) {
+            povCamLabel = myTrack->train.getCameras()[myTrack->train.boundCameraIndex].name;
+        }
+        PROP_ROW(
+            "POV Camera",
+            if (ImGui::BeginCombo("##POVCameraDropdown", povCamLabel.c_str())) {
+                if (ImGui::Selectable("Heartline (Default)", myTrack->train.boundCameraIndex == -1)) {
+                    myTrack->train.boundCameraIndex = -1;
+                }
+                for (size_t i = 0; i < myTrack->train.getCameras().size(); ++i) {
+                    ImGui::PushID((int)i);
+                    bool isSelected = (myTrack->train.boundCameraIndex == (int)i);
+                    if (ImGui::Selectable(myTrack->train.getCameras()[i].name, isSelected)) {
+                        myTrack->train.boundCameraIndex = (int)i;
+                    }
+                    ImGui::PopID();
                 }
                 ImGui::EndCombo();
             })
@@ -380,10 +848,9 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
         }
 
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
-    if (ImGui::TreeNodeEx("Limits: Force", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Limits: Force", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("SafetyLimitsProps")
 
         bool enableLimits = myTrack->enableForceLimits;
@@ -428,10 +895,9 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
                 })
         }
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
-    if (ImGui::TreeNodeEx("Limits: Radius", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Limits: Radius", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("RadiusLimitsProps")
 
         bool enforceRad = myTrack->enforceMinRadius;
@@ -452,7 +918,6 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
                 })
         }
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
     if (isRef) {
@@ -465,6 +930,7 @@ void LeftPanel::renderTrackSmoothing(trackHandler* track, Application* app) {
 }
 
 void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
     track* myTrack = hTrack->trackData;
     if (selectedSectionIdx >= static_cast<int>(myTrack->lSections.size())) {
         selectedSectionIdx = static_cast<int>(myTrack->lSections.size()) - 1;
@@ -502,6 +968,19 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
                 myTrack->requestUpdateTrack(0, 0);
                 if (gViewport && gloParent->mOptions->autoFocusOnSelection)
                     gViewport->focusOnSection(i);
+            }
+            if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("Split Track Here", nullptr, false, i > 0)) {
+                    app->splitTrack(hTrack, i);
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    if (i == 0) {
+                        ImGui::SetTooltip("Cannot split at the very first section. Select section 1 or later.");
+                    } else {
+                        ImGui::SetTooltip("Split track at section %d into a new independent track anchored in world space.", i);
+                    }
+                }
+                ImGui::EndPopup();
             }
             ImGui::TableSetColumnIndex(1);
             const char* typeStr = "Unknown";
@@ -726,6 +1205,47 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
         ImGui::EndPopup();
     }
 
+    ImGui::SameLine();
+
+    // 4. "Split" Button
+    bool canSplit = (selectedSectionIdx > 0) && !styleIsLocked;
+    if (!canSplit)
+        ImGui::BeginDisabled();
+    if (ImGui::Button("Split")) {
+        app->splitTrack(hTrack, selectedSectionIdx);
+    }
+    if (!canSplit)
+        ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (!canSplit) {
+            ImGui::SetTooltip("Split Track (at Section)\n\nCuts this track into two independent tracks: the selected section and all following sections become a new track anchored in place.\n\nUse this when modifying earlier sections to keep subsequent track geometry locked.\n\n(Select Section 1 or later to enable)");
+        } else {
+            ImGui::SetTooltip("Split Track (at Section)\n\nCuts this track into two independent tracks: section %d and all following sections become a new track anchored in place.\n\nUse this when modifying earlier sections to keep subsequent track geometry locked.", selectedSectionIdx);
+        }
+    }
+
+    ImGui::SameLine();
+
+    // 5. "Fork" Button
+    extern Viewport* gViewport;
+    bool canFork = (gViewport && gViewport->getPOVNode() != nullptr) && !styleIsLocked;
+    if (!canFork)
+        ImGui::BeginDisabled();
+    if (ImGui::Button("Fork")) {
+        app->forkTrack(hTrack, gViewport->getPOVPos());
+        selectedSectionIdx = -1;
+        gloParent->selectedFunc = nullptr;
+    }
+    if (!canFork)
+        ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (!canFork) {
+            ImGui::SetTooltip("Fork Track (at Playhead)\n\nBranches off a new, empty track starting from the playhead's current 3D position, heading, and speed, leaving the original track untouched.\n\n(Position the timeline/POV playhead on the track to enable)");
+        } else {
+            ImGui::SetTooltip("Fork Track (at Playhead)\n\nBranches off a new, empty track starting from the playhead's current 3D position, heading, and speed, leaving the original track untouched.");
+        }
+    }
+
     if (styleIsLocked)
         ImGui::EndDisabled();
 
@@ -742,6 +1262,7 @@ void LeftPanel::renderTrackTab(trackHandler* hTrack, Application* app) {
         if (styleIsLocked)
             ImGui::EndDisabled();
     }
+    ImGui::PopStyleColor();
 }
 
 void LeftPanel::renderSectionProperties(trackHandler* hTrack, section* sec, Application* app) {
@@ -907,7 +1428,7 @@ void LeftPanel::renderAnchorProperties(trackHandler* hTrack, section* sec, Appli
     float lenFact = gloParent->mOptions->getLengthFactor();
     std::string lenFmt = "%.3f " + gloParent->mOptions->getLengthString();
 
-    if (ImGui::TreeNodeEx("Position", 0)) {
+    if (ImGui::CollapsingHeader("Position", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("AnchorPropsPos")
         PROP_ROW(
             "Position",
@@ -921,10 +1442,9 @@ void LeftPanel::renderAnchorProperties(trackHandler* hTrack, section* sec, Appli
             if (ImGui::DragFloat("##AnchorPosZ", &pos.z, 0.1f, 0.0f, 0.0f, lenFmt.c_str()) || common::ValueScroll(&pos.z, 1.0f, 0.1f)) posChanged = true;
             if (posChanged) { myTrack->startPos = (glm::dvec3)(pos / (double)lenFact); changed = true; })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
-    if (ImGui::TreeNodeEx("Rotation", 0)) {
+    if (ImGui::CollapsingHeader("Rotation", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("AnchorPropsRot")
         float yaw = (float)myTrack->startYaw, pitch = (float)myTrack->startPitch, roll = (float)myTrack->anchorNode->fRoll;
         PROP_ROW(
@@ -934,10 +1454,9 @@ void LeftPanel::renderAnchorProperties(trackHandler* hTrack, section* sec, Appli
         PROP_ROW(
             "Phi (Roll)", if (ImGui::DragFloat("##AnchorPhi", &roll, 0.1f, -1800.0f, 1800.0f, "%.3f deg") || common::ValueScroll(&roll, 1.0f, 0.1f)) { myTrack->anchorNode->fRoll = std::clamp(roll, -1800.0f, 1800.0f); syncAnchorNode(hTrack); syncAnchorDerivsToForces(myTrack->anchorNode); changed = true; })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
-    if (ImGui::TreeNodeEx("Rates", 0)) {
+    if (ImGui::CollapsingHeader("Rates", 0)) {
         BEGIN_PROP_TABLE("AnchorPropsDeriv")
         float dPsi = (float)myTrack->anchorNode->getYawChange(), dTheta = (float)myTrack->anchorNode->getPitchChange();
         PROP_ROW(
@@ -948,10 +1467,9 @@ void LeftPanel::renderAnchorProperties(trackHandler* hTrack, section* sec, Appli
         PROP_ROW(
             "Speed", if (ImGui::DragFloat("##AnchorSpeed", &displaySpeed, 0.1f, 0.1f, 500.0f, ("%.3f " + gloParent->mOptions->getSpeedString()).c_str()) || common::ValueScroll(&displaySpeed, 1.0f, 0.1f)) { myTrack->anchorNode->fVel = (double)std::max(0.1f * (float)gloParent->mOptions->getSpeedFactor(), displaySpeed) / gloParent->mOptions->getSpeedFactor(); syncAnchorNode(hTrack); syncAnchorDerivsToForces(myTrack->anchorNode); changed = true; })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
-    if (ImGui::TreeNodeEx("Forces", 0)) {
+    if (ImGui::CollapsingHeader("Forces", 0)) {
         BEGIN_PROP_TABLE("AnchorPropsForces")
         float fn = (float)myTrack->anchorNode->forceNormal, fl = (float)myTrack->anchorNode->forceLateral;
         PROP_ROW(
@@ -959,7 +1477,6 @@ void LeftPanel::renderAnchorProperties(trackHandler* hTrack, section* sec, Appli
         PROP_ROW(
             "Lateral", if (ImGui::DragFloat("##AnchorLateral", &fl, 0.01f, -15.0f, 15.0f, "%.3f g") || common::ValueScroll(&fl, 1.0f, 0.1f)) { myTrack->anchorNode->forceLateral = std::clamp(fl, -15.0f, 15.0f); syncAnchorNode(hTrack); syncAnchorForcesToDerivs(myTrack->anchorNode); changed = true; })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
     if (changed)
         myTrack->requestUpdateTrack(0, 0);
@@ -1222,17 +1739,16 @@ void LeftPanel::renderStaticProperties(trackHandler* hTrack, section* sec, Appli
 void LeftPanel::renderColorsTab(trackHandler* hTrack, Application* app) {
     if (!hTrack)
         return;
-    if (ImGui::TreeNodeEx("Track Colors", 0)) {
+    if (ImGui::CollapsingHeader("Track Colors", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("TrackColTable")
         PROP_ROW("Default", ImGui::ColorEdit3("##TrkCol0", &hTrack->trackColors[0].x);)
         PROP_ROW("Section", ImGui::ColorEdit3("##TrkCol1", &hTrack->trackColors[1].x);)
         PROP_ROW("Transition", ImGui::ColorEdit3("##TrkCol2", &hTrack->trackColors[2].x);)
         PROP_ROW("Heartline", ImGui::ColorEdit3("##TrkCol3", &hTrack->trackColors[3].x);)
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
-    ImGui::Separator();
-    if (ImGui::TreeNodeEx("Graph Colors", 0)) {
+    ImGui::Spacing();
+    if (ImGui::CollapsingHeader("Graph Colors", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("GraphColTable")
         auto graphColRow = [&](const char* label, int idx) { PROP_ROW(label, ImGui::ColorEdit3((std::string("##GrCol") + std::to_string(idx)).c_str(), &gloParent->mOptions->graphColors[idx].x);); };
         ImGui::TableNextRow();
@@ -1262,7 +1778,6 @@ void LeftPanel::renderColorsTab(trackHandler* hTrack, Application* app) {
         graphColRow("Velocity", (int)GraphType::Velocity);
         graphColRow("Longitudinal Accel", (int)GraphType::LongitudinalAccel);
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 }
 
@@ -1270,7 +1785,7 @@ void LeftPanel::renderEnvironmentTab() {
     ImGui::TextDisabled("Tip: Right-click headers (Ground, Lighting, etc.) to reset.");
     ImGui::Spacing();
 
-    bool groundOpen = ImGui::TreeNodeEx("Ground", ImGuiTreeNodeFlags_DefaultOpen);
+    bool groundOpen = ImGui::CollapsingHeader("Ground", ImGuiTreeNodeFlags_DefaultOpen);
     if (ImGui::BeginPopupContextItem("GroundResetPopup")) {
         if (ImGui::MenuItem("Reset Ground to Default")) {
             gloParent->projectGrdTexSize = 440.0f;
@@ -1350,11 +1865,8 @@ void LeftPanel::renderEnvironmentTab() {
                     gViewport->setGroundTextureSize(gloParent->projectGrdTexSize);
             })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 
-    ImGui::Spacing();
-    ImGui::Separator();
     ImGui::Spacing();
 
     // Render Env. Preset dropdown right above Lighting/Shadows section as it doesn't affect Ground but sets everything else
@@ -1439,7 +1951,7 @@ void LeftPanel::renderEnvironmentTab() {
 
     ImGui::Spacing();
 
-    bool lightingOpen = ImGui::TreeNodeEx("Lighting & Shadows", ImGuiTreeNodeFlags_DefaultOpen);
+    bool lightingOpen = ImGui::CollapsingHeader("Lighting & Shadows", ImGuiTreeNodeFlags_DefaultOpen);
     if (ImGui::BeginPopupContextItem("LightingResetPopup")) {
         if (ImGui::MenuItem("Reset Lighting & Shadows to Default")) {
             DummyOptions* options = gloParent->mOptions;
@@ -1525,9 +2037,9 @@ void LeftPanel::renderEnvironmentTab() {
                     gViewport->markSceneDirty();
             })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
-    bool skyboxOpen = ImGui::TreeNodeEx("Skybox", ImGuiTreeNodeFlags_DefaultOpen);
+    ImGui::Spacing();
+    bool skyboxOpen = ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen);
     if (ImGui::BeginPopupContextItem("SkyboxResetPopup")) {
         if (ImGui::MenuItem("Reset Skybox to Default")) {
             gloParent->mOptions->skyboxName = "Solid Color";
@@ -1586,9 +2098,9 @@ void LeftPanel::renderEnvironmentTab() {
             ImGui::TableNextColumn();
         }
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
-    bool mistOpen = ImGui::TreeNodeEx("Mist (Far Field)", ImGuiTreeNodeFlags_DefaultOpen);
+    ImGui::Spacing();
+    bool mistOpen = ImGui::CollapsingHeader("Mist (Far Field)", ImGuiTreeNodeFlags_DefaultOpen);
     if (ImGui::BeginPopupContextItem("MistResetPopup")) {
         if (ImGui::MenuItem("Reset Mist to Default")) {
             gloParent->mOptions->mistEnabled = false;
@@ -1630,6 +2142,5 @@ void LeftPanel::renderEnvironmentTab() {
                     gViewport->markSceneDirty();
             })
         END_PROP_TABLE()
-        ImGui::TreePop();
     }
 }

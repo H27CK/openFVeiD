@@ -30,7 +30,7 @@ jobs:
           vcpkg install glm:x64-windows-static
 
       - name: Configure CMake
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DFVD_VERSION=${{ inputs.version }} -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release "-DFVD_VERSION=${{ inputs.version }}" -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
 
       - name: Build
         run: cmake --build build --config Release -j 4
@@ -40,8 +40,9 @@ jobs:
         run: |
           mkdir dist
           copy build/Release/fvd.exe dist/
+          if (Test-Path build/Release/fvd.pdb) { copy build/Release/fvd.pdb dist/ }
           xcopy /e /i build\shaders_vulkan dist\shaders_vulkan
-          xcopy /e /i community\track_styles dist\track_styles
+          copy community\community.fvdpack dist\community.fvdpack
           Compress-Archive -Path dist/* -DestinationPath fvd-windows-x64.zip
 
       - name: Upload Windows Artifact

@@ -22,10 +22,7 @@
 #include "core/track.h"
 #include "core/section.h"
 #include "core/mnode.h"
-#include "core/common.h"
 #include "core/dummies.h"
-#include <algorithm>
-#include <cmath>
 
 extern DummyGlobal* gloParent;
 

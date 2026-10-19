@@ -26,6 +26,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <unordered_map>
 
 #include "renderer/vulkan/vulkanbuffer.h"
 #include "renderer/vulkan/vulkanframebuffer.h"
@@ -33,6 +34,7 @@
 #include "renderer/vulkan/vulkantexture.h"
 
 class trackHandler;
+class track;
 class mnode;
 
 struct Mesh {
@@ -251,9 +253,13 @@ private:
     };
 
     void drawTrack(VkCommandBuffer commandBuffer, trackHandler* track, RenderPass pass);
+    void drawTrain(VkCommandBuffer commandBuffer, trackHandler* track, RenderPass pass);
     void drawGlbs(VkCommandBuffer commandBuffer, RenderPass pass);
     void drawMarkers(VkCommandBuffer commandBuffer);
+    glm::mat4 evaluateTrackTransformAtDist(track* myTrack, double dist, const glm::mat4& baseAnchor);
     void refreshOutputTexture();
+
+    std::unordered_map<std::string, GlbMesh> trainGlbCache;
 
     VulkanFramebuffer finalOutputFb;
     void* outputTextureId = nullptr;

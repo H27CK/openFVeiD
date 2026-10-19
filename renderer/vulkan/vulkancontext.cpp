@@ -96,6 +96,7 @@ void VulkanContext::pickPhysicalDevice() {
                 graphicsQueueFamily = family;
                 VkPhysicalDeviceProperties properties;
                 vkGetPhysicalDeviceProperties(candidate, &properties);
+                gpuName = properties.deviceName;
                 fprintf(stderr, "[vulkan] using %s\n", properties.deviceName);
                 return;
             }
@@ -178,15 +179,13 @@ void VulkanContext::createSwapchain() {
     std::vector<VkPresentModeKHR> presentModes(presentModeCount);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.data());
     VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
-    if (!vsyncEnabled) {
-        for (VkPresentModeKHR available : presentModes) {
-            if (available == VK_PRESENT_MODE_IMMEDIATE_KHR) {
-                presentMode = available;
-                break;
-            }
-            if (available == VK_PRESENT_MODE_MAILBOX_KHR)
-                presentMode = available;
+    for (VkPresentModeKHR available : presentModes) {
+        if (available == VK_PRESENT_MODE_MAILBOX_KHR) {
+            presentMode = available;
+            break;
         }
+        if (available == VK_PRESENT_MODE_IMMEDIATE_KHR)
+            presentMode = available;
     }
 
     uint32_t imageCount = capabilities.minImageCount + 1;
@@ -545,18 +544,7 @@ bool VulkanContext::initialize(GLFWwindow* targetWindow) {
     return true;
 }
 
-void VulkanContext::setVSync(bool enabled) {
-    if (vsyncEnabled == enabled)
-        return;
-    vsyncEnabled = enabled;
-    presentModeChangePending = (swapchain != VK_NULL_HANDLE);
-}
-
 VkCommandBuffer VulkanContext::acquireFrame() {
-    if (presentModeChangePending) {
-        presentModeChangePending = false;
-        recreateSwapchain();
-    }
     FrameResources& frame = frames[currentFrame];
     vkWaitForFences(device, 1, &frame.inFlightFence, VK_TRUE, UINT64_MAX);
 

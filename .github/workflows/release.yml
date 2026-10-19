@@ -86,14 +86,6 @@ jobs:
         with:
           name: macos-binary
 
-      - name: Package Track Styles
-        run: |
-          mkdir -p temp_styles/community
-          cp -r community/track_styles/* temp_styles/community/
-          cd temp_styles
-          zip -r ../track_styles.zip community
-          cd ..
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -104,4 +96,3 @@ jobs:
             fvd-windows-x64.zip
             fvd-linux-x64.zip
             fvd-macos-arm64.zip
-            track_styles.zip

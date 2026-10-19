@@ -20,7 +20,7 @@ jobs:
           brew install cmake glm molten-vk vulkan-loader vulkan-headers glslang
 
       - name: Configure CMake
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFVD_VERSION=${{ inputs.version }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release "-DFVD_VERSION=${{ inputs.version }}"
 
       - name: Build
         run: cmake --build build -j 4

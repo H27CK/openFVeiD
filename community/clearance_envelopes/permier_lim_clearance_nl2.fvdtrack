@@ -1,0 +1,5 @@
+FVD_TRACK_V1
+AUTHOR "Loundlim"
+MANUFACTURER "Premier"
+TYPE "LIM Clearance"
+ASSET "premier_lim.glb" 0 -1 0.5 0.7 0.7 0.7 0 1

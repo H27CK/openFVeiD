@@ -43,12 +43,19 @@ struct GlbPrimitiveData {
     GlbTextureData textureData;
 };
 
+struct GlbEmptyNode {
+    std::string name;
+    glm::mat4 worldTransform = glm::mat4(1.0f);
+};
+
 struct GlbModelData {
     std::vector<GlbPrimitiveData> primitives;
+    std::vector<GlbEmptyNode> emptyNodes;
     glm::vec3 minAABB = glm::vec3(3.40282347e+38F);
     glm::vec3 maxAABB = glm::vec3(-3.40282347e+38F);
 };
 
-bool readGlb(const std::string& fileName, GlbModelData& modelData);
+bool readGlb(const std::string& virtualPath, GlbModelData& modelData);
+bool readGlbFromMemory(const void* data, size_t size, GlbModelData& modelData);
 
 #endif // GLB_READER_H

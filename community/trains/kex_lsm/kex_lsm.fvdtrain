@@ -1,0 +1,21 @@
+AUTHOR "Branninen"
+MANUFACTURER "Custom"
+TYPE "Kex LSM"
+
+ASSET front "car_front.glb" 0.7152 0.7152 0.7152
+ASSET mid "car_mid.glb" 0.7152 0.7152 0.7152
+ASSET back "car_back.glb" 0.7152 0.7152 0.7152
+ASSET front_bogie "front_bogie.glb" 0.7152 0.7152 0.7152 0.0 -0.007 0.0
+ASSET rear_bogie "rear_bogie.glb" 0.7152 0.7152 0.7152 0.0 -0.007 0.0
+
+CAR_TYPE front_car front
+WHEEL front_car front_bogie
+WHEEL front_car rear_bogie
+
+CAR_TYPE mid_car mid
+WHEEL mid_car rear_bogie
+
+CAR_TYPE back_car back
+WHEEL back_car rear_bogie
+
+LAYOUT front_car (mid_car) back_car

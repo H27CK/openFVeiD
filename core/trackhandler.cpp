@@ -22,7 +22,6 @@
 #include "trackmesh.h"
 #include "dummies.h"
 #include "logger.h"
-#include <iostream>
 
 trackHandler::trackHandler(std::string _name, int _id) {
     LOG_INFO("Creating track: %s (ID: %d)", _name.c_str(), _id);

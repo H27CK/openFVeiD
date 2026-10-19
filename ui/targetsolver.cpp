@@ -24,9 +24,7 @@
 #include "subfunction.h"
 #include "dummies.h"
 #include "core/application.h"
-#include "lenassert.h"
 #include <cmath>
-#include <algorithm>
 
 static double evaluateValue(trackHandler* hTrack, subfunc* sf, AdjustParameter adjustParam, TargetVariable targetVar, double x, double targetValue) {
     if (adjustParam == AdjustParameter::Length) {
@@ -47,7 +45,7 @@ static double evaluateValue(trackHandler* hTrack, subfunc* sf, AdjustParameter a
     mnode targetNode;
     // sec->bArgument: TIME is 0, DISTANCE is 1
     if (sec->bArgument == 0) {
-        int index = (int)(sf->maxArgument * 1000.0 + 0.5);
+        int index = static_cast<int>(std::lround(sf->maxArgument * 1000.0));
         if (index < 0)
             index = 0;
         if (index >= (int)sec->lNodes.size()) {

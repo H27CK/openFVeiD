@@ -20,7 +20,6 @@
 #include "application.h"
 #include "saver.h"
 #include "logger.h"
-#include "trackhandler.h"
 #include "viewport.h"
 #include "globalundohandler.h"
 #include <sstream>

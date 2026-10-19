@@ -70,8 +70,21 @@ static LONG WINAPI WindowsCrashHandler(EXCEPTION_POINTERS* pExceptionInfo) {
 
     std::ofstream crashLog("fvd_crash.log");
     if (crashLog.is_open()) {
+        HMODULE hModule = GetModuleHandle(NULL);
         crashLog << "FVD++ Crash Report (Windows)" << std::endl;
         crashLog << "Exception Code: 0x" << std::hex << pExceptionInfo->ExceptionRecord->ExceptionCode << std::dec << std::endl;
+        crashLog << "Fault Address: 0x" << std::hex << (DWORD64)pExceptionInfo->ExceptionRecord->ExceptionAddress << std::dec << std::endl;
+        crashLog << "Module Base: 0x" << std::hex << (DWORD64)hModule << std::dec << std::endl;
+
+        if (pExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+            pExceptionInfo->ExceptionRecord->NumberParameters >= 2) {
+            ULONG_PTR accessType = pExceptionInfo->ExceptionRecord->ExceptionInformation[0];
+            ULONG_PTR targetAddr = pExceptionInfo->ExceptionRecord->ExceptionInformation[1];
+            crashLog << "Access Violation: Attempted to "
+                     << (accessType == 0 ? "read from" : (accessType == 1 ? "write to" : "execute"))
+                     << " address 0x" << std::hex << targetAddr << std::dec << std::endl;
+        }
+
         crashLog << "Stack Trace:" << std::endl;
 
         void* stack[64];
@@ -101,7 +114,8 @@ static LONG WINAPI WindowsCrashHandler(EXCEPTION_POINTERS* pExceptionInfo) {
                 }
                 crashLog << " (Address: " << stack[i] << ")" << std::endl;
             } else {
-                crashLog << "[Unknown Symbol] (Address: " << stack[i] << ")" << std::endl;
+                DWORD64 rva = (DWORD64)stack[i] - (DWORD64)hModule;
+                crashLog << "fvd.exe + 0x" << std::hex << rva << " (Address: " << stack[i] << ")" << std::dec << std::endl;
             }
         }
         crashLog.close();

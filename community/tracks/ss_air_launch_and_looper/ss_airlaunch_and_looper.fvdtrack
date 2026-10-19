@@ -1,0 +1,8 @@
+FVD_TRACK_V1
+AUTHOR "Loundlim"
+MANUFACTURER "S&S"
+TYPE "Air Launch & Looper"
+EXTRUSION 0 0.14 0.14 -0.6 0
+EXTRUSION 0 0.14 0.14 0.6 0
+EXTRUSION 0 0.44 0.5 0 -0.5
+ASSET "ssnewgentrackforfvd.glb" 0 -1 1 0.7 0.7 0.7 0 1

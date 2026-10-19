@@ -28,10 +28,9 @@
 #include "lenassert.h"
 #include "dummies.h"
 #include "glbreader.h"
-#include "customstyle.h"
+#include "customtrack.h"
 #include "assets.h"
 #include "logger.h"
-#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <algorithm>
 #include <cctype>
@@ -199,6 +198,16 @@ void Viewport::shutdown() {
             }
         }
     }
+    for (auto& pair : trainGlbCache) {
+        for (auto& prim : pair.second.primitives) {
+            prim.mesh.vertexBuffer.destroy();
+            prim.mesh.indexBuffer.destroy();
+            if (prim.hasTexture) {
+                prim.texture.destroy();
+            }
+        }
+    }
+    trainGlbCache.clear();
     finalOutputFb.destroy();
 }
 
@@ -342,11 +351,11 @@ void Viewport::initTextures() {
     unsigned char cubeFaces[6 * 4] = {};
     dummyCubeTexture.createCube(*gVulkanContext, 1, 1, cubeFaces);
 
-    if (!loadEmbeddedTexture("assets/textures/metal_normal.png", metalNormalTexture)) {
+    if (!loadEmbeddedTexture("resources/textures/metal_normal.png", metalNormalTexture)) {
         const unsigned char flatNormal[4] = {128, 128, 255, 255};
         metalNormalTexture.create2d(*gVulkanContext, 1, 1, flatNormal);
     }
-    if (!loadEmbeddedTexture("assets/textures/metal_roughness.jpg", metalRoughnessTexture)) {
+    if (!loadEmbeddedTexture("resources/textures/metal_roughness.jpg", metalRoughnessTexture)) {
         const unsigned char defaultRoughness[4] = {160, 160, 160, 255};
         metalRoughnessTexture.create2d(*gVulkanContext, 1, 1, defaultRoughness);
     }
@@ -868,37 +877,44 @@ void Viewport::initFloorMesh() {
 
     std::vector<float> markerData;
     std::vector<uint32_t> indices;
-    float radius = 0.15f;
-    int rings = 8;
-    int sectors = 12;
-    for (int r = 0; r <= rings; ++r) {
-        float v = (float)r / rings;
-        float phi = v * F_PI;
-        for (int s = 0; s <= sectors; ++s) {
-            float u = (float)s / sectors;
-            float theta = u * F_PI * 2.0f;
-            float x = radius * cos(theta) * sin(phi);
-            float y = radius * cos(phi);
-            float z = radius * sin(theta) * sin(phi);
-            markerData.push_back(x);
-            markerData.push_back(y);
-            markerData.push_back(z);
+
+    auto addBox = [&](glm::vec3 minB, glm::vec3 maxB) {
+        uint32_t base = (uint32_t)(markerData.size() / 3);
+        float verts[8][3] = {
+            {minB.x, minB.y, minB.z},
+            {maxB.x, minB.y, minB.z},
+            {maxB.x, maxB.y, minB.z},
+            {minB.x, maxB.y, minB.z},
+            {minB.x, minB.y, maxB.z},
+            {maxB.x, minB.y, maxB.z},
+            {maxB.x, maxB.y, maxB.z},
+            {minB.x, maxB.y, maxB.z}};
+        for (int i = 0; i < 8; ++i) {
+            markerData.push_back(verts[i][0]);
+            markerData.push_back(verts[i][1]);
+            markerData.push_back(verts[i][2]);
         }
-    }
-    for (int r = 0; r < rings; ++r) {
-        for (int s = 0; s < sectors; ++s) {
-            int i0 = r * (sectors + 1) + s;
-            int i1 = i0 + 1;
-            int i2 = (r + 1) * (sectors + 1) + s;
-            int i3 = i2 + 1;
-            indices.push_back(i0);
-            indices.push_back(i2);
-            indices.push_back(i1);
-            indices.push_back(i1);
-            indices.push_back(i2);
-            indices.push_back(i3);
+        uint32_t boxIndices[36] = {
+            0, 1, 2, 2, 3, 0, // front
+            5, 4, 7, 7, 6, 5, // back
+            4, 0, 3, 3, 7, 4, // left
+            1, 5, 6, 6, 2, 1, // right
+            3, 2, 6, 6, 7, 3, // top
+            4, 5, 1, 1, 0, 4  // bottom
+        };
+        for (int i = 0; i < 36; ++i) {
+            indices.push_back(base + boxIndices[i]);
         }
-    }
+    };
+
+    float L = 0.15f;
+    float R = 0.004f;
+    // Axis along X
+    addBox(glm::vec3(-L, -R, -R), glm::vec3(L, R, R));
+    // Axis along Y
+    addBox(glm::vec3(-R, -L, -R), glm::vec3(R, L, R));
+    // Axis along Z
+    addBox(glm::vec3(-R, -R, -L), glm::vec3(R, R, L));
 
     markerMesh.vertexBuffer.create(*gVulkanContext, markerData.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     markerMesh.vertexBuffer.write(markerData.data(), markerData.size() * sizeof(float));
@@ -1147,6 +1163,7 @@ void Viewport::render(const std::vector<trackHandler*>& trackList) {
         for (auto track : trackList) {
             if (track->trackData->drawHeartline != 3) {
                 drawTrack(commandBuffer, track, RenderPass::PlanarShadow);
+                drawTrain(commandBuffer, track, RenderPass::PlanarShadow);
             }
         }
         if (gloParent->mOptions->glbShadowsEnabled) {
@@ -1157,6 +1174,7 @@ void Viewport::render(const std::vector<trackHandler*>& trackList) {
     for (auto track : trackList) {
         if (track->trackData->drawHeartline != 3) {
             drawTrack(commandBuffer, track, RenderPass::Main);
+            drawTrain(commandBuffer, track, RenderPass::Main);
         }
     }
     drawGlbs(commandBuffer, RenderPass::Main);
@@ -1259,15 +1277,19 @@ void Viewport::captureScreenshot(int multiplier, const std::string& path, const 
     drawOrthoGrid(commandBuffer);
     if (shadowMode > 0 && getShadowStrength() > 0.0001f) {
         for (auto track : trackList) {
-            if (track->trackData->drawHeartline != 3)
+            if (track->trackData->drawHeartline != 3) {
                 drawTrack(commandBuffer, track, RenderPass::PlanarShadow);
+                drawTrain(commandBuffer, track, RenderPass::PlanarShadow);
+            }
         }
         if (gloParent->mOptions->glbShadowsEnabled)
             drawGlbs(commandBuffer, RenderPass::PlanarShadow);
     }
     for (auto track : trackList) {
-        if (track->trackData->drawHeartline != 3)
+        if (track->trackData->drawHeartline != 3) {
             drawTrack(commandBuffer, track, RenderPass::Main);
+            drawTrain(commandBuffer, track, RenderPass::Main);
+        }
     }
     drawGlbs(commandBuffer, RenderPass::Main);
     drawMarkers(commandBuffer);
@@ -1510,8 +1532,41 @@ void Viewport::buildMatrices(float offset) {
             glm::vec3 worldTarget = glm::vec3(anchorBase * glm::vec4(pos + direction, 1.0f));
             glm::vec3 worldUp = -glm::vec3(anchorBase * glm::vec4(down, 0.0f));
 
-            worldPos += worldUp * povHeightOffset;
-            worldTarget += worldUp * povHeightOffset;
+            if (curTrack->train.boundCameraIndex >= 0 &&
+                curTrack->train.boundCameraIndex < (int)curTrack->train.getCameras().size()) {
+                glm::vec3 camOffset = curTrack->train.getCameras()[curTrack->train.boundCameraIndex].offset;
+                double targetDist = povNode->fTotalLength + (double)camOffset.z;
+                glm::mat4 trackFrame = evaluateTrackTransformAtDist(curTrack, targetDist, anchorBase);
+
+                glm::vec3 worldRight = glm::vec3(trackFrame[0]);
+                glm::vec3 mWorldUp = glm::vec3(trackFrame[1]);
+                glm::vec3 worldForward = -glm::vec3(trackFrame[2]);
+                glm::vec3 railPos = glm::vec3(trackFrame[3]);
+
+                worldPos = railPos + worldRight * camOffset.x + mWorldUp * camOffset.y;
+
+                if (gloParent->mOptions->lookAheadPovSmoothing) {
+                    double aheadDist = targetDist + 1.5;
+                    glm::mat4 aheadFrame = evaluateTrackTransformAtDist(curTrack, aheadDist, anchorBase);
+                    glm::vec3 aheadRailPos = glm::vec3(aheadFrame[3]);
+                    glm::vec3 aheadPos = aheadRailPos + glm::vec3(aheadFrame[0]) * camOffset.x + glm::vec3(aheadFrame[1]) * camOffset.y;
+                    glm::vec3 aheadDiff = aheadPos - worldPos;
+                    if (glm::length(aheadDiff) > 0.01f) {
+                        direction = glm::normalize(aheadDiff);
+                    } else {
+                        direction = worldForward;
+                    }
+                } else {
+                    direction = worldForward;
+                }
+
+                worldUp = mWorldUp;
+                worldPos += worldUp * povHeightOffset;
+                worldTarget = worldPos + direction;
+            } else {
+                worldPos += worldUp * povHeightOffset;
+                worldTarget += worldUp * povHeightOffset;
+            }
 
             ModelMatrix = glm::lookAt(worldPos, worldTarget, worldUp);
             cameraPos = worldPos;
@@ -1681,6 +1736,66 @@ void Viewport::drawFloor(VkCommandBuffer commandBuffer) {
     vkCmdDraw(commandBuffer, 4, 1, 0, 0);
 }
 
+glm::mat4 Viewport::evaluateTrackTransformAtDist(track* myTrack, double dist, const glm::mat4& baseAnchor) {
+    if (!myTrack || myTrack->getNumPoints() == 0)
+        return glm::mat4(1.0f);
+
+    double totalTrackLength = myTrack->getPoint(myTrack->getNumPoints() - 1)->fTotalLength;
+    dist = std::clamp(dist, 0.0, totalTrackLength);
+
+    int nodeIdx = myTrack->getIndexFromDist(dist);
+    int nextIdx = std::min(nodeIdx + 1, myTrack->getNumPoints() - 1);
+
+    mnode* n0 = myTrack->getPoint(nodeIdx);
+    mnode* n1 = myTrack->getPoint(nextIdx);
+    if (!n0)
+        return glm::mat4(1.0f);
+
+    double heartOffset = (double)myTrack->fHeart;
+    glm::dvec3 pos;
+    glm::dvec3 lat;
+    glm::dvec3 norm;
+    glm::dvec3 dir;
+
+    if (n1 && n1 != n0) {
+        double d0 = n0->fTotalLength;
+        double d1 = n1->fTotalLength;
+        double t = (d1 > d0) ? std::clamp((dist - d0) / (d1 - d0), 0.0, 1.0) : 0.0;
+
+        glm::dvec3 n0Pos = n0->vPos + heartOffset * n0->vNorm;
+        glm::dvec3 n1Pos = n1->vPos + heartOffset * n1->vNorm;
+        pos = glm::mix(n0Pos, n1Pos, t);
+
+        norm = glm::normalize(glm::mix(n0->vNorm, n1->vNorm, t));
+
+        glm::dvec3 n0Lat = (heartOffset != 0.0) ? n0->vLatHeart(heartOffset) : n0->vLat;
+        glm::dvec3 n1Lat = (heartOffset != 0.0) ? n1->vLatHeart(heartOffset) : n1->vLat;
+        lat = glm::normalize(glm::mix(n0Lat, n1Lat, t));
+
+        glm::dvec3 n0Dir = (heartOffset != 0.0) ? n0->vDirHeart(heartOffset) : n0->vDir;
+        glm::dvec3 n1Dir = (heartOffset != 0.0) ? n1->vDirHeart(heartOffset) : n1->vDir;
+        dir = glm::normalize(glm::mix(n0Dir, n1Dir, t));
+    } else {
+        pos = n0->vPos + heartOffset * n0->vNorm;
+        norm = glm::normalize(n0->vNorm);
+        lat = (heartOffset != 0.0) ? glm::normalize(n0->vLatHeart(heartOffset)) : glm::normalize(n0->vLat);
+        dir = (heartOffset != 0.0) ? glm::normalize(n0->vDirHeart(heartOffset)) : glm::normalize(n0->vDir);
+    }
+
+    glm::vec3 worldPos = glm::vec3(baseAnchor * glm::vec4(pos, 1.0f));
+    glm::vec3 worldRight = glm::normalize(glm::vec3(baseAnchor * glm::vec4(lat, 0.0f)));
+    glm::vec3 worldUp = glm::normalize(glm::vec3(baseAnchor * glm::vec4(-norm, 0.0f)));
+    glm::vec3 worldForward = glm::normalize(glm::vec3(baseAnchor * glm::vec4(dir, 0.0f)));
+
+    glm::mat4 m(1.0f);
+    m[0] = glm::vec4(worldRight, 0.0f);
+    m[1] = glm::vec4(worldUp, 0.0f);
+    m[2] = glm::vec4(-worldForward, 0.0f);
+    m[3] = glm::vec4(worldPos, 1.0f);
+
+    return m;
+}
+
 void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
     if (!activeTrack || !activeTrack->trackData)
         return;
@@ -1717,8 +1832,7 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
 
     for (size_t i = 0; i < myTrack->trainOffsets.size(); ++i) {
         const auto& offset = myTrack->trainOffsets[i];
-        int totalPoints = myTrack->getNumPoints();
-        if (totalPoints == 0)
+        if (myTrack->getNumPoints() == 0)
             continue;
 
         mnode* povMarkerNode = getPOVNode();
@@ -1728,13 +1842,14 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
         }
 
         double targetDist = povDist + offset.offset.z;
-        int searchIdx = myTrack->getIndexFromDist(targetDist);
+        glm::mat4 trackFrame = evaluateTrackTransformAtDist(myTrack, targetDist, baseAnchorBase);
 
-        mnode* targetNode = myTrack->getPoint(searchIdx);
-        if (!targetNode)
-            continue;
+        glm::vec3 worldRight = glm::vec3(trackFrame[0]);
+        glm::vec3 worldUp = glm::vec3(trackFrame[1]);
+        glm::vec3 worldForward = -glm::vec3(trackFrame[2]);
+        glm::vec3 railPos = glm::vec3(trackFrame[3]);
 
-        glm::vec3 pos = targetNode->vPos + targetNode->vLat * (double)offset.offset.x - targetNode->vNorm * (double)offset.offset.y;
+        glm::vec3 markerPos = railPos + worldRight * offset.offset.x + worldUp * offset.offset.y;
 
         float markerScale = 1.0f;
         glm::vec3 markerColor = offset.color;
@@ -1761,7 +1876,13 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
             }
         }
 
-        uniforms.anchorBase = baseAnchorBase * glm::translate(glm::mat4(1.0f), pos) * glm::scale(glm::mat4(1.0f), glm::vec3(markerScale));
+        glm::mat4 orient(1.0f);
+        orient[0] = glm::vec4(worldRight, 0.0f);
+        orient[1] = glm::vec4(worldUp, 0.0f);
+        orient[2] = glm::vec4(-worldForward, 0.0f);
+        orient[3] = glm::vec4(markerPos, 1.0f);
+
+        uniforms.anchorBase = orient * glm::scale(glm::mat4(1.0f), glm::vec3(markerScale));
         uniforms.solidColor = glm::vec4(markerColor, 1.0f);
         markerPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
         vkCmdDrawIndexed(commandBuffer, markerMesh.count, 1, 0, 0, 0);
@@ -1962,6 +2083,203 @@ void Viewport::drawTrack(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
         VkDeviceSize offsets[2] = {0, 0};
         vkCmdBindVertexBuffers(commandBuffer, 0, 2, buffers, offsets);
         vkCmdDraw(commandBuffer, (uint32_t)mesh->heartline.size(), 1, 0, 0);
+    }
+}
+
+void Viewport::drawTrain(VkCommandBuffer commandBuffer, trackHandler* hTrack, RenderPass pass) {
+    if (!hTrack || !hTrack->trackData)
+        return;
+
+    track* myTrack = hTrack->trackData;
+    if (myTrack->train.getLayout().empty() || myTrack->getNumPoints() <= 1)
+        return;
+
+    if (pass == RenderPass::PlanarShadow && !gloParent->mOptions->glbShadowsEnabled)
+        return;
+
+    // Load any missing assets into trainGlbCache
+    for (const auto& assetDef : myTrack->train.getAssets()) {
+        if (assetDef.glbPath.empty())
+            continue;
+        if (trainGlbCache.find(assetDef.glbPath) == trainGlbCache.end()) {
+            GlbModelData modelData;
+            if (readGlb(assetDef.glbPath, modelData)) {
+                GlbMesh gm;
+                gm.path = assetDef.glbPath;
+                for (auto& primData : modelData.primitives) {
+                    GlbPrimitive prim;
+                    prim.vertexCount = (int)primData.vertices.size();
+                    prim.indexCount = (int)primData.indices.size();
+                    prim.baseColorFactor = primData.baseColorFactor;
+                    prim.hasTexture = primData.hasTexture;
+
+                    size_t vertexBufferSize = primData.vertices.size() * sizeof(GlbVertex);
+                    prim.mesh.vertexBuffer.create(*gVulkanContext, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+                    prim.mesh.vertexBuffer.write(primData.vertices.data(), vertexBufferSize);
+
+                    size_t indexBufferSize = primData.indices.size() * sizeof(uint32_t);
+                    prim.mesh.indexBuffer.create(*gVulkanContext, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+                    prim.mesh.indexBuffer.write(primData.indices.data(), indexBufferSize);
+
+                    if (prim.hasTexture) {
+                        prim.texture.create2d(*gVulkanContext, primData.textureData.width, primData.textureData.height, primData.textureData.rgba.data());
+                        prim.descriptorSets = glbPipeline.createDescriptorSets(prim.texture.view, prim.texture.sampler);
+                    } else {
+                        prim.descriptorSets = glbPipeline.createDescriptorSets(dummyWhiteTexture.view, dummyWhiteTexture.sampler);
+                    }
+                    gm.primitives.push_back(std::move(prim));
+                }
+                trainGlbCache[assetDef.glbPath] = std::move(gm);
+            }
+        }
+    }
+
+    glm::mat4 baseAnchor = glm::translate(glm::mat4(1.0f), glm::vec3(myTrack->startPos)) *
+                           glm::rotate(glm::mat4(1.0f), (float)TO_RAD(myTrack->startYaw - 90.f), glm::vec3(0.f, 1.f, 0.f));
+
+    mnode* povMarkerNode = getPOVNode();
+    double povDist = povMarkerNode ? povMarkerNode->fTotalLength : 0.0;
+    double totalTrackLength = myTrack->getNumPoints() > 0 ? myTrack->getPoint(myTrack->getNumPoints())->fTotalLength : 1000.0;
+    if (totalTrackLength <= 0.01)
+        return;
+
+    float totalTrainLength = myTrack->train.getTotalLength();
+    double currentFrontDist = povDist + (double)totalTrainLength / 2.0;
+
+    auto getTrackTransformAtDist = [&](double dist) -> glm::mat4 {
+        return evaluateTrackTransformAtDist(myTrack, dist, baseAnchor);
+    };
+
+    auto renderGlbModel = [&](const std::string& assetId, const glm::mat4& transform) {
+        std::string glbPath;
+        const TrainAssetDef* assetDefPtr = nullptr;
+        for (const auto& a : myTrack->train.getAssets()) {
+            if (a.id == assetId) {
+                glbPath = a.glbPath;
+                assetDefPtr = &a;
+                break;
+            }
+        }
+        if (glbPath.empty())
+            return;
+
+        auto it = trainGlbCache.find(glbPath);
+        if (it == trainGlbCache.end())
+            return;
+
+        const auto& sm = it->second;
+
+        glm::mat4 finalTransform = transform;
+        if (assetDefPtr) {
+            if (assetDefPtr->offset != glm::vec3(0.0f))
+                finalTransform = glm::translate(finalTransform, assetDefPtr->offset);
+            if (assetDefPtr->scale != glm::vec3(1.0f))
+                finalTransform = glm::scale(finalTransform, assetDefPtr->scale);
+        }
+
+        if (pass == RenderPass::PlanarShadow) {
+            SimpleShadowUniforms uniforms = {
+                .projectionMatrix = ProjectionMatrix,
+                .modelMatrix = ModelMatrix,
+                .anchorBase = finalTransform,
+                .shadowMatrix = shadowMatrix,
+                .shadowColor = glm::vec4(gloParent->mOptions->shadowColor, 1.0f),
+                .uTrackLength = 0.0f,
+                .heartline = 0.0f,
+                .isInstanced = 0,
+                .isAsset = 0,
+                .shadowStrength = getShadowStrength(),
+                .floorHeight = grdHeight,
+                .softShadowsEnabled = gloParent->mOptions->softShadowsEnabled ? 1 : 0,
+            };
+            shadowGlbPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
+            shadowGlbPipeline.bindStorageSet(commandBuffer, gVulkanContext->dummyStorageSet());
+            for (const auto& prim : sm.primitives) {
+                VkBuffer buffers[2] = {prim.mesh.vertexBuffer.buffer, zeroAttributeBuffer.buffer};
+                VkDeviceSize offsets[2] = {0, 0};
+                vkCmdBindVertexBuffers(commandBuffer, 0, 2, buffers, offsets);
+                vkCmdBindIndexBuffer(commandBuffer, prim.mesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(commandBuffer, prim.indexCount, 1, 0, 0, 0);
+            }
+        } else {
+            StlUniforms uniforms = {
+                .projectionMatrix = ProjectionMatrix,
+                .modelMatrix = ModelMatrix,
+                .anchorBase = finalTransform,
+                .eyePos = glm::vec4(cameraPos, 1.0f),
+                .lightDir = glm::vec4(lightDir, 0.0f),
+                .solidColor = glm::vec4(1.0f),
+                .mistColor = glm::vec4(gloParent->mOptions->mistColor, 1.0f),
+                .ambientColor = glm::vec4(gloParent->mOptions->ambientLightColor, 1.0f),
+                .sunColor = glm::vec4(gloParent->mOptions->sunLightColor, 1.0f),
+                .wire = 0,
+                .edgeWidth = 0.006f,
+                .mistEnabled = gloParent->mOptions->mistEnabled ? 1 : 0,
+                .mistNear = gloParent->mOptions->mistNear,
+                .mistFar = gloParent->mOptions->mistFar,
+                .ambientStrength = gloParent->mOptions->ambientLightStrength,
+                .sunStrength = gloParent->mOptions->sunLightStrength,
+            };
+            for (const auto& prim : sm.primitives) {
+                uniforms.solidColor = prim.baseColorFactor;
+                VkDescriptorSet descriptorSet = prim.descriptorSets.empty() ? VK_NULL_HANDLE : prim.descriptorSets[gVulkanContext->currentFrameIndex()];
+                glbPipeline.bindWithUniformsAndSet(commandBuffer, descriptorSet, &uniforms, sizeof(uniforms));
+                VkDeviceSize zeroOffset = 0;
+                vkCmdBindVertexBuffers(commandBuffer, 0, 1, &prim.mesh.vertexBuffer.buffer, &zeroOffset);
+                vkCmdBindIndexBuffer(commandBuffer, prim.mesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(commandBuffer, prim.indexCount, 1, 0, 0, 0);
+            }
+        }
+    };
+
+    for (const auto& carId : myTrack->train.getLayout()) {
+        const TrainCarDef* carDef = myTrack->train.findCarDef(carId);
+        if (!carDef)
+            continue;
+
+        double distFront = currentFrontDist;
+        double distRearChord = (carDef->wheels.size() >= 1 && carDef->wheels.back().localZ > 0.01f)
+                                   ? distFront - (double)carDef->wheels.back().localZ
+                                   : currentFrontDist - (double)carDef->length;
+
+        glm::mat4 matFront = getTrackTransformAtDist(distFront);
+        glm::mat4 matRear = getTrackTransformAtDist(distRearChord);
+
+        glm::vec3 posFront = glm::vec3(matFront[3]);
+        glm::vec3 posRear = glm::vec3(matRear[3]);
+        glm::vec3 carForward = posFront - posRear;
+        float dirLen = glm::length(carForward);
+        if (dirLen > 0.001f)
+            carForward /= dirLen;
+        else
+            carForward = -glm::vec3(matFront[2]);
+
+        glm::vec3 carUp = glm::normalize(glm::vec3(matFront[1]) + glm::vec3(matRear[1]));
+        glm::vec3 carRight = glm::normalize(glm::cross(carForward, carUp));
+        carUp = glm::normalize(glm::cross(carRight, carForward));
+
+        glm::mat4 carMat(1.0f);
+        carMat[0] = glm::vec4(carRight, 0.0f);
+        carMat[1] = glm::vec4(carUp, 0.0f);
+        carMat[2] = glm::vec4(-carForward, 0.0f);
+        glm::vec3 carOriginPos = posFront - (float)carDef->bodyOffsetZ * carForward;
+        carMat[3] = glm::vec4(carOriginPos, 1.0f);
+
+        // Render Car Body
+        if (!carDef->assetId.empty()) {
+            renderGlbModel(carDef->assetId, carMat);
+        }
+
+        // Render Wheel Bogeys defined for this car
+        for (const auto& wheelDef : carDef->wheels) {
+            if (!wheelDef.wheelAssetId.empty()) {
+                double wheelDist = distFront - (double)wheelDef.localZ;
+                glm::mat4 wheelMat = getTrackTransformAtDist(wheelDist);
+                renderGlbModel(wheelDef.wheelAssetId, wheelMat);
+            }
+        }
+
+        currentFrontDist -= (double)carDef->length;
     }
 }
 

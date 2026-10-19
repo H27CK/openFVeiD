@@ -1,0 +1,6 @@
+FVD_TRACK_V1
+AUTHOR "Loundlim"
+MANUFACTURER "RMC"
+TYPE "Topper Track"
+ASSET "topper_track.glb" 0 -1 0.25 0.7 0.7 0.7 1 1
+ASSET "topper_track_tie.glb" 0 -1 1 0.7 0.7 0.7 1 1

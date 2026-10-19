@@ -38,3 +38,6 @@ build/
 # local configuration
 imgui.ini
 options.cfg
+
+# archives
+*.fvdpack

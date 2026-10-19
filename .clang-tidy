@@ -1,0 +1,17 @@
+---
+Checks: >
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  -bugprone-narrowing-conversions,
+  -bugprone-easily-swappable-parameters,
+  -performance-enum-size,
+  -bugprone-reserved-identifier,
+  -bugprone-macro-parentheses,
+  -bugprone-casting-through-void,
+  -bugprone-branch-clone,
+  -bugprone-signed-bitwise
+
+HeaderFilterRegex: '^(core/|ui/|renderer/)'
+WarningsAsErrors: ''
+FormatStyle: file
