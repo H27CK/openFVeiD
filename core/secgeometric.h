@@ -20,7 +20,6 @@
 */
 
 #include "section.h"
-#include "track.h"
 
 class secgeometric : public section {
 public:

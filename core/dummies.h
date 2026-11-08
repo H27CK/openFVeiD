@@ -33,6 +33,7 @@ class section;
 class subfunc;
 
 struct DummyOptions {
+    // Booleans (alphabetical)
     bool autoFocusOnSelection = false;
     bool drawGrid = true;
     bool editShadows = true;
@@ -40,6 +41,7 @@ struct DummyOptions {
     bool enforceMinRadius = false;
     bool glbShadowsEnabled = false;  // Experimental
     bool graphOverlayEnabled = true; // Telemetry overlay
+    bool hideEmptyManufacturers = false;
     bool lookAheadPovSmoothing = true;
     bool mistEnabled = false;
     bool relativeExport = false; // Relative NoLimits 2 export coordinate behaviour
@@ -52,10 +54,13 @@ struct DummyOptions {
     bool transparentGraphs = false;
     bool useLegacyHeartline = false;
 
+    // Floats (alphabetical)
     float ambientLightStrength = 0.72f;
     float fontSize = 15.0f;
     float fov = 90.0f;
     float graphSpacingLimit = 0.1f;
+    float gridFadeEnd = 800.0f;
+    float gridFadeStart = 150.0f;
     float gridMajorThickness = 1.5f;
     float gridMinorThickness = 1.0f;
     float minRadius = 5.0f;
@@ -72,6 +77,7 @@ struct DummyOptions {
     float sunPitch = -90.0f; // Directly above
     float sunYaw = 0.0f;
 
+    // Integers (alphabetical)
     int defaultTransitionLateral = 4; // quartic (Lateral Force default)
     int defaultTransitionNormal = 2;  // cubic (Normal Force default)
     int defaultTransitionPitch = 2;   // cubic (Pitch default)
@@ -97,6 +103,7 @@ struct DummyOptions {
     int targetFPS = 60;
     int theme = 3; // 0: Dark, 1: Light, 2: Classic, 3: Soft Dark, 4: Soft Light
 
+    // Colors / Vectors (alphabetical)
     glm::vec3 ambientLightColor = glm::vec3(1.0f);
     glm::vec3 backgroundColor = glm::vec3(0.5f, 0.5f, 0.5f);
     glm::vec3 floorColor = glm::vec3(213.0f / 255.0f, 213.0f / 255.0f, 213.0f / 255.0f);
@@ -106,9 +113,11 @@ struct DummyOptions {
     glm::vec3 sunLightColor = glm::vec3(1.0f);
     glm::vec3 tabHighlightColor = glm::vec3(0.26f, 0.59f, 0.98f);
 
+    // Strings (alphabetical)
     std::string lastEnvPreset = "";
     std::string skyboxName = "Solid Color";
 
+    // Arrays (alphabetical)
     glm::vec3 graphColors[18] = {
         glm::vec3(1.0f, 0.2f, 0.2f), // EditRoll (0)
         glm::vec3(0.4f, 0.7f, 1.0f), // EditNormal (1)
@@ -134,6 +143,7 @@ struct DummyOptions {
         std::ofstream out(path);
         if (out) {
             out << "FVD_OPT_V1 "
+                // Booleans (alphabetical)
                 << autoFocusOnSelection << " "
                 << drawGrid << " "
                 << editShadows << " "
@@ -141,6 +151,7 @@ struct DummyOptions {
                 << enforceMinRadius << " "
                 << glbShadowsEnabled << " "
                 << graphOverlayEnabled << " "
+                << hideEmptyManufacturers << " "
                 << lookAheadPovSmoothing << " "
                 << mistEnabled << " "
                 << relativeExport << " "
@@ -152,10 +163,13 @@ struct DummyOptions {
                 << trackTextureEnabled << " "
                 << transparentGraphs << " "
                 << useLegacyHeartline << " "
+                // Floats (alphabetical)
                 << ambientLightStrength << " "
                 << fontSize << " "
                 << fov << " "
                 << graphSpacingLimit << " "
+                << gridFadeEnd << " "
+                << gridFadeStart << " "
                 << gridMajorThickness << " "
                 << gridMinorThickness << " "
                 << minRadius << " "
@@ -171,6 +185,7 @@ struct DummyOptions {
                 << sunLightStrength << " "
                 << sunPitch << " "
                 << sunYaw << " "
+                // Integers (alphabetical)
                 << defaultTransitionLateral << " "
                 << defaultTransitionNormal << " "
                 << defaultTransitionPitch << " "
@@ -195,6 +210,7 @@ struct DummyOptions {
                 << screenshotMultiplier << " "
                 << targetFPS << " "
                 << theme << " "
+                // Colors / Vectors (alphabetical)
                 << ambientLightColor.x << " " << ambientLightColor.y << " " << ambientLightColor.z << " "
                 << backgroundColor.x << " " << backgroundColor.y << " " << backgroundColor.z << " "
                 << floorColor.x << " " << floorColor.y << " " << floorColor.z << " "
@@ -203,8 +219,10 @@ struct DummyOptions {
                 << shadowColor.x << " " << shadowColor.y << " " << shadowColor.z << " "
                 << sunLightColor.x << " " << sunLightColor.y << " " << sunLightColor.z << " "
                 << tabHighlightColor.x << " " << tabHighlightColor.y << " " << tabHighlightColor.z << " "
+                // Strings (alphabetical)
                 << std::quoted(lastEnvPreset) << " "
-                << std::quoted(skyboxName) << "\n";
+                << std::quoted(skyboxName) << " ";
+            // Arrays
             for (int i = 0; i < 18; ++i) {
                 out << graphColors[i].x << " " << graphColors[i].y << " " << graphColors[i].z << " ";
             }
@@ -220,8 +238,19 @@ struct DummyOptions {
                 return;
 
             if (version == "FVD_OPT_V1") {
-                in >> autoFocusOnSelection >> drawGrid >> editShadows >> enableCurveChasing >> enforceMinRadius >> glbShadowsEnabled >> graphOverlayEnabled >> lookAheadPovSmoothing >> mistEnabled >> relativeExport >> shadowsEnabled >> showFPS >> skyboxEnabled >> softShadowsEnabled >> strictCustomStyleLock >> trackTextureEnabled >> transparentGraphs >> useLegacyHeartline >> ambientLightStrength >> fontSize >> fov >> graphSpacingLimit >> gridMajorThickness >> gridMinorThickness >> minRadius >> mistFar >> mistNear >> mouseSensitivity >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> skyboxRotation >> sprintMultiplier >> stallSpeed >> sunLightStrength >> sunPitch >> sunYaw >> defaultTransitionLateral >> defaultTransitionNormal >> defaultTransitionPitch >> defaultTransitionRoll >> defaultTransitionYaw >> keyAppendTransition >> keyBackward >> keyForward >> keyLeft >> keyOverlayScenery >> keyOverlayWarnings >> keyPrependTransition >> keyRight >> keyViewFront >> keyViewPerspective >> keyViewSide >> keyViewTop >> maxUndoChanges >> measures >> meshQuality >> msaaSamples >> screenshotMultiplier >> targetFPS >> theme >> ambientLightColor.x >> ambientLightColor.y >> ambientLightColor.z >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> floorColor.x >> floorColor.y >> floorColor.z >> gridLineColor.x >> gridLineColor.y >> gridLineColor.z >> mistColor.x >> mistColor.y >> mistColor.z >> shadowColor.x >> shadowColor.y >> shadowColor.z >> sunLightColor.x >> sunLightColor.y >> sunLightColor.z >> tabHighlightColor.x >> tabHighlightColor.y >> tabHighlightColor.z >> std::quoted(lastEnvPreset) >> std::quoted(skyboxName);
+                in
+                    // Booleans (alphabetical)
+                    >> autoFocusOnSelection >> drawGrid >> editShadows >> enableCurveChasing >> enforceMinRadius >> glbShadowsEnabled >> graphOverlayEnabled >> hideEmptyManufacturers >> lookAheadPovSmoothing >> mistEnabled >> relativeExport >> shadowsEnabled >> showFPS >> skyboxEnabled >> softShadowsEnabled >> strictCustomStyleLock >> trackTextureEnabled >> transparentGraphs >> useLegacyHeartline
+                    // Floats (alphabetical)
+                    >> ambientLightStrength >> fontSize >> fov >> graphSpacingLimit >> gridFadeEnd >> gridFadeStart >> gridMajorThickness >> gridMinorThickness >> minRadius >> mistFar >> mistNear >> mouseSensitivity >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> skyboxRotation >> sprintMultiplier >> stallSpeed >> sunLightStrength >> sunPitch >> sunYaw
+                    // Integers (alphabetical)
+                    >> defaultTransitionLateral >> defaultTransitionNormal >> defaultTransitionPitch >> defaultTransitionRoll >> defaultTransitionYaw >> keyAppendTransition >> keyBackward >> keyForward >> keyLeft >> keyOverlayScenery >> keyOverlayWarnings >> keyPrependTransition >> keyRight >> keyViewFront >> keyViewPerspective >> keyViewSide >> keyViewTop >> maxUndoChanges >> measures >> meshQuality >> msaaSamples >> screenshotMultiplier >> targetFPS >> theme
+                    // Colors / Vectors (alphabetical)
+                    >> ambientLightColor.x >> ambientLightColor.y >> ambientLightColor.z >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> floorColor.x >> floorColor.y >> floorColor.z >> gridLineColor.x >> gridLineColor.y >> gridLineColor.z >> mistColor.x >> mistColor.y >> mistColor.z >> shadowColor.x >> shadowColor.y >> shadowColor.z >> sunLightColor.x >> sunLightColor.y >> sunLightColor.z >> tabHighlightColor.x >> tabHighlightColor.y >> tabHighlightColor.z
+                    // Strings (alphabetical)
+                    >> std::quoted(lastEnvPreset) >> std::quoted(skyboxName);
 
+                // Arrays
                 for (int i = 0; i < 18; ++i) {
                     if (!(in >> graphColors[i].x >> graphColors[i].y >> graphColors[i].z))
                         break;

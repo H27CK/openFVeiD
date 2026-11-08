@@ -465,7 +465,6 @@ void GraphView::renderMeasurementsMenu(trackHandler* hTrack) {
     bool hasOffsets = !hTrack->trackData->trainOffsets.empty();
 
     ImGui::BeginDisabled(!hasOffsets);
-    ImGui::SeparatorText("Analysis");
     if (ImGui::BeginMenu("Highlight Peaks")) {
         int& mode = hTrack->trackData->forceHighlightMode;
         bool isNone = (mode == 0);
@@ -553,12 +552,14 @@ void GraphView::renderPlot(trackHandler* hTrack) {
     if (!canAlignStart)
         ImGui::BeginDisabled();
     if (ImGui::Button("Align Start")) {
-        double newPrevLen = playheadArg - prevSeg->minArgument;
-        pf->changeLength(newPrevLen, sfIndex - 1);
+        if (canAlignStart && prevSeg && pf) {
+            double newPrevLen = playheadArg - prevSeg->minArgument;
+            pf->changeLength(newPrevLen, sfIndex - 1);
 
-        hTrack->trackData->requestUpdateTrack(activeSec, 0);
-        if (gApplication) {
-            gApplication->pushUndo();
+            hTrack->trackData->requestUpdateTrack(activeSec, 0);
+            if (gApplication) {
+                gApplication->pushUndo();
+            }
         }
     }
     if (canAlignStart && ImGui::IsItemHovered()) {
@@ -589,11 +590,13 @@ void GraphView::renderPlot(trackHandler* hTrack) {
     if (!canAlignEnd)
         ImGui::BeginDisabled();
     if (ImGui::Button("Align End")) {
-        double newLen = playheadArg - sf->minArgument;
-        pf->changeLength(newLen, sfIndex);
-        hTrack->trackData->requestUpdateTrack(activeSec, 0);
-        if (gApplication) {
-            gApplication->pushUndo();
+        if (canAlignEnd && sf && pf) {
+            double newLen = playheadArg - sf->minArgument;
+            pf->changeLength(newLen, sfIndex);
+            hTrack->trackData->requestUpdateTrack(activeSec, 0);
+            if (gApplication) {
+                gApplication->pushUndo();
+            }
         }
     }
     if (canAlignEnd && ImGui::IsItemHovered()) {
@@ -714,12 +717,6 @@ void GraphView::renderPlot(trackHandler* hTrack) {
         return false;
     };
 
-    auto isResultingVisible = [&](int i) {
-        if (i >= (int)GraphType::Banking && i < (int)GraphType::Count)
-            return graphs[i].visible;
-        return false;
-    };
-
     auto getUnderlyingType = [&](int editType) {
         if (editType == (int)GraphType::EditRoll)
             return (int)GraphType::RollRate;
@@ -788,7 +785,6 @@ void GraphView::renderPlot(trackHandler* hTrack) {
         linkedXMax = focusMaxX;
 
         doAutoFocus = false;
-        appliedFocus = true;
     }
 
     if (autoScaleYEdit) {
@@ -807,8 +803,6 @@ void GraphView::renderPlot(trackHandler* hTrack) {
     bool distArg = hTrack->trackData->activeSection && hTrack->trackData->activeSection->bArgument == 1;
     if (isStraight || isCurved)
         distArg = false;
-
-    std::string xLabel = distArg ? ("Distance (" + gloParent->mOptions->getLengthString() + ")") : "Time (s)";
 
     if (ImPlot::BeginPlot("##CoasterGraphs", ImVec2(-1, -1), ImPlotFlags_NoTitle | ImPlotFlags_NoLegend)) {
         auto isSectionVisibleInViewport = [&](const auto& sec) {
@@ -1168,7 +1162,10 @@ void GraphView::renderPlot(trackHandler* hTrack) {
             }
         }
 
-        if (ImPlot::IsPlotHovered()) {
+        bool isInteracting = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2) ||
+                             ImGui::IsMouseDragging(0) || ImGui::IsMouseDragging(1) || ImGui::IsMouseDragging(2);
+
+        if (ImPlot::IsPlotHovered() && !isInteracting) {
             if (gloParent && gloParent->mOptions->graphOverlayEnabled) {
                 ImPlotPoint mouse_pt = ImPlot::GetPlotMousePos();
                 int j = distArg ? hTrack->trackData->getIndexFromDist(mouse_pt.x) : (int)std::round(mouse_pt.x * F_HZ);
@@ -1201,44 +1198,44 @@ void GraphView::renderPlot(trackHandler* hTrack) {
                     }
                 }
             }
+        }
 
-            if (ImGui::IsMouseClicked(0)) {
-                ImVec2 mousePos = ImGui::GetMousePos();
-                subfunc* bestSf = nullptr;
-                float minDist = 15.0f;
-                for (const auto& eg : editableGraphs) {
-                    if (!eg.sf || !eg.sf->parent)
+        if (ImPlot::IsPlotHovered() && ImGui::IsMouseReleased(0) && !ImGui::IsMouseDragPastThreshold(0, 4.0f)) {
+            ImVec2 mousePos = ImGui::GetMousePos();
+            subfunc* bestSf = nullptr;
+            float minDist = 15.0f;
+            for (const auto& eg : editableGraphs) {
+                if (!eg.sf || !eg.sf->parent)
+                    continue;
+                int type = (int)GraphType::EditRoll;
+                if (eg.sf->parent->type == funcPitch || eg.sf->parent->type == funcNormal)
+                    type = (int)GraphType::EditNormal;
+                else if (eg.sf->parent->type == funcYaw || eg.sf->parent->type == funcLateral)
+                    type = (int)GraphType::EditLateral;
+
+                if (graphs[type].visible && eg.x.size() > 1) {
+                    if ((type == (int)GraphType::EditNormal || type == (int)GraphType::EditLateral) && !isForced && !isGeo)
                         continue;
-                    int type = (int)GraphType::EditRoll;
-                    if (eg.sf->parent->type == funcPitch || eg.sf->parent->type == funcNormal)
-                        type = (int)GraphType::EditNormal;
-                    else if (eg.sf->parent->type == funcYaw || eg.sf->parent->type == funcLateral)
-                        type = (int)GraphType::EditLateral;
 
-                    if (graphs[type].visible && eg.x.size() > 1) {
-                        if ((type == (int)GraphType::EditNormal || type == (int)GraphType::EditLateral) && !isForced && !isGeo)
-                            continue;
-
-                        int yAxis = getAxis(getUnderlyingType(type));
-                        for (size_t k = 0; k < eg.x.size() - 1; ++k) {
-                            ImVec2 p1 = ImPlot::PlotToPixels(eg.x[k], eg.y[k], ImAxis_X1, yAxis);
-                            ImVec2 p2 = ImPlot::PlotToPixels(eg.x[k + 1], eg.y[k + 1], ImAxis_X1, yAxis);
-                            float dx = p2.x - p1.x, dy = p2.y - p1.y;
-                            float l2 = dx * dx + dy * dy;
-                            float d = (l2 == 0.0f) ? std::sqrt((mousePos.x - p1.x) * (mousePos.x - p1.x) + (mousePos.y - p1.y) * (mousePos.y - p1.y)) : std::sqrt((mousePos.x - (p1.x + std::max(0.0f, std::min(1.0f, ((mousePos.x - p1.x) * dx + (mousePos.y - p1.y) * dy) / l2)) * dx)) * (mousePos.x - (p1.x + std::max(0.0f, std::min(1.0f, ((mousePos.x - p1.x) * dx + (mousePos.y - p1.y) * dy) / l2)) * dx)) + (mousePos.y - (p1.y + std::max(0.0f, std::min(1.0f, ((mousePos.x - p1.x) * dx + (mousePos.y - p1.y) * dy) / l2)) * dy)) * (mousePos.y - (p1.y + std::max(0.0f, std::min(1.0f, ((mousePos.x - p1.x) * dx + (mousePos.y - p1.y) * dy) / l2)) * dy)));
-                            if (d < minDist) {
-                                minDist = d;
-                                bestSf = eg.sf;
-                            }
+                    int yAxis = getAxis(getUnderlyingType(type));
+                    for (size_t k = 0; k < eg.x.size() - 1; ++k) {
+                        ImVec2 p1 = ImPlot::PlotToPixels(eg.x[k], eg.y[k], ImAxis_X1, yAxis);
+                        ImVec2 p2 = ImPlot::PlotToPixels(eg.x[k + 1], eg.y[k + 1], ImAxis_X1, yAxis);
+                        float dx = p2.x - p1.x, dy = p2.y - p1.y;
+                        float l2 = dx * dx + dy * dy;
+                        float d = (l2 == 0.0f) ? std::sqrt((mousePos.x - p1.x) * (mousePos.x - p1.x) + (mousePos.y - p1.y) * (mousePos.y - p1.y)) : std::sqrt((mousePos.x - (p1.x + std::max(0.0f, std::min(1.0f, ((mousePos.x - p1.x) * dx + (mousePos.y - p1.y) * dy) / l2)) * dx)) * (mousePos.x - (p1.x + std::max(0.0f, std::min(1.0f, ((mousePos.x - p1.x) * dx + (mousePos.y - p1.y) * dy) / l2)) * dx)) + (mousePos.y - (p1.y + std::max(0.0f, std::min(1.0f, ((mousePos.x - p1.x) * dx + (mousePos.y - p1.y) * dy) / l2)) * dy)) * (mousePos.y - (p1.y + std::max(0.0f, std::min(1.0f, ((mousePos.x - p1.x) * dx + (mousePos.y - p1.y) * dy) / l2)) * dy)));
+                        if (d < minDist) {
+                            minDist = d;
+                            bestSf = eg.sf;
                         }
                     }
                 }
-                if (gloParent) {
-                    if (gloParent->selectedFunc != bestSf) {
-                        gloParent->selectedFunc = bestSf;
-                        if (hTrack && hTrack->trackData) {
-                            hTrack->trackData->requestUpdateTrack(0, 0);
-                        }
+            }
+            if (gloParent) {
+                if (gloParent->selectedFunc != bestSf) {
+                    gloParent->selectedFunc = bestSf;
+                    if (hTrack && hTrack->trackData) {
+                        hTrack->trackData->requestUpdateTrack(0, 0);
                     }
                 }
             }
@@ -1396,16 +1393,53 @@ void GraphView::sampleEditable(trackHandler* hTrack) {
         }
     };
 
+    auto getNodeX = [&](int k) -> double {
+        return useDistance ? sec->lNodes[k].fTotalLength : ((startIdx + k) / F_HZ);
+    };
+
     double xOffset = 0;
     mnode* startNode = hTrack->trackData->getPoint(startIdx);
     if (startNode) {
         xOffset = useDistance ? startNode->fTotalLength : ((double)startIdx / F_HZ);
     }
 
+    auto interpolateAtArg = [&](double targetArg) -> std::pair<double, int> {
+        if (numNodes <= 0)
+            return {xOffset, startIdx};
+        if (targetArg <= getNodeArg(0))
+            return {getNodeX(0), startIdx};
+        if (targetArg >= getNodeArg(numNodes - 1))
+            return {getNodeX(numNodes - 1), startIdx + numNodes - 1};
+
+        int low = 0, high = numNodes - 1;
+        while (low <= high) {
+            int mid = low + (high - low) / 2;
+            if (getNodeArg(mid) < targetArg) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        int k0 = std::max(0, low - 1);
+        int k1 = std::min(numNodes - 1, k0 + 1);
+
+        double arg0 = getNodeArg(k0);
+        double arg1 = getNodeArg(k1);
+        double denom = arg1 - arg0;
+        double alpha = (denom > 1e-9) ? std::clamp((targetArg - arg0) / denom, 0.0, 1.0) : 0.0;
+
+        double x0 = getNodeX(k0);
+        double x1 = getNodeX(k1);
+        double x = (1.0 - alpha) * x0 + alpha * x1;
+        int nearestNode = (alpha < 0.5) ? (startIdx + k0) : (startIdx + k1);
+        return {x, nearestNode};
+    };
+
     auto sampleFunc = [&](func* f, GraphType type) {
         if (!f)
             return;
-        int prevIdx = -1;
+        double simulatedEndArg = (numNodes > 0) ? getNodeArg(numNodes - 1) : 0.0;
+
         for (subfunc* sf : f->funcList) {
             double minArg = sf->minArgument, maxArg = sf->maxArgument;
             if (maxArg <= minArg)
@@ -1415,44 +1449,47 @@ void GraphView::sampleEditable(trackHandler* hTrack) {
             eData.color = graphs[(int)type].color;
             eData.label = graphs[(int)type].label + " (Editable)##" + std::to_string((uintptr_t)sf);
 
-            for (int k = 0; k < numNodes; ++k) {
-                double t = getNodeArg(k);
-                if (t >= minArg - 1e-4 && t <= maxArg + 1e-4) {
-                    double x = useDistance ? sec->lNodes[k].fTotalLength : ((startIdx + k) / F_HZ);
-                    double y = sf->getValue(t, true);
+            double effectiveMin = std::min(minArg, simulatedEndArg);
+            double effectiveMax = std::min(maxArg, simulatedEndArg);
 
-                    if (std::abs(y) < 1e-4)
-                        y = 0.0;
-                    eData.x.push_back(x);
-                    eData.y.push_back(y);
-                    eData.nodes.push_back(startIdx + k);
+            if (effectiveMax > effectiveMin) {
+                // 1. Exact start boundary point
+                auto [xStart, nodeStart] = interpolateAtArg(effectiveMin);
+                double yStart = sf->getValue(effectiveMin, true);
+                if (std::abs(yStart) < 1e-4)
+                    yStart = 0.0;
+                eData.x.push_back(xStart);
+                eData.y.push_back(yStart);
+                eData.nodes.push_back(nodeStart);
+
+                // 2. Interior simulation nodes strictly between effectiveMin and effectiveMax
+                for (int k = 0; k < numNodes; ++k) {
+                    double t = getNodeArg(k);
+                    if (t > effectiveMin + 1e-5 && t < effectiveMax - 1e-5) {
+                        double x = getNodeX(k);
+                        double y = sf->getValue(t, true);
+                        if (std::abs(y) < 1e-4)
+                            y = 0.0;
+                        eData.x.push_back(x);
+                        eData.y.push_back(y);
+                        eData.nodes.push_back(startIdx + k);
+                    }
                 }
-            }
 
-            // Append the connecting node to ensure the curve meets the next transition or section end cleanly
-            if (!eData.x.empty()) {
-                int lastNodeLocal = eData.nodes.back() - startIdx;
-                if (lastNodeLocal + 1 < numNodes) {
-                    double tNext = getNodeArg(lastNodeLocal + 1);
-                    double xNext = useDistance ? sec->lNodes[lastNodeLocal + 1].fTotalLength : ((startIdx + lastNodeLocal + 1) / F_HZ);
-                    double tNextClamped = std::clamp(tNext, minArg, maxArg);
-                    double yNext = sf->getValue(tNextClamped, true);
-                    if (std::abs(yNext) < 1e-4)
-                        yNext = 0.0;
-                    eData.x.push_back(xNext);
-                    eData.y.push_back(yNext);
-                    eData.nodes.push_back(startIdx + lastNodeLocal + 1);
-                }
-            }
+                // 3. Exact end boundary point
+                auto [xEnd, nodeEnd] = interpolateAtArg(effectiveMax);
+                double yEnd = sf->getValue(effectiveMax, true);
+                if (std::abs(yEnd) < 1e-4)
+                    yEnd = 0.0;
+                eData.x.push_back(xEnd);
+                eData.y.push_back(yEnd);
+                eData.nodes.push_back(nodeEnd);
 
-            if (!eData.x.empty()) {
                 editableGraphs.push_back(eData);
-                prevIdx = (int)editableGraphs.size() - 1;
             }
 
             // If the transition extends past the simulated section length, plot the remaining part as a faint ghost line
             if (numNodes > 1 && !(sec->type == straight || sec->type == curved || sf->degree == tozero)) {
-                double simulatedEndArg = getNodeArg(numNodes - 1);
                 if (maxArg > simulatedEndArg + 1e-4) {
                     EditableGraphData dashedData;
                     dashedData.sf = sf;
@@ -1460,13 +1497,14 @@ void GraphView::sampleEditable(trackHandler* hTrack) {
                     dashedData.color.w *= 0.40f; // Faint ghost alpha
                     dashedData.label = "##" + graphs[(int)type].label + " (Ghost)##" + std::to_string((uintptr_t)sf);
 
+                    double ghostStart = std::max(minArg, simulatedEndArg);
+                    double ghostEnd = maxArg;
                     int n = 30;
-                    double startT = simulatedEndArg;
-                    double step = (maxArg - startT) / (float)n;
+                    double step = (ghostEnd - ghostStart) / (double)n;
                     for (int i = 0; i <= n; ++i) {
-                        double t = startT + i * step;
-                        if (t > maxArg)
-                            t = maxArg;
+                        double t = ghostStart + i * step;
+                        if (t > ghostEnd)
+                            t = ghostEnd;
                         double y = sf->getValue(t, true);
                         if (std::abs(y) < 1e-4)
                             y = 0.0;
@@ -1498,6 +1536,8 @@ void GraphView::sampleGraph(trackHandler* hTrack, GraphType type) {
     bool useDistance = (activeSec && activeSec->bArgument == 1);
     int currentPoints = 0;
     for (section* sec : hTrack->trackData->lSections) {
+        if (!sec)
+            continue;
         SectionGraphData sData;
         sData.isActive = (sec == activeSec);
         int numNodes = (int)sec->lNodes.size();
@@ -1637,8 +1677,6 @@ void GraphView::renderResultingPlot(trackHandler* hTrack) {
     bool isCurved = hTrack->trackData->activeSection && hTrack->trackData->activeSection->type == curved;
     if (isStraight || isCurved)
         distArg = false;
-
-    std::string xLabel = distArg ? ("Distance (" + gloParent->mOptions->getLengthString() + ")") : "Time (s)";
 
     bool pushedTrans = gloParent->mOptions->transparentGraphs;
     if (pushedTrans) {
@@ -1844,7 +1882,10 @@ void GraphView::renderResultingPlot(trackHandler* hTrack) {
             }
         }
 
-        if (ImPlot::IsPlotHovered()) {
+        bool isInteractingResulting = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2) ||
+                                      ImGui::IsMouseDragging(0) || ImGui::IsMouseDragging(1) || ImGui::IsMouseDragging(2);
+
+        if (ImPlot::IsPlotHovered() && !isInteractingResulting) {
             if (gloParent && gloParent->mOptions->graphOverlayEnabled) {
                 ImPlotPoint mouse_pt = ImPlot::GetPlotMousePos();
                 int j = distArg ? hTrack->trackData->getIndexFromDist(mouse_pt.x) : (int)std::round(mouse_pt.x * F_HZ);
@@ -1889,8 +1930,8 @@ void GraphView::renderResultingPlot(trackHandler* hTrack) {
 bool GraphView::hasMeasurementGraphsVisible(trackHandler* hTrack) const {
     if (!hTrack || !hTrack->trackData)
         return false;
-    for (const auto& offset : hTrack->trackData->trainOffsets) {
-        if (offset.showNormal || offset.showLateral)
+    for (const auto& point : hTrack->trackData->trainOffsets) {
+        if (point.showNormal || point.showLateral)
             return true;
     }
     return false;
@@ -1947,8 +1988,6 @@ void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
     bool isCurved = hTrack->trackData->activeSection && hTrack->trackData->activeSection->type == curved;
     if (isStraight || isCurved)
         distArg = false;
-
-    std::string xLabel = distArg ? ("Distance (" + gloParent->mOptions->getLengthString() + ")") : "Time (s)";
 
     bool showAnyNormal = false;
     bool showAnyLateral = false;
@@ -2010,8 +2049,8 @@ void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
                     ImPlot::SetAxis(ImAxis_Y1);
                     ImPlotSpec spec;
                     spec.LineWeight = 1.0f;
-                    const auto& offset = hTrack->trackData->trainOffsets[i];
-                    spec.LineColor = ImVec4(offset.color.x, offset.color.y, offset.color.z, 0.8f);
+                    const auto& point = hTrack->trackData->trainOffsets[i];
+                    spec.LineColor = ImVec4(point.color.x, point.color.y, point.color.z, 0.8f);
 
                     if (hTrack->trackData->forceHighlightMode == 1) {
                         if ((int)i == hTrack->trackData->maxNormalOffsetIdx) {
@@ -2026,9 +2065,9 @@ void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
                     }
 
                     char nbuf[128];
-                    snprintf(nbuf, sizeof(nbuf), "%s (N)", offset.name);
+                    snprintf(nbuf, sizeof(nbuf), "%s (N)", point.name);
 
-                    if (offset.showNormal && !measurementData[i].x.empty()) {
+                    if (point.showNormal && !measurementData[i].x.empty()) {
                         PlotVectorLine(nbuf, measurementData[i].x.data(), measurementData[i].yNormal.data(), (int)measurementData[i].x.size(), spec);
                         if (!measurementData[i].x.empty()) {
                             double xZero[2] = {measurementData[i].x.front(), measurementData[i].x.back()};
@@ -2107,8 +2146,8 @@ void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
                     ImPlot::SetAxis(ImAxis_Y1);
                     ImPlotSpec spec;
                     spec.LineWeight = 1.0f;
-                    const auto& offset = hTrack->trackData->trainOffsets[i];
-                    spec.LineColor = ImVec4(offset.color.x, offset.color.y, offset.color.z, 0.8f);
+                    const auto& point = hTrack->trackData->trainOffsets[i];
+                    spec.LineColor = ImVec4(point.color.x, point.color.y, point.color.z, 0.8f);
 
                     if (hTrack->trackData->forceHighlightMode == 2) {
                         if ((int)i == hTrack->trackData->maxLateralOffsetIdx) {
@@ -2123,9 +2162,9 @@ void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
                     }
 
                     char lbuf[128];
-                    snprintf(lbuf, sizeof(lbuf), "%s (L)", offset.name);
+                    snprintf(lbuf, sizeof(lbuf), "%s (L)", point.name);
 
-                    if (offset.showLateral && !measurementData[i].x.empty()) {
+                    if (point.showLateral && !measurementData[i].x.empty()) {
                         PlotVectorLine(lbuf, measurementData[i].x.data(), measurementData[i].yLateral.data(), (int)measurementData[i].x.size(), spec);
                         if (!measurementData[i].x.empty()) {
                             double xZero[2] = {measurementData[i].x.front(), measurementData[i].x.back()};
@@ -2180,8 +2219,18 @@ void GraphView::renderMeasurementPlot(trackHandler* hTrack) {
     }
 }
 
-void GraphView::renderTimeline(trackHandler* hTrack) {
+void GraphView::updatePlayhead(trackHandler* hTrack) {
     if (!hTrack || !hTrack->trackData || !gViewport)
+        return;
+
+    static int lastPlayheadFrame = -1;
+    int currentFrame = ImGui::GetFrameCount();
+    if (currentFrame == lastPlayheadFrame)
+        return;
+    lastPlayheadFrame = currentFrame;
+
+    int maxPoints = hTrack->trackData->getNumPoints();
+    if (maxPoints <= 0)
         return;
 
     if (playheadLocked) {
@@ -2198,11 +2247,9 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
             }
 
             if (!transitionExists) {
-                // Transition was deleted! Release the lock!
                 playheadLocked = false;
                 lockedTransition = nullptr;
             } else {
-                // Update playhead position to match the end of the transition (maxArgument)!
                 section* secParent = parentFunc->secParent;
                 if (secParent && !secParent->lNodes.empty()) {
                     double endArg = lockedTransition->maxArgument;
@@ -2219,7 +2266,7 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
                             }
                         }
                     } else {
-                        localNodeIdx = (int)(endArg * F_HZ + 0.5);
+                        localNodeIdx = (int)std::lround(endArg * F_HZ);
                         if (localNodeIdx >= (int)secParent->lNodes.size()) {
                             localNodeIdx = (int)secParent->lNodes.size() - 1;
                         }
@@ -2234,7 +2281,149 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
         povAccumulator = (float)lockedPOVPos;
     }
 
-    const auto& processedTrack = graphProcessor.getData();
+    bool pPressed = !ImGui::GetIO().WantTextInput && KeybindManager::instance().isTriggered(KeyAction::PlayheadPlayPause);
+    if (pPressed) {
+        isPlayingPOV = !isPlayingPOV;
+        if (isPlayingPOV)
+            povAccumulator = (float)gViewport->getPOVPos();
+    }
+
+    if (isPlayingPOV && !playheadLocked) {
+        float speed = F_HZ;
+        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) {
+            speed *= gloParent->mOptions->sprintMultiplier;
+        }
+        povAccumulator += speed * ImGui::GetIO().DeltaTime;
+        if (povAccumulator > maxPoints)
+            povAccumulator = 0.0f;
+        gViewport->setPOVPos((int)povAccumulator);
+    }
+
+    int step = 0;
+    if (!ImGui::GetIO().WantTextInput) {
+        if (KeybindManager::instance().isTriggered(KeyAction::PlayheadStepBackward)) {
+            step = -1;
+        } else if (KeybindManager::instance().isTriggered(KeyAction::PlayheadStepForward)) {
+            step = 1;
+        }
+
+        bool decKeyActive = KeybindManager::instance().isHeld(KeyAction::PlayheadStepBackward);
+        bool incKeyActive = KeybindManager::instance().isHeld(KeyAction::PlayheadStepForward);
+
+        static float holdTimer = 0.0f;
+        static float repeatTimer = 0.0f;
+
+        if (decKeyActive || incKeyActive) {
+            holdTimer += ImGui::GetIO().DeltaTime;
+            if (holdTimer > 0.4f) {
+                repeatTimer += ImGui::GetIO().DeltaTime;
+                float repeatInterval = 0.05f;
+                if (holdTimer > 1.5f)
+                    repeatInterval = 0.01f;
+
+                if (repeatTimer >= repeatInterval) {
+                    step = decKeyActive ? -1 : 1;
+                    if (holdTimer > 3.0f)
+                        step *= 10;
+                    repeatTimer = 0.0f;
+                }
+            }
+        } else {
+            holdTimer = 0.0f;
+            repeatTimer = 0.0f;
+        }
+    }
+
+    if (step != 0 && !playheadLocked) {
+        int povPos = std::clamp(gViewport->getPOVPos() + step, 0, maxPoints);
+        gViewport->setPOVPos(povPos);
+        povAccumulator = (float)povPos;
+    }
+
+    int povPos = gViewport->getPOVPos();
+    hTrack->trackData->maxNormalOffsetIdx = -1;
+    hTrack->trackData->minNormalOffsetIdx = -1;
+    hTrack->trackData->maxLateralOffsetIdx = -1;
+    hTrack->trackData->minLateralOffsetIdx = -1;
+
+    if (hTrack->trackData->forceHighlightMode != 0) {
+        const auto& processedTrack = graphProcessor.getData();
+        if ((int)processedTrack.forceNormal.size() > povPos) {
+            double maxN = -1e9, minN = 1e9;
+            double maxL = -1e9, minL = 1e9;
+            mnode* comNode = hTrack->trackData->getPoint(povPos);
+            if (comNode) {
+                for (size_t i = 0; i < hTrack->trackData->trainOffsets.size(); ++i) {
+                    const auto& point = hTrack->trackData->trainOffsets[i];
+                    double targetDist = comNode->fTotalLength + point.position.z;
+                    int searchIdx = hTrack->trackData->getIndexFromDist(targetDist);
+                    mnode* targetNode = hTrack->trackData->getPoint(searchIdx);
+                    if (!targetNode || searchIdx >= (int)processedTrack.forceNormal.size())
+                        continue;
+
+                    double g_norm = -glm::dot(glm::dvec3(0.0, 1.0, 0.0), targetNode->vNorm);
+                    double g_lat = -glm::dot(glm::dvec3(0.0, 1.0, 0.0), targetNode->vLat);
+                    double dyn_norm = processedTrack.forceNormal[searchIdx] - g_norm;
+                    double dyn_lat = processedTrack.forceLateral[searchIdx] - g_lat;
+
+                    double v_ratio = 1.0;
+                    double v_ratio_sq = 1.0;
+                    if (targetNode->fVel > 0.01) {
+                        v_ratio = comNode->fVel / targetNode->fVel;
+                        v_ratio_sq = v_ratio * v_ratio;
+                    }
+
+                    double w_roll = (processedTrack.rollRate[searchIdx] * F_PI / 180.0) * v_ratio;
+                    double w_pitch = (processedTrack.pitchChange[searchIdx] * F_PI / 180.0) * v_ratio;
+                    double w_yaw = (processedTrack.yawChange[searchIdx] * F_PI / 180.0) * v_ratio;
+
+                    double alpha_roll = processedTrack.rollAccel[searchIdx] * F_HZ * F_PI / 180.0 * v_ratio_sq;
+                    double alpha_pitch = processedTrack.pitchChangeDeriv[searchIdx] * F_HZ * F_PI / 180.0 * v_ratio_sq;
+                    double alpha_yaw = processedTrack.yawChangeDeriv[searchIdx] * F_HZ * F_PI / 180.0 * v_ratio_sq;
+
+                    glm::dvec3 omega = w_roll * targetNode->vDir + w_pitch * targetNode->vLat - w_yaw * targetNode->vNorm;
+                    glm::dvec3 alpha = alpha_roll * targetNode->vDir + alpha_pitch * targetNode->vLat - alpha_yaw * targetNode->vNorm;
+                    double relY = (double)point.position.y - (double)hTrack->trackData->fHeart;
+                    glm::dvec3 r = targetNode->vLat * (double)point.position.x - targetNode->vNorm * relY;
+
+                    glm::dvec3 a_cen = glm::cross(omega, glm::cross(omega, r));
+                    glm::dvec3 a_tan = glm::cross(alpha, r);
+                    glm::dvec3 a_extra = a_cen + a_tan;
+                    glm::dvec3 felt_extra_force = a_extra / 9.80665;
+
+                    double extra_norm = -glm::dot(felt_extra_force, targetNode->vNorm);
+                    double extra_lat = -glm::dot(felt_extra_force, targetNode->vLat);
+
+                    double adj_norm = g_norm + dyn_norm * v_ratio_sq + extra_norm;
+                    double adj_lat = g_lat + dyn_lat * v_ratio_sq + extra_lat;
+
+                    if (adj_norm > maxN) {
+                        maxN = adj_norm;
+                        hTrack->trackData->maxNormalOffsetIdx = i;
+                    }
+                    if (adj_norm < minN) {
+                        minN = adj_norm;
+                        hTrack->trackData->minNormalOffsetIdx = i;
+                    }
+                    if (adj_lat > maxL) {
+                        maxL = adj_lat;
+                        hTrack->trackData->maxLateralOffsetIdx = i;
+                    }
+                    if (adj_lat < minL) {
+                        minL = adj_lat;
+                        hTrack->trackData->minLateralOffsetIdx = i;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void GraphView::renderTimeline(trackHandler* hTrack) {
+    if (!hTrack || !hTrack->trackData || !gViewport)
+        return;
+
+    updatePlayhead(hTrack);
 
     static int lastUpdateFrame = -1;
     int currentFrame = ImGui::GetFrameCount();
@@ -2297,103 +2486,6 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
                 lastSelectedMaxArg = -1.0;
             }
         }
-
-        bool pPressed = !ImGui::GetIO().WantTextInput && KeybindManager::instance().isTriggered(KeyAction::PlayheadPlayPause);
-        if (pPressed) {
-            isPlayingPOV = !isPlayingPOV;
-            if (isPlayingPOV)
-                povAccumulator = (float)gViewport->getPOVPos();
-        }
-
-        int maxPoints = hTrack->trackData->getNumPoints();
-        if (maxPoints > 0) {
-            if (isPlayingPOV && !playheadLocked) {
-                float speed = F_HZ; // Real-time nodes per second (matches simulation sample rate)
-                if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) {
-                    speed *= gloParent->mOptions->sprintMultiplier;
-                }
-                povAccumulator += speed * ImGui::GetIO().DeltaTime;
-                if (povAccumulator > maxPoints)
-                    povAccumulator = 0.0f;
-                gViewport->setPOVPos((int)povAccumulator);
-            }
-
-            int povPos = gViewport->getPOVPos();
-
-            // Calculate instantaneous peak forces
-            hTrack->trackData->maxNormalOffsetIdx = -1;
-            hTrack->trackData->minNormalOffsetIdx = -1;
-            hTrack->trackData->maxLateralOffsetIdx = -1;
-            hTrack->trackData->minLateralOffsetIdx = -1;
-
-            if (hTrack->trackData->forceHighlightMode != 0) {
-                double maxN = -1e9, minN = 1e9;
-                double maxL = -1e9, minL = 1e9;
-                mnode* comNode = hTrack->trackData->getPoint(povPos);
-                if (comNode) {
-                    for (size_t i = 0; i < hTrack->trackData->trainOffsets.size(); ++i) {
-                        const auto& offset = hTrack->trackData->trainOffsets[i];
-                        double targetDist = comNode->fTotalLength + offset.offset.z;
-                        int searchIdx = hTrack->trackData->getIndexFromDist(targetDist);
-                        mnode* targetNode = hTrack->trackData->getPoint(searchIdx);
-                        if (!targetNode)
-                            continue;
-
-                        double g_norm = -glm::dot(glm::dvec3(0.0, 1.0, 0.0), targetNode->vNorm);
-                        double g_lat = -glm::dot(glm::dvec3(0.0, 1.0, 0.0), targetNode->vLat);
-                        double dyn_norm = processedTrack.forceNormal[searchIdx] - g_norm;
-                        double dyn_lat = processedTrack.forceLateral[searchIdx] - g_lat;
-
-                        double v_ratio = 1.0;
-                        double v_ratio_sq = 1.0;
-                        if (targetNode->fVel > 0.01) {
-                            v_ratio = comNode->fVel / targetNode->fVel;
-                            v_ratio_sq = v_ratio * v_ratio;
-                        }
-
-                        double w_roll = (processedTrack.rollRate[searchIdx] * F_PI / 180.0) * v_ratio;
-                        double w_pitch = (processedTrack.pitchChange[searchIdx] * F_PI / 180.0) * v_ratio;
-                        double w_yaw = (processedTrack.yawChange[searchIdx] * F_PI / 180.0) * v_ratio;
-
-                        double alpha_roll = processedTrack.rollAccel[searchIdx] * F_HZ * F_PI / 180.0 * v_ratio_sq;
-                        double alpha_pitch = processedTrack.pitchChangeDeriv[searchIdx] * F_HZ * F_PI / 180.0 * v_ratio_sq;
-                        double alpha_yaw = processedTrack.yawChangeDeriv[searchIdx] * F_HZ * F_PI / 180.0 * v_ratio_sq;
-
-                        glm::dvec3 omega = w_roll * targetNode->vDir + w_pitch * targetNode->vLat - w_yaw * targetNode->vNorm;
-                        glm::dvec3 alpha = alpha_roll * targetNode->vDir + alpha_pitch * targetNode->vLat - alpha_yaw * targetNode->vNorm;
-                        glm::dvec3 r = targetNode->vLat * (double)offset.offset.x - targetNode->vNorm * (double)offset.offset.y;
-
-                        glm::dvec3 a_cen = glm::cross(omega, glm::cross(omega, r));
-                        glm::dvec3 a_tan = glm::cross(alpha, r);
-                        glm::dvec3 a_extra = a_cen + a_tan;
-                        glm::dvec3 felt_extra_force = a_extra / 9.80665;
-
-                        double extra_norm = -glm::dot(felt_extra_force, targetNode->vNorm);
-                        double extra_lat = -glm::dot(felt_extra_force, targetNode->vLat);
-
-                        double adj_norm = g_norm + dyn_norm * v_ratio_sq + extra_norm;
-                        double adj_lat = g_lat + dyn_lat * v_ratio_sq + extra_lat;
-
-                        if (adj_norm > maxN) {
-                            maxN = adj_norm;
-                            hTrack->trackData->maxNormalOffsetIdx = i;
-                        }
-                        if (adj_norm < minN) {
-                            minN = adj_norm;
-                            hTrack->trackData->minNormalOffsetIdx = i;
-                        }
-                        if (adj_lat > maxL) {
-                            maxL = adj_lat;
-                            hTrack->trackData->maxLateralOffsetIdx = i;
-                        }
-                        if (adj_lat < minL) {
-                            minL = adj_lat;
-                            hTrack->trackData->minLateralOffsetIdx = i;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     ImVec2 dragDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
@@ -2408,17 +2500,14 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
         int povPos = gViewport->getPOVPos();
         float buttonSize = ImGui::GetFrameHeight();
 
-        int step = 0;
-        static int lastProcessedFrame = -1;
-        int currentFrame = ImGui::GetFrameCount();
-        bool isFirstCallThisFrame = (currentFrame != lastProcessedFrame);
-
         // Button < (Decrement)
         if (ImGui::Button("<", ImVec2(buttonSize, buttonSize))) {
-            if (isFirstCallThisFrame)
-                step = -1;
+            if (!playheadLocked) {
+                povPos = std::clamp(povPos - 1, 0, maxPoints);
+                gViewport->setPOVPos(povPos);
+                povAccumulator = (float)povPos;
+            }
         }
-        bool decActive = ImGui::IsItemActive();
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - buttonSize - ImGui::GetStyle().ItemSpacing.x);
@@ -2436,58 +2525,11 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
         ImGui::SameLine();
         // Button > (Increment)
         if (ImGui::Button(">", ImVec2(buttonSize, buttonSize))) {
-            if (isFirstCallThisFrame)
-                step = 1;
-        }
-        bool incActive = ImGui::IsItemActive();
-
-        // Keyboard holds and single taps (run exactly once per frame)
-        if (isFirstCallThisFrame) {
-            lastProcessedFrame = currentFrame;
-
-            // Keyboard single taps (global, triggers immediately on key press)
-            if (!ImGui::GetIO().WantTextInput) {
-                if (KeybindManager::instance().isTriggered(KeyAction::PlayheadStepBackward)) {
-                    step = -1;
-                } else if (KeybindManager::instance().isTriggered(KeyAction::PlayheadStepForward)) {
-                    step = 1;
-                }
+            if (!playheadLocked) {
+                povPos = std::clamp(povPos + 1, 0, maxPoints);
+                gViewport->setPOVPos(povPos);
+                povAccumulator = (float)povPos;
             }
-
-            // Keyboard holds (triggers repeat stepping)
-            bool decKeyActive = !ImGui::GetIO().WantTextInput && KeybindManager::instance().isHeld(KeyAction::PlayheadStepBackward);
-            bool incKeyActive = !ImGui::GetIO().WantTextInput && KeybindManager::instance().isHeld(KeyAction::PlayheadStepForward);
-
-            static float holdTimer = 0.0f;
-            static float repeatTimer = 0.0f;
-
-            bool anyActive = decActive || incActive || decKeyActive || incKeyActive;
-            if (anyActive) {
-                holdTimer += ImGui::GetIO().DeltaTime;
-                if (holdTimer > 0.4f) {
-                    repeatTimer += ImGui::GetIO().DeltaTime;
-                    float repeatInterval = 0.05f;
-                    if (holdTimer > 1.5f)
-                        repeatInterval = 0.01f; // speed up!
-
-                    if (repeatTimer >= repeatInterval) {
-                        step = (decActive || decKeyActive) ? -1 : 1;
-                        if (holdTimer > 3.0f) {
-                            step *= 10; // Fast-forward!
-                        }
-                        repeatTimer = 0.0f;
-                    }
-                }
-            } else {
-                holdTimer = 0.0f;
-                repeatTimer = 0.0f;
-            }
-        }
-
-        if (step != 0 && !playheadLocked) {
-            povPos = std::clamp(povPos + step, 0, maxPoints);
-            gViewport->setPOVPos(povPos);
-            povAccumulator = (float)povPos;
         }
     }
 }

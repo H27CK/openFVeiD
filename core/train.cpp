@@ -129,18 +129,18 @@ void Train::rebuildPoints(track* parentTrack) {
         // Instantiate MPOINT measurement points on parent track
         if (parentTrack) {
             for (const auto& mdef : carDef->measurementDefs) {
-                track::TrainOffset o;
-                snprintf(o.name, sizeof(o.name), "Car %d: %s", (int)carIdx + 1, mdef.name.c_str());
+                track::MeasurementPoint point;
+                snprintf(point.name, sizeof(point.name), "Car %d: %s", (int)carIdx + 1, mdef.name.c_str());
                 float zOffset = halfLen - (float)(currentCarDistance + mdef.localOffset.z);
-                o.offset = glm::vec3(mdef.localOffset.x, mdef.localOffset.y, zOffset);
+                point.position = glm::vec3(mdef.localOffset.x, mdef.localOffset.y, zOffset);
 
                 float hue = (float)pointCounter / (float)totalMPoints;
                 ImVec4 rgb;
                 ImGui::ColorConvertHSVtoRGB(hue, 1.0f, 1.0f, rgb.x, rgb.y, rgb.z);
-                o.color = glm::vec3(rgb.x, rgb.y, rgb.z);
+                point.color = glm::vec3(rgb.x, rgb.y, rgb.z);
                 pointCounter++;
 
-                parentTrack->trainOffsets.push_back(o);
+                parentTrack->trainOffsets.push_back(point);
             }
         }
 
@@ -331,11 +331,15 @@ bool Train::load(const std::string& newFilePath, track* parentTrack) {
 
                     carDef.bodyOffsetZ = -frontZ * assetDef.scale.z;
 
+                    float rearZ = frontZ;
                     if (hitchRearZ > -9000.0f) {
+                        rearZ = hitchRearZ;
                         carDef.length = std::fabs(hitchRearZ - frontZ) * assetDef.scale.z;
                     } else if (bogieRearZ > -9000.0f) {
+                        rearZ = bogieRearZ;
                         carDef.length = std::fabs(bogieRearZ - frontZ) * assetDef.scale.z;
                     }
+                    float forwardDirZ = (rearZ != frontZ) ? (rearZ > frontZ ? 1.0f : -1.0f) : 1.0f;
 
                     for (size_t wi = 0; wi < carDef.wheels.size(); ++wi) {
                         auto& w = carDef.wheels[wi];
@@ -363,7 +367,8 @@ bool Train::load(const std::string& newFilePath, track* parentTrack) {
 
                         float ez = empty.worldTransform[3].z;
                         glm::vec4 tpos = empty.worldTransform[3];
-                        float distBehindFront = std::fabs(ez - frontZ) * assetDef.scale.z;
+                        float distBehindFront = (rearZ != frontZ) ? (ez - frontZ) * forwardDirZ * assetDef.scale.z
+                                                                  : std::fabs(ez - frontZ) * assetDef.scale.z;
 
                         if (upperName.find("MPOINT") != std::string::npos) {
                             TrainMeasurementDef mdef;
@@ -377,7 +382,9 @@ bool Train::load(const std::string& newFilePath, track* parentTrack) {
                                 cleanName = cleanName.substr(start);
                             }
                             mdef.name = cleanName;
-                            mdef.localOffset = glm::vec3(tpos.x * assetDef.scale.x, tpos.y * assetDef.scale.y, distBehindFront);
+                            mdef.localOffset = glm::vec3(tpos.x * assetDef.scale.x + assetDef.offset.x,
+                                                         tpos.y * assetDef.scale.y + assetDef.offset.y,
+                                                         distBehindFront);
                             carDef.measurementDefs.push_back(mdef);
                         }
 
@@ -393,7 +400,9 @@ bool Train::load(const std::string& newFilePath, track* parentTrack) {
                                 cleanName = cleanName.substr(start);
                             }
                             cdef.name = cleanName;
-                            cdef.localOffset = glm::vec3(tpos.x * assetDef.scale.x, tpos.y * assetDef.scale.y, distBehindFront);
+                            cdef.localOffset = glm::vec3(tpos.x * assetDef.scale.x + assetDef.offset.x,
+                                                         tpos.y * assetDef.scale.y + assetDef.offset.y,
+                                                         distBehindFront);
                             carDef.cameraDefs.push_back(cdef);
                         }
                     }

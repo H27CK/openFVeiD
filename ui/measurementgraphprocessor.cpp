@@ -54,7 +54,7 @@ void MeasurementGraphProcessor::update(trackHandler* track, const ResultingGraph
     double spacing_limit = gloParent ? (double)gloParent->mOptions->graphSpacingLimit : 0.1;
 
     for (int i = 0; i < numOffsets; ++i) {
-        const auto& offset = track->trackData->trainOffsets[i];
+        const auto& point = track->trackData->trainOffsets[i];
         auto& gData = trainOffsetGraphs[i];
 
         double last_dist = -999.0;
@@ -69,7 +69,7 @@ void MeasurementGraphProcessor::update(trackHandler* track, const ResultingGraph
             if (j == 0 || j == totalPoints || (cur_dist - last_dist >= spacing_limit)) {
                 last_dist = cur_dist;
 
-                double targetDist = comNode->fTotalLength + offset.offset.z;
+                double targetDist = comNode->fTotalLength + point.position.z;
                 int searchIdx = track->trackData->getIndexFromDist(targetDist);
 
                 mnode* targetNode = track->trackData->getPoint(searchIdx);
@@ -77,9 +77,6 @@ void MeasurementGraphProcessor::update(trackHandler* track, const ResultingGraph
                     continue;
 
                 double x = useDistance ? comNode->fTotalLength : ((double)j / F_HZ);
-
-                // Actual position with full 3D offset
-                glm::dvec3 truePos = targetNode->vPosHeart(track->trackData->fHeart) + targetNode->vLat * (double)offset.offset.x + targetNode->vNorm * (double)offset.offset.y;
 
                 // Compute gravity at that point
                 double g_norm = -glm::dot(glm::dvec3(0.0, 1.0, 0.0), targetNode->vNorm);
@@ -112,7 +109,8 @@ void MeasurementGraphProcessor::update(trackHandler* track, const ResultingGraph
                 glm::dvec3 alpha = alpha_roll * targetNode->vDir + alpha_pitch * targetNode->vLat - alpha_yaw * targetNode->vNorm;
 
                 // The physical offset from the track's center of rotation (heartline)
-                glm::dvec3 r = targetNode->vLat * (double)offset.offset.x - targetNode->vNorm * (double)offset.offset.y;
+                double relY = (double)point.position.y - (double)track->trackData->fHeart;
+                glm::dvec3 r = targetNode->vLat * (double)point.position.x - targetNode->vNorm * relY;
 
                 // Calculate resulting acceleration (a_centripetal + a_tangential) in m/s^2
                 glm::dvec3 a_cen = glm::cross(omega, glm::cross(omega, r));

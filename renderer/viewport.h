@@ -287,7 +287,6 @@ private:
     uint64_t watchedEnvironmentSignature = 0;
     float environmentPollAccumulator = 0.0f;
     VulkanTexture floorTexture;
-    VulkanTexture rasterTexture;
     VulkanTexture dummyCubeTexture;
     VulkanTexture dummyWhiteTexture;
     VulkanTexture metalNormalTexture;

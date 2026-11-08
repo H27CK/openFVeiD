@@ -28,15 +28,25 @@
 
 static std::filesystem::path bundleResourcesDirectory() {
     CFBundleRef bundle = CFBundleGetMainBundle();
-    if (!bundle)
-        return {};
-    CFURLRef resourcesUrl = CFBundleCopyResourcesDirectoryURL(bundle);
-    if (!resourcesUrl)
-        return {};
-    char path[PATH_MAX];
-    bool resolved = CFURLGetFileSystemRepresentation(resourcesUrl, true, (UInt8*)path, sizeof(path));
-    CFRelease(resourcesUrl);
-    return resolved ? std::filesystem::path(path) : std::filesystem::path();
+    if (bundle) {
+        CFURLRef resourcesUrl = CFBundleCopyResourcesDirectoryURL(bundle);
+        if (resourcesUrl) {
+            char path[PATH_MAX];
+            bool resolved = CFURLGetFileSystemRepresentation(resourcesUrl, true, (UInt8*)path, sizeof(path));
+            CFRelease(resourcesUrl);
+            if (resolved)
+                return std::filesystem::path(path);
+        }
+    }
+    // Fallback: check relative to executable directory (Contents/MacOS/../Resources)
+    std::error_code ec;
+    std::filesystem::path exeDir = VFS::get().getExecutableDir();
+    if (exeDir.filename() == "MacOS" && exeDir.parent_path().filename() == "Contents") {
+        std::filesystem::path res = exeDir.parent_path() / "Resources";
+        if (std::filesystem::exists(res, ec))
+            return res;
+    }
+    return {};
 }
 
 static void initializeAppleWorkingDirectory() {
@@ -48,10 +58,30 @@ static void initializeAppleWorkingDirectory() {
     std::filesystem::path userDataDirectory = std::filesystem::path(home) / "Library/Application Support/FVD++";
     std::filesystem::create_directories(userDataDirectory, ignored);
 
-    std::filesystem::path shippedTracks = bundleResourcesDirectory() / "tracks";
+    std::filesystem::path resDir = bundleResourcesDirectory();
+    std::filesystem::path exeDir = VFS::get().getExecutableDir();
+
+    // Shipped tracks
+    std::filesystem::path shippedTracks = resDir / "tracks";
     if (!std::filesystem::exists(userDataDirectory / "tracks", ignored) &&
         std::filesystem::exists(shippedTracks, ignored)) {
         std::filesystem::copy(shippedTracks, userDataDirectory / "tracks",
+                              std::filesystem::copy_options::recursive, ignored);
+    }
+
+    // Shipped templates
+    std::filesystem::path shippedTemplates = resDir / "templates";
+    if (!std::filesystem::exists(userDataDirectory / "templates", ignored) &&
+        std::filesystem::exists(shippedTemplates, ignored)) {
+        std::filesystem::copy(shippedTemplates, userDataDirectory / "templates",
+                              std::filesystem::copy_options::recursive, ignored);
+    }
+
+    // Shipped skybox
+    std::filesystem::path shippedSkybox = resDir / "skybox";
+    if (!std::filesystem::exists(userDataDirectory / "skybox", ignored) &&
+        std::filesystem::exists(shippedSkybox, ignored)) {
+        std::filesystem::copy(shippedSkybox, userDataDirectory / "skybox",
                               std::filesystem::copy_options::recursive, ignored);
     }
 
@@ -68,11 +98,11 @@ std::string platformResourcesDirectory() {
 }
 
 void initializeWorkingDirectory() {
-    VFS::get().init();
 #ifdef __APPLE__
     initializeAppleWorkingDirectory();
 #else
     std::error_code ignored;
     std::filesystem::current_path(VFS::get().getExecutableDir(), ignored);
 #endif
+    VFS::get().init();
 }

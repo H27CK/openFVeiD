@@ -133,9 +133,6 @@ public:
     void exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
                            int toIndex, double fHeart, const char* numFormat);
 
-    std::string saveTrack(std::ostream& file);
-    std::string loadTrack(std::istream& file);
-
     bool saveTemplate(const std::string& filepath, int startNodeIdx, int endNodeIdx);
     bool loadTemplate(const std::string& filepath, int insertIdx);
 
@@ -205,14 +202,15 @@ public:
     bool enforceMinRadius;
     double minRadius;
 
-    struct TrainOffset {
+    struct MeasurementPoint {
         char name[64] = "Measurement Point";
-        glm::vec3 offset = glm::vec3(0.0f);
+        glm::vec3 position = glm::vec3(0.0f);
         bool showNormal = true;
         bool showLateral = true;
         glm::vec3 color = glm::vec3(1.0f);
     };
-    std::vector<TrainOffset> trainOffsets;
+    using TrainOffset = MeasurementPoint;
+    std::vector<MeasurementPoint> trainOffsets;
 
     std::vector<section*> lSections;
 

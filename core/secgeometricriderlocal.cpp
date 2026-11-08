@@ -18,6 +18,7 @@
 */
 
 #include "secgeometricriderlocal.h"
+#include "track.h"
 #include "exportfuncs.h"
 #include "dummies.h"
 #include "lenassert.h"

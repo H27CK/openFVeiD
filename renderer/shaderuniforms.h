@@ -56,6 +56,10 @@ struct alignas(16) FloorUniforms {
     float sunStrength;
     float gridMajorThickness;
     float gridMinorThickness;
+    float gridFadeStart;
+    float gridFadeEnd;
+    float _pad0;
+    float _pad1;
 };
 
 struct TrackUniforms {
@@ -142,6 +146,6 @@ struct alignas(16) SimpleShadowUniforms {
     float padding2;
 };
 
-static_assert(sizeof(FloorUniforms) == 288, "FloorUniforms must match the std140 shader block");
+static_assert(sizeof(FloorUniforms) == 304, "FloorUniforms must match the std140 shader block");
 static_assert(sizeof(TrackInstancedUniforms) == 368, "TrackInstancedUniforms must match the std140 shader block");
 static_assert(sizeof(SimpleShadowUniforms) == 304, "SimpleShadowUniforms must match the std140 shader block");

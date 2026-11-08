@@ -477,7 +477,7 @@ void track::exportNL2Track(FILE* file, double mPerNode, int fromIndex,
     std::vector<double> c(size);
     std::vector<glm::dvec3> d(size);
 
-    double fHeart = this->fHeart;
+    [[maybe_unused]] double fHeart = this->fHeart;
     bool relativeExport = gloParent && gloParent->mOptions->relativeExport;
     for (size_t i = 0; i < size; ++i) {
         mnode* curNode = &exportNodes[i].node;
@@ -722,10 +722,10 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
 
         std::string lineFormat = "%d";
         for (int k = 0; k < 12; ++k) {
-            lineFormat += "\t";
+            lineFormat += '\t';
             lineFormat += numFormat;
         }
-        lineFormat += "\n";
+        lineFormat += '\n';
 
         fprintf(file, lineFormat.c_str(), (int)(i + 1),
                 ex.x, ex.y, ex.z, front.x, front.y, front.z, left.x, left.y, left.z,
@@ -733,278 +733,6 @@ void track::exportNL2TrackCSV(FILE* file, double mPerNode, int fromIndex,
     }
 
     return;
-}
-
-std::string track::saveTrack(ostream& file) {
-    file << "TRC";
-
-    int namelength = name.length();
-    std::string stdName = name;
-
-    writeBytes(&file, (const char*)&namelength, sizeof(int));
-    file << stdName;
-
-    // Placeholder for colors (3x RGBA floats = 3x16 bytes)
-    writeNulls(&file, 3 * 16);
-
-    // ANCHOR
-    glm::vec3 startPosF = (glm::vec3)startPos;
-    writeVec3(&file, startPosF);
-    float fval;
-    fval = (float)anchorNode->fRoll;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-    fval = (float)startPitch;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-    fval = (float)startYaw;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-
-    fval = (float)anchorNode->fVel;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-
-    fval = (float)anchorNode->forceNormal;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-    fval = (float)anchorNode->forceLateral;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-
-    fval = (float)fHeart;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-    float dummyGauge = 1.0f;
-    writeBytes(&file, (const char*)&dummyGauge, sizeof(float));
-    fval = (float)fFriction;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-    fval = (float)fResistance;
-    writeBytes(&file, (const char*)&fval, sizeof(float));
-
-    bool dummyUseGauge = false;
-    writeBytes(&file, (const char*)&dummyUseGauge, sizeof(bool));
-    bool dummyDrawTrack = (drawHeartline != 3);
-    writeBytes(&file, (const char*)&dummyDrawTrack, sizeof(bool));
-    writeBytes(&file, (const char*)&drawHeartline, sizeof(int));
-    writeBytes(&file, (const char*)&style, sizeof(int));
-    bool dummyWireframe = false;
-    writeBytes(&file, (const char*)&dummyWireframe, sizeof(bool));
-
-    writeBytes(&file, (const char*)&povPos.x, sizeof(float));
-    writeBytes(&file, (const char*)&povPos.y, sizeof(float));
-
-    // float fFriction;
-    int size = lSections.size();
-    writeBytes(&file, (const char*)&size, sizeof(int));
-
-    for (int i = 0; i < (int)lSections.size(); ++i) {
-        lSections.at(i)->saveSection(file);
-    }
-
-    size = smoothList.size();
-    writeBytes(&file, (const char*)&size, sizeof(int));
-    for (int i = 0; i < size; ++i) {
-        smoothList[i]->saveSmooth(file);
-    }
-
-    file << "TRN";
-    int numOffsets = trainOffsets.size();
-    writeBytes(&file, (const char*)&numOffsets, sizeof(int));
-    for (const auto& offset : trainOffsets) {
-        std::string offsetName(offset.name);
-        int namelen = offsetName.length();
-        writeBytes(&file, (const char*)&namelen, sizeof(int));
-        file << offsetName;
-        writeBytes(&file, (const char*)&offset.offset.x, sizeof(float));
-        writeBytes(&file, (const char*)&offset.offset.y, sizeof(float));
-        writeBytes(&file, (const char*)&offset.offset.z, sizeof(float));
-        writeBytes(&file, (const char*)&offset.showNormal, sizeof(bool));
-        writeBytes(&file, (const char*)&offset.showLateral, sizeof(bool));
-        writeBytes(&file, (const char*)&offset.color.x, sizeof(float));
-        writeBytes(&file, (const char*)&offset.color.y, sizeof(float));
-        writeBytes(&file, (const char*)&offset.color.z, sizeof(float));
-    }
-
-    file << "EOT";
-
-    // OPTIONAL PARAMETRIC DATA
-    unsigned char marker = 0xFD;
-    writeBytes(&file, (const char*)&marker, 1);
-
-    int numExtrusions = customExtrusions.size();
-    writeBytes(&file, (const char*)&numExtrusions, sizeof(int));
-    for (const auto& ext : customExtrusions) {
-        int shape = (int)ext.shape;
-        writeBytes(&file, (const char*)&shape, sizeof(int));
-        writeBytes(&file, (const char*)&ext.size.x, sizeof(float));
-        writeBytes(&file, (const char*)&ext.size.y, sizeof(float));
-        writeBytes(&file, (const char*)&ext.offset.x, sizeof(float));
-        writeBytes(&file, (const char*)&ext.offset.y, sizeof(float));
-    }
-
-    int numAssets = customAssets.size();
-    writeBytes(&file, (const char*)&numAssets, sizeof(int));
-    for (const auto& asset : customAssets) {
-        int pathLen = asset.filepath.length();
-        writeBytes(&file, (const char*)&pathLen, sizeof(int));
-        file << asset.filepath;
-        writeBytes(&file, (const char*)&asset.startDist, sizeof(float));
-        writeBytes(&file, (const char*)&asset.endDist, sizeof(float));
-        writeBytes(&file, (const char*)&asset.interval, sizeof(float));
-        writeBytes(&file, (const char*)&asset.color.x, sizeof(float));
-        writeBytes(&file, (const char*)&asset.color.y, sizeof(float));
-        writeBytes(&file, (const char*)&asset.color.z, sizeof(float));
-        writeBytes(&file, (const char*)&asset.fullLayout, sizeof(bool));
-        writeBytes(&file, (const char*)&asset.toEnd, sizeof(bool));
-    }
-
-    return std::string("Save Successful");
-}
-
-std::string track::loadTrack(istream& file) {
-    std::string tag = readString(&file, 3);
-    if (tag != "TRC") {
-        return std::string("Error: Not a track record!");
-    }
-    int namelength = readInt(&file);
-    name = readString(&file, namelength);
-
-    readNulls(&file, 3 * 16); // Skip colors placeholder
-
-    startPos = readVec3(&file);
-    anchorNode->fRoll = std::clamp((double)readFloat(&file), -1800.0, 1800.0);
-    startPitch = std::clamp((double)readFloat(&file), -90.0, 90.0);
-    startYaw = std::clamp((double)readFloat(&file), -1800.0, 1800.0);
-    anchorNode->fVel = std::max(0.1, (double)readFloat(&file));
-    anchorNode->forceNormal = std::clamp((double)readFloat(&file), -20.0, 20.0);
-    anchorNode->forceLateral = std::clamp((double)readFloat(&file), -15.0, 15.0);
-
-    fHeart = std::clamp((double)readFloat(&file), -10.0, 10.0);
-    (void)readFloat(&file); // Discard legacy fGauge
-    fFriction = std::max(0.0, (double)readFloat(&file));
-    fResistance = std::max(0.0, (double)readFloat(&file));
-
-    (void)readBool(&file); // Discard legacy useGauge
-    (void)readBool(&file); // Discard legacy drawTrack
-    drawHeartline = readInt(&file);
-    style = (enum trackStyle)readInt(&file);
-    (void)readBool(&file);
-
-    povPos.x = readFloat(&file);
-    povPos.y = readFloat(&file);
-
-    anchorNode->fEnergy = 0.5f * anchorNode->fVel * anchorNode->fVel +
-                          F_G * anchorNode->fPosHearty(0.9 * fHeart);
-
-    anchorNode->changePitch(startPitch, false);
-    anchorNode->setRoll(anchorNode->fRoll);
-    anchorNode->updateNorm();
-
-    string temp;
-    int size = readInt(&file);
-    for (int i = 0; i < size; ++i) {
-        temp = readString(&file, 3);
-        if (temp == "STR") {
-            newSection(straight, -1, true);
-            if (activeSection)
-                activeSection->loadSection(file);
-        } else if (temp == "CUR") {
-            newSection(curved, -1, true);
-            if (activeSection)
-                activeSection->loadSection(file);
-        } else if (temp == "GEO") {
-            newSection(geometric, -1, true);
-            if (activeSection)
-                activeSection->loadSection(file);
-        } else if (temp == "FRC") {
-            newSection(forced, -1, true);
-            if (activeSection)
-                activeSection->loadSection(file);
-        } else if (temp == "GRL") {
-            newSection(geometricriderlocal, -1, true);
-            if (activeSection)
-                activeSection->loadSection(file);
-        } else if (temp == "NLC") {
-            newSection(nolimitscsv, -1, true);
-            if (activeSection)
-                activeSection->loadSection(file);
-        } else {
-            return std::string("Error while Loading: No Such Segment!");
-        }
-    }
-
-    size = readInt(&file);
-    for (int i = 0; i < size; ++i) {
-        if (i >= (int)smoothList.size())
-            smoothList.push_back(new smoothHandler(this, -2));
-        smoothList[i]->loadSmooth(file);
-    }
-
-    temp = readString(&file, 3);
-    if (temp == "TRN") {
-        int numOffsets = readInt(&file);
-        trainOffsets.clear();
-        for (int j = 0; j < numOffsets; ++j) {
-            TrainOffset offset;
-            int namelen = readInt(&file);
-            std::string offsetName = readString(&file, namelen);
-            strncpy(offset.name, offsetName.c_str(), sizeof(offset.name) - 1);
-            offset.name[sizeof(offset.name) - 1] = '\0';
-            offset.offset.x = readFloat(&file);
-            offset.offset.y = readFloat(&file);
-            offset.offset.z = readFloat(&file);
-            offset.showNormal = readBool(&file);
-            offset.showLateral = readBool(&file);
-            offset.color.x = readFloat(&file);
-            offset.color.y = readFloat(&file);
-            offset.color.z = readFloat(&file);
-            trainOffsets.push_back(offset);
-        }
-        temp = readString(&file, 3);
-    }
-
-    if (temp == "EOT") {
-        if (file.peek() != EOF) {
-            unsigned char marker = 0;
-            file.read((char*)&marker, 1);
-            if (marker == 0xFD) {
-                int numExtrusions = readInt(&file);
-                if (numExtrusions > 0)
-                    customExtrusions.clear();
-                for (int i = 0; i < numExtrusions; ++i) {
-                    ParametricExtrusion ext;
-                    ext.shape = (ExtrusionShape)readInt(&file);
-                    ext.size.x = readFloat(&file);
-                    ext.size.y = readFloat(&file);
-                    ext.offset.x = readFloat(&file);
-                    ext.offset.y = readFloat(&file);
-                    customExtrusions.push_back(ext);
-                }
-
-                int numAssets = readInt(&file);
-                customAssets.clear();
-                for (int i = 0; i < numAssets; ++i) {
-                    CustomAssetInstance asset;
-                    int pathLen = readInt(&file);
-                    asset.filepath = readString(&file, pathLen);
-                    asset.startDist = readFloat(&file);
-                    asset.endDist = readFloat(&file);
-                    asset.interval = readFloat(&file);
-                    asset.color.x = readFloat(&file);
-                    asset.color.y = readFloat(&file);
-                    asset.color.z = readFloat(&file);
-                    asset.loadedModel = nullptr;
-
-                    // Read flags if they exist (simple way to handle versioning in binary format)
-                    if (file.peek() != EOF) {
-                        readBytes(&file, (char*)&asset.fullLayout, sizeof(bool));
-                        readBytes(&file, (char*)&asset.toEnd, sizeof(bool));
-                    } else {
-                        asset.fullLayout = (asset.startDist == 0.0f && asset.endDist < 0.0f);
-                        asset.toEnd = (asset.endDist < 0.0f);
-                    }
-                    asset.visible = true;
-
-                    customAssets.push_back(asset);
-                }
-            }
-        }
-    }
-    return std::string("Load Successful");
 }
 
 mnode* track::getPoint(int index) {
@@ -1154,7 +882,7 @@ bool track::importCustomTrack(const std::string& filepath) {
 
     std::string baseDir = std::filesystem::path(filepath).parent_path().string();
     if (!baseDir.empty())
-        baseDir += "/";
+        baseDir += '/';
 
     customExtrusions.clear();
     for (auto& asset : customAssets) {
@@ -1243,7 +971,7 @@ bool track::importCustomTrack(const std::string& filepath) {
                     for (int i = 0; i < filenameTokens; ++i) {
                         filename += tokens[i];
                         if (i < filenameTokens - 1)
-                            filename += " ";
+                            filename += ' ';
                     }
                     // Reconstruct params string for the stringstream below
                     for (size_t i = tokens.size() - 6; i < tokens.size(); ++i) {
@@ -1295,10 +1023,10 @@ bool track::exportMeasurementPoints(const std::string& filepath) {
     if (!out)
         return false;
     out << "FVD_MEASUREMENTS_V1\n";
-    for (const auto& o : trainOffsets) {
-        out << "POINT \"" << o.name << "\" " << o.offset.x << " " << o.offset.y << " " << o.offset.z << " "
-            << (o.showNormal ? 1 : 0) << " " << (o.showLateral ? 1 : 0) << " "
-            << o.color.x << " " << o.color.y << " " << o.color.z << "\n";
+    for (const auto& point : trainOffsets) {
+        out << "POINT \"" << point.name << "\" " << point.position.x << " " << point.position.y << " " << point.position.z << " "
+            << (point.showNormal ? 1 : 0) << " " << (point.showLateral ? 1 : 0) << " "
+            << point.color.x << " " << point.color.y << " " << point.color.z << "\n";
     }
     return true;
 }
@@ -1327,16 +1055,16 @@ bool track::importMeasurementPoints(const std::string& filepath) {
             size_t firstQuote = remaining.find('\"');
             size_t lastQuote = remaining.find_last_of('\"');
             if (firstQuote != std::string::npos && lastQuote != std::string::npos && firstQuote != lastQuote) {
-                TrainOffset o;
+                MeasurementPoint point;
                 std::string name = remaining.substr(firstQuote + 1, lastQuote - firstQuote - 1);
-                strncpy(o.name, name.c_str(), 63);
-                o.name[63] = '\0';
+                strncpy(point.name, name.c_str(), 63);
+                point.name[63] = '\0';
                 std::stringstream pss(remaining.substr(lastQuote + 1));
                 int sn, sl;
-                if (pss >> o.offset.x >> o.offset.y >> o.offset.z >> sn >> sl >> o.color.x >> o.color.y >> o.color.z) {
-                    o.showNormal = (sn != 0);
-                    o.showLateral = (sl != 0);
-                    trainOffsets.push_back(o);
+                if (pss >> point.position.x >> point.position.y >> point.position.z >> sn >> sl >> point.color.x >> point.color.y >> point.color.z) {
+                    point.showNormal = (sn != 0);
+                    point.showLateral = (sl != 0);
+                    trainOffsets.push_back(point);
                 }
             }
         }
@@ -1456,7 +1184,7 @@ bool track::loadTemplate(const std::string& filepath, int insertIdx) {
     }
 
     std::streampos endPos = file.tellg() + (std::streamoff)header.length;
-    int numSecs = readInt(&file);
+    [[maybe_unused]] int numSecs = readInt(&file);
 
     int currentInsertIdx = insertIdx;
     if (currentInsertIdx < 0) {
@@ -1604,19 +1332,19 @@ void track::saveTrackChunk(std::ostream& file) {
     std::stringstream offsStream;
     int numOffsets = trainOffsets.size();
     writeBytes(&offsStream, (const char*)&numOffsets, sizeof(int));
-    for (const auto& offset : trainOffsets) {
-        std::string offsetName(offset.name);
+    for (const auto& point : trainOffsets) {
+        std::string offsetName(point.name);
         int namelen = offsetName.length();
         writeBytes(&offsStream, (const char*)&namelen, sizeof(int));
         offsStream << offsetName;
-        writeBytes(&offsStream, (const char*)&offset.offset.x, sizeof(float));
-        writeBytes(&offsStream, (const char*)&offset.offset.y, sizeof(float));
-        writeBytes(&offsStream, (const char*)&offset.offset.z, sizeof(float));
-        writeBytes(&offsStream, (const char*)&offset.showNormal, sizeof(bool));
-        writeBytes(&offsStream, (const char*)&offset.showLateral, sizeof(bool));
-        writeBytes(&offsStream, (const char*)&offset.color.x, sizeof(float));
-        writeBytes(&offsStream, (const char*)&offset.color.y, sizeof(float));
-        writeBytes(&offsStream, (const char*)&offset.color.z, sizeof(float));
+        writeBytes(&offsStream, (const char*)&point.position.x, sizeof(float));
+        writeBytes(&offsStream, (const char*)&point.position.y, sizeof(float));
+        writeBytes(&offsStream, (const char*)&point.position.z, sizeof(float));
+        writeBytes(&offsStream, (const char*)&point.showNormal, sizeof(bool));
+        writeBytes(&offsStream, (const char*)&point.showLateral, sizeof(bool));
+        writeBytes(&offsStream, (const char*)&point.color.x, sizeof(float));
+        writeBytes(&offsStream, (const char*)&point.color.y, sizeof(float));
+        writeBytes(&offsStream, (const char*)&point.color.z, sizeof(float));
     }
     std::string offsData = offsStream.str();
     writeChunkHeader(file, "OFFS", 1, offsData.length());
@@ -1687,7 +1415,7 @@ void track::loadPropChunk(std::istream& file, uint8_t version, uint32_t length) 
     povPos.x = readFloat(&file);
     povPos.y = readFloat(&file);
 
-    constexpr std::streamoff colorBytes = 4 * 3 * sizeof(float);
+    constexpr std::streamoff colorBytes = static_cast<std::streamoff>(4UL * 3UL * sizeof(float));
     std::streampos colorPosition = file.tellg();
     if (version >= 2 && mParent && colorPosition != std::streampos(-1) &&
         chunkEnd - colorPosition >= colorBytes) {
@@ -1704,7 +1432,7 @@ void track::loadPropChunk(std::istream& file, uint8_t version, uint32_t length) 
 
 void track::loadSecsChunk(std::istream& file, uint8_t version, uint32_t length) {
     std::streampos endPos = file.tellg() + (std::streamoff)length;
-    int size = readInt(&file);
+    [[maybe_unused]] int size = readInt(&file);
 
     // Clear existing sections first
     for (auto sec : lSections) {
@@ -1808,18 +1536,18 @@ void track::loadOffsChunk(std::istream& file, uint8_t version, uint32_t length) 
     trainOffsets.clear();
     int numOffsets = readInt(&file);
     for (int i = 0; i < numOffsets; ++i) {
-        TrainOffset o;
+        MeasurementPoint point;
         int namelen = readInt(&file);
         std::string offsetName = readString(&file, namelen);
-        strncpy(o.name, offsetName.c_str(), 63);
-        o.name[63] = '\0';
-        o.offset = readVec3(&file);
-        o.showNormal = readBool(&file);
-        o.showLateral = readBool(&file);
-        o.color.x = readFloat(&file);
-        o.color.y = readFloat(&file);
-        o.color.z = readFloat(&file);
-        trainOffsets.push_back(o);
+        strncpy(point.name, offsetName.c_str(), 63);
+        point.name[63] = '\0';
+        point.position = readVec3(&file);
+        point.showNormal = readBool(&file);
+        point.showLateral = readBool(&file);
+        point.color.x = readFloat(&file);
+        point.color.y = readFloat(&file);
+        point.color.z = readFloat(&file);
+        trainOffsets.push_back(point);
     }
 }
 

@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
 
 KeybindManager::KeybindManager() {
     initDefaults();
@@ -22,59 +23,51 @@ void KeybindManager::initDefaults() {
         binds[idx] = {act, idStr, name, category, scope, defChord, defChord};
     };
 
-    // 1. General & Project Actions
-    reg(KeyAction::Undo, "Undo", "Undo", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_Z);
-    reg(KeyAction::Redo, "Redo", "Redo", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_Y);
-    reg(KeyAction::SaveProject, "SaveProject", "Save Project", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_S);
-    reg(KeyAction::IncrementalSave, "IncrementalSave", "Incremental Save", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_S);
-    reg(KeyAction::ExportTrack, "ExportTrack", "Export Track", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_E);
-    reg(KeyAction::SaveScreenshot, "SaveScreenshot", "Save Screenshot", "General & Project Actions", "Global", ImGuiKey_F12);
-    reg(KeyAction::MeasurementPointsWindow, "MeasurementPointsWindow", "Measurement Points Window", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_M);
-    reg(KeyAction::ResetView, "ResetView", "Reset View", "General & Project Actions", "Viewport", ImGuiKey_Period);
+    // Registered alphabetically
+    reg(KeyAction::AppendTransition, "AppendTransition", "Append Transition", "Section & Transition Editing", "Global", ImGuiKey_RightBracket);
     reg(KeyAction::DeleteGlbMesh, "DeleteGlbMesh", "Delete Scenery Object", "General & Project Actions", "Viewport", ImGuiKey_X);
-
-    // 2. Section & Transition Editing
-    reg(KeyAction::SelectPrevSection, "SelectPrevSection", "Select Previous Section", "Section & Transition Editing", "Global", ImGuiMod_Ctrl | ImGuiKey_UpArrow);
-    reg(KeyAction::SelectNextSection, "SelectNextSection", "Select Next Section", "Section & Transition Editing", "Global", ImGuiMod_Ctrl | ImGuiKey_DownArrow);
     reg(KeyAction::DeleteSection, "DeleteSection", "Delete Section", "Section & Transition Editing", "Global", ImGuiKey_Delete);
     reg(KeyAction::DeleteTransition, "DeleteTransition", "Delete Transition", "Section & Transition Editing", "Global", ImGuiKey_Backspace);
-    reg(KeyAction::PrependTransition, "PrependTransition", "Prepend Transition", "Section & Transition Editing", "Global", ImGuiKey_LeftBracket);
-    reg(KeyAction::AppendTransition, "AppendTransition", "Append Transition", "Section & Transition Editing", "Global", ImGuiKey_RightBracket);
-
-    // 3. Track Shading Modes
-    reg(KeyAction::ShaderNothing, "ShaderNothing", "Shader: Nothing", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_1);
-    reg(KeyAction::ShaderVelocity, "ShaderVelocity", "Shader: Velocity", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_2);
-    reg(KeyAction::ShaderRollSpeed, "ShaderRollSpeed", "Shader: Roll Speed", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_3);
-    reg(KeyAction::ShaderNormalForce, "ShaderNormalForce", "Shader: Normal Force", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_4);
-    reg(KeyAction::ShaderLateralForce, "ShaderLateralForce", "Shader: Lateral Force", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_5);
-    reg(KeyAction::ShaderTrackFlexion, "ShaderTrackFlexion", "Shader: Track Flexion", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_6);
-
-    // 4. Camera Views & Viewport Navigation
-    reg(KeyAction::TogglePOVMode, "TogglePOVMode", "Toggle POV Mode", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_Space);
-    reg(KeyAction::MoveForward, "MoveForward", "Move Forward", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_W);
+    reg(KeyAction::ExportTrack, "ExportTrack", "Export Track", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_E);
+    reg(KeyAction::IncrementalSave, "IncrementalSave", "Incremental Save", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_S);
+    reg(KeyAction::MeasurementPointsWindow, "MeasurementPointsWindow", "Measurement Points Window", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_M);
     reg(KeyAction::MoveBackward, "MoveBackward", "Move Backward", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_S);
+    reg(KeyAction::MoveForward, "MoveForward", "Move Forward", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_W);
     reg(KeyAction::MoveLeft, "MoveLeft", "Move Left", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_A);
     reg(KeyAction::MoveRight, "MoveRight", "Move Right", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_D);
-    reg(KeyAction::POVHeightUp, "POVHeightUp", "POV Height Up", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_PageUp);
+    reg(KeyAction::OverlayScenery, "OverlayScenery", "Scenery Overlay (Hold)", "Viewport In-Scene Overlays", "Viewport", ImGuiKey_Z);
+    reg(KeyAction::OverlaySceneryDelete, "OverlaySceneryDelete", "Scenery: Delete Mesh", "Viewport In-Scene Overlays", "Viewport Overlay", ImGuiKey_X);
+    reg(KeyAction::OverlaySceneryNext, "OverlaySceneryNext", "Scenery: Next Mesh", "Viewport In-Scene Overlays", "Viewport Overlay", ImGuiKey_DownArrow);
+    reg(KeyAction::OverlaySceneryPrev, "OverlaySceneryPrev", "Scenery: Previous Mesh", "Viewport In-Scene Overlays", "Viewport Overlay", ImGuiKey_UpArrow);
+    reg(KeyAction::OverlaySceneryToggleVis, "OverlaySceneryToggleVis", "Scenery: Toggle Visibility", "Viewport In-Scene Overlays", "Viewport Overlay", ImGuiKey_H);
+    reg(KeyAction::OverlayWarnings, "OverlayWarnings", "Warnings Overlay (Hold)", "Viewport In-Scene Overlays", "Viewport", ImGuiKey_X);
+    reg(KeyAction::PlayheadPlayPause, "PlayheadPlayPause", "Play / Pause Playhead", "Graph View & Playhead", "Global", ImGuiKey_P);
+    reg(KeyAction::PlayheadStepBackward, "PlayheadStepBackward", "Step Playhead Backward", "Graph View & Playhead", "Global", ImGuiKey_LeftArrow);
+    reg(KeyAction::PlayheadStepForward, "PlayheadStepForward", "Step Playhead Forward", "Graph View & Playhead", "Global", ImGuiKey_RightArrow);
     reg(KeyAction::POVHeightDown, "POVHeightDown", "POV Height Down", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_PageDown);
     reg(KeyAction::POVHeightReset, "POVHeightReset", "POV Height Reset", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_Home);
-    reg(KeyAction::ViewPerspective, "ViewPerspective", "View: Perspective", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_None);
-    reg(KeyAction::ViewTopOrtho, "ViewTopOrtho", "View: Top Ortho", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_None);
-    reg(KeyAction::ViewSideOrtho, "ViewSideOrtho", "View: Side Ortho", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_None);
+    reg(KeyAction::POVHeightUp, "POVHeightUp", "POV Height Up", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_PageUp);
+    reg(KeyAction::PrependTransition, "PrependTransition", "Prepend Transition", "Section & Transition Editing", "Global", ImGuiKey_LeftBracket);
+    reg(KeyAction::Redo, "Redo", "Redo", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_Y);
+    reg(KeyAction::ResetView, "ResetView", "Reset View", "General & Project Actions", "Viewport", ImGuiKey_Period);
+    reg(KeyAction::SaveProject, "SaveProject", "Save Project", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_S);
+    reg(KeyAction::SaveScreenshot, "SaveScreenshot", "Save Screenshot", "General & Project Actions", "Global", ImGuiKey_F12);
+    reg(KeyAction::SelectNextSection, "SelectNextSection", "Select Next Section", "Section & Transition Editing", "Global", ImGuiMod_Ctrl | ImGuiKey_DownArrow);
+    reg(KeyAction::SelectPrevSection, "SelectPrevSection", "Select Previous Section", "Section & Transition Editing", "Global", ImGuiMod_Ctrl | ImGuiKey_UpArrow);
+    reg(KeyAction::ShaderLateralForce, "ShaderLateralForce", "Shader: Lateral Force", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_5);
+    reg(KeyAction::ShaderNormalForce, "ShaderNormalForce", "Shader: Normal Force", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_4);
+    reg(KeyAction::ShaderNothing, "ShaderNothing", "Shader: Nothing", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_1);
+    reg(KeyAction::ShaderRollSpeed, "ShaderRollSpeed", "Shader: Roll Speed", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_3);
+    reg(KeyAction::ShaderTrackFlexion, "ShaderTrackFlexion", "Shader: Track Flexion", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_6);
+    reg(KeyAction::ShaderVelocity, "ShaderVelocity", "Shader: Velocity", "Track Shading Modes", "Global", ImGuiMod_Ctrl | ImGuiKey_2);
+    reg(KeyAction::TogglePOVMode, "TogglePOVMode", "Toggle POV Mode", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_Space);
+    reg(KeyAction::ToggleTrainMesh, "ToggleTrainMesh", "Toggle Train Mesh Visibility", "Viewport In-Scene Overlays", "Global", ImGuiMod_Ctrl | ImGuiKey_T);
+    reg(KeyAction::ToggleViewportFullscreen, "ToggleViewportFullscreen", "Toggle Fullscreen Viewport", "Camera Views & Viewport Navigation", "Global", ImGuiKey_F11);
+    reg(KeyAction::Undo, "Undo", "Undo", "General & Project Actions", "Global", ImGuiMod_Ctrl | ImGuiKey_Z);
     reg(KeyAction::ViewFrontOrtho, "ViewFrontOrtho", "View: Front Ortho", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_None);
-
-    // 5. Viewport In-Scene Overlays
-    reg(KeyAction::OverlayScenery, "OverlayScenery", "Scenery Overlay (Hold)", "Viewport In-Scene Overlays", "Viewport", ImGuiKey_Z);
-    reg(KeyAction::OverlayWarnings, "OverlayWarnings", "Warnings Overlay (Hold)", "Viewport In-Scene Overlays", "Viewport", ImGuiKey_X);
-    reg(KeyAction::OverlaySceneryPrev, "OverlaySceneryPrev", "Scenery: Previous Mesh", "Viewport In-Scene Overlays", "Viewport Overlay", ImGuiKey_UpArrow);
-    reg(KeyAction::OverlaySceneryNext, "OverlaySceneryNext", "Scenery: Next Mesh", "Viewport In-Scene Overlays", "Viewport Overlay", ImGuiKey_DownArrow);
-    reg(KeyAction::OverlaySceneryToggleVis, "OverlaySceneryToggleVis", "Scenery: Toggle Visibility", "Viewport In-Scene Overlays", "Viewport Overlay", ImGuiKey_H);
-    reg(KeyAction::OverlaySceneryDelete, "OverlaySceneryDelete", "Scenery: Delete Mesh", "Viewport In-Scene Overlays", "Viewport Overlay", ImGuiKey_X);
-
-    // 6. Graph View & Playhead
-    reg(KeyAction::PlayheadPlayPause, "PlayheadPlayPause", "Play / Pause Playhead", "Graph View & Playhead", "GraphView", ImGuiKey_P);
-    reg(KeyAction::PlayheadStepBackward, "PlayheadStepBackward", "Step Playhead Backward", "Graph View & Playhead", "GraphView", ImGuiKey_LeftArrow);
-    reg(KeyAction::PlayheadStepForward, "PlayheadStepForward", "Step Playhead Forward", "Graph View & Playhead", "GraphView", ImGuiKey_RightArrow);
+    reg(KeyAction::ViewPerspective, "ViewPerspective", "View: Perspective", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_None);
+    reg(KeyAction::ViewSideOrtho, "ViewSideOrtho", "View: Side Ortho", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_None);
+    reg(KeyAction::ViewTopOrtho, "ViewTopOrtho", "View: Top Ortho", "Camera Views & Viewport Navigation", "Viewport", ImGuiKey_None);
 }
 
 void KeybindManager::resetToDefaults() {
@@ -310,7 +303,12 @@ void KeybindManager::save(const std::string& path) const {
         return;
 
     out << "# FVD++ Keybindings Configuration\n";
-    for (const auto& b : binds) {
+    std::vector<KeybindInfo> sortedBinds = binds;
+    std::sort(sortedBinds.begin(), sortedBinds.end(), [](const KeybindInfo& a, const KeybindInfo& b) {
+        return a.idStr < b.idStr;
+    });
+
+    for (const auto& b : sortedBinds) {
         out << b.idStr << " " << (int)b.chord << " # " << formatChord(b.chord) << "\n";
     }
 }

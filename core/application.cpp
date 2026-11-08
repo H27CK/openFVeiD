@@ -30,6 +30,7 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <windows.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <GLFW/glfw3native.h>
 #include <timeapi.h>
 #endif
@@ -407,11 +408,16 @@ static void ApplyTheme(int theme) {
     style.FrameRounding = 3.0f;
     style.GrabRounding = 3.0f;
     style.PopupRounding = 4.0f;
-    style.ScrollbarSize = 9.0f;
-    style.ScrollbarRounding = 4.5f;
+    float fontScale = (gloParent && gloParent->mOptions) ? (gloParent->mOptions->fontSize / 15.0f) : 1.0f;
+    style.ScrollbarSize = std::max(6.0f, 9.0f * fontScale);
+    style.ScrollbarRounding = style.ScrollbarSize * 0.5f;
     style.TabRounding = 5.0f;
     style.WindowRounding = 5.0f;
     style.ChildRounding = 4.0f;
+    if (style._MainScale < 1.0f)
+        style._MainScale = 1.0f;
+    if (style.WindowBorderSize < 1.0f)
+        style.WindowBorderSize = 1.0f;
 }
 
 bool Application::Initialize(int argc, char** argv) {
@@ -469,6 +475,10 @@ bool Application::Initialize(int argc, char** argv) {
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
+#ifdef _WIN32
+    SetCurrentProcessExplicitAppUserModelID(L"FVeiD.FVDPlusPlus");
+#endif
+
     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
     window = glfwCreateWindow(mode->width, mode->height, "FVD++", NULL, NULL);
@@ -487,12 +497,19 @@ bool Application::Initialize(int argc, char** argv) {
     }
     if (hIconBig) {
         SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIconBig);
+        SetClassLongPtr(hwnd, GCLP_HICON, (LONG_PTR)hIconBig);
     }
     if (hIconSmall) {
         SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconSmall);
+        SetClassLongPtr(hwnd, GCLP_HICONSM, (LONG_PTR)hIconSmall);
     } else if (hIconBig) {
         SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconBig);
+        SetClassLongPtr(hwnd, GCLP_HICONSM, (LONG_PTR)hIconBig);
     }
+    LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+    exStyle |= WS_EX_APPWINDOW;
+    exStyle &= ~WS_EX_TOOLWINDOW;
+    SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
 #endif
 
     glfwMaximizeWindow(window);
@@ -533,7 +550,24 @@ bool Application::Initialize(int argc, char** argv) {
     ImGuiStyle& style = ImGui::GetStyle();
 
     style.ScaleAllSizes(currentFontSize / 15.0f);
-    style.ScrollbarSize = 9.0f * (currentFontSize / 15.0f);
+    if (style._MainScale < 1.0f)
+        style._MainScale = 1.0f;
+    if (style.WindowBorderSize < 1.0f)
+        style.WindowBorderSize = 1.0f;
+    if (style.ChildBorderSize < 1.0f)
+        style.ChildBorderSize = 1.0f;
+    if (style.PopupBorderSize < 1.0f)
+        style.PopupBorderSize = 1.0f;
+    if (style.FrameBorderSize < 1.0f)
+        style.FrameBorderSize = 1.0f;
+    if (style.TabBarBorderSize < 1.0f)
+        style.TabBarBorderSize = 1.0f;
+    if (style.TabBarOverlineSize < 1.0f)
+        style.TabBarOverlineSize = 1.0f;
+    if (style.TreeLinesSize < 1.0f)
+        style.TreeLinesSize = 1.0f;
+
+    style.ScrollbarSize = std::max(6.0f, 9.0f * (currentFontSize / 15.0f));
     style.ScrollbarRounding = style.ScrollbarSize * 0.5f;
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
         style.Colors[ImGuiCol_WindowBg].w = 1.0f;
@@ -680,7 +714,21 @@ void Application::Run() {
         static bool was_dragging_widget = false;
         static ImVec2 pre_drag_mouse_pos = ImVec2(0.0f, 0.0f);
 
-        bool is_dragging_widget = ImGui::IsAnyItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f) && (GImGui->MovingWindow == nullptr);
+        bool is_navigating_or_plotting = false;
+        if (GImGui->ActiveIdWindow && GImGui->ActiveIdWindow->Name) {
+            const char* wname = GImGui->ActiveIdWindow->Name;
+            if (strstr(wname, "Graphs") || strstr(wname, "Viewport") || strstr(wname, "Metric") || strstr(wname, "Timeline")) {
+                is_navigating_or_plotting = true;
+            }
+        }
+        if (GImGui->HoveredWindow && GImGui->HoveredWindow->Name) {
+            const char* wname = GImGui->HoveredWindow->Name;
+            if (strstr(wname, "Graphs") || strstr(wname, "Viewport") || strstr(wname, "Metric") || strstr(wname, "Timeline")) {
+                is_navigating_or_plotting = true;
+            }
+        }
+
+        bool is_dragging_widget = !is_navigating_or_plotting && ImGui::IsAnyItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f) && (GImGui->MovingWindow == nullptr);
         if (is_dragging_widget) {
             ImGuiIO& io = ImGui::GetIO();
 
@@ -807,6 +855,16 @@ void Application::HandleShortcuts() {
 
     auto& kb = KeybindManager::instance();
 
+    if (kb.isTriggered(KeyAction::ToggleViewportFullscreen)) {
+        viewportFullscreen = !viewportFullscreen;
+        if (!viewportFullscreen && viewportActive) {
+            exitViewport();
+        }
+    }
+    if (viewportFullscreen && !viewportActive && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        viewportFullscreen = false;
+    }
+
     if (kb.isTriggered(KeyAction::Undo)) {
         if (mUndoHandler)
             mUndoHandler->doUndo();
@@ -929,6 +987,13 @@ void Application::HandleShortcuts() {
     if (kb.isTriggered(KeyAction::ResetView)) {
         viewport.resetView();
     }
+    if (kb.isTriggered(KeyAction::ToggleTrainMesh)) {
+        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size() && trackList[activeTrackIdx]->trackData) {
+            track* curTrack = trackList[activeTrackIdx]->trackData;
+            curTrack->train.visible = !curTrack->train.visible;
+            viewport.markSceneDirty();
+        }
+    }
     if (kb.isTriggered(KeyAction::DeleteGlbMesh)) {
         if (viewport.hasSelectedGlb()) {
             std::string removedPath = "";
@@ -1024,6 +1089,290 @@ void Application::HandleShortcuts() {
                     viewport.markSceneDirty();
                     pushUndo();
                 }
+            }
+        }
+    }
+}
+
+void Application::RenderViewportContent(ImVec2 viewportPanelSize, float deltaTime) {
+    if (viewportPanelSize.x <= 0 || viewportPanelSize.y <= 0)
+        return;
+
+    ImVec2 imagePos(0.0f, 0.0f);
+    static int lastW = 0, lastH = 0;
+    if ((int)viewportPanelSize.x != lastW || (int)viewportPanelSize.y != lastH) {
+        viewport.resize((int)viewportPanelSize.x, (int)viewportPanelSize.y);
+        lastW = (int)viewportPanelSize.x;
+        lastH = (int)viewportPanelSize.y;
+    }
+    if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+        viewport.setActiveTrack(trackList[activeTrackIdx]);
+        gloParent->currentTrack = trackList[activeTrackIdx]->trackData;
+    } else {
+        viewport.setActiveTrack(nullptr);
+        gloParent->currentTrack = nullptr;
+    }
+
+    bool toggleRequest = ImGui::IsMouseClicked(ImGuiMouseButton_Right) && (ImGui::IsWindowHovered() || viewportActive);
+    bool escapePressed = viewportActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
+    if (ImGui::IsWindowHovered() && (ImGui::IsMouseClicked(0) || ImGui::IsMouseClicked(1) || ImGui::IsMouseClicked(2)) && !viewportActive) {
+        ImGui::SetWindowFocus();
+        ImGui::ClearActiveID();
+    }
+    if (toggleRequest || escapePressed) {
+        viewportActive = !viewportActive;
+        if (escapePressed)
+            viewportActive = false;
+        viewport.setCaptured(viewportActive);
+        viewport.markSceneDirty();
+        if (viewportActive) {
+            ImGui::ClearActiveID();
+            ImGui::SetWindowFocus();
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        } else {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+    }
+
+    if (viewportActive) {
+        if (KeybindManager::instance().isTriggered(KeyAction::TogglePOVMode) && !viewport.getOrthoMode())
+            viewport.setPOVMode(!viewport.getPOVMode());
+
+        if (viewport.getOrthoMode()) {
+            viewport.panCamera((float)mouseDeltaX, (float)mouseDeltaY);
+            if (ImGui::GetIO().MouseWheel != 0.0f)
+                viewport.zoomCamera(ImGui::GetIO().MouseWheel * 2.0f);
+        } else
+            viewport.rotateCamera((float)-mouseDeltaX * 0.1f * gloParent->mOptions->mouseSensitivity, (float)-mouseDeltaY * 0.1f * gloParent->mOptions->mouseSensitivity);
+
+        glm::vec3 moveDelta(0.0f);
+
+        if (!viewport.getOrthoMode() && !viewport.getPOVMode()) {
+            float moveSpeed = 30.0f * deltaTime;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift))
+                moveSpeed *= gloParent->mOptions->sprintMultiplier;
+            if (KeybindManager::instance().isHeld(KeyAction::MoveForward))
+                moveDelta.z += moveSpeed;
+            if (KeybindManager::instance().isHeld(KeyAction::MoveBackward))
+                moveDelta.z -= moveSpeed;
+            if (KeybindManager::instance().isHeld(KeyAction::MoveLeft))
+                moveDelta.x -= moveSpeed;
+            if (KeybindManager::instance().isHeld(KeyAction::MoveRight))
+                moveDelta.x += moveSpeed;
+            if (ImGui::GetIO().MouseWheel != 0.0f) {
+                float boost = ImGui::IsKeyDown(ImGuiKey_LeftShift) ? gloParent->mOptions->sprintMultiplier : 1.0f;
+                viewport.moveCamera(glm::vec3(0.0f, ImGui::GetIO().MouseWheel * 2.0f * boost, 0.0f));
+            }
+        }
+        if (viewport.getPOVMode()) {
+            float boost = ImGui::IsKeyDown(ImGuiKey_LeftShift) ? gloParent->mOptions->sprintMultiplier : 1.0f;
+            float zMovement = 0.0f;
+            if (KeybindManager::instance().isHeld(KeyAction::MoveForward))
+                zMovement += 1.0f;
+            if (KeybindManager::instance().isHeld(KeyAction::MoveBackward))
+                zMovement -= 1.0f;
+            viewport.movePOVCamera(zMovement * boost, deltaTime);
+            float heightSpeed = 5.0f * deltaTime * boost;
+            if (KeybindManager::instance().isHeld(KeyAction::POVHeightUp))
+                viewport.adjustPOVHeight(heightSpeed);
+            if (KeybindManager::instance().isHeld(KeyAction::POVHeightDown))
+                viewport.adjustPOVHeight(-heightSpeed);
+            if (KeybindManager::instance().isTriggered(KeyAction::POVHeightReset))
+                viewport.resetPOVHeight();
+            if (ImGui::GetIO().MouseWheel != 0.0f)
+                viewport.adjustPOVHeight(ImGui::GetIO().MouseWheel * 0.5f * boost);
+        } else
+            viewport.moveCamera(moveDelta);
+    } else if (ImGui::IsWindowHovered())
+        viewport.zoomCamera(ImGui::GetIO().MouseWheel * 1.0f);
+
+    viewport.setShowPOVMarker3D(true);
+    viewport.render(trackList);
+    ImGui::Image((ImTextureID)viewport.getOutputTexture(), viewportPanelSize);
+    imagePos = ImGui::GetItemRectMin();
+
+    bool isViewportHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+    bool isViewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+    bool viewportOverlayZTrigger = !viewportFullscreen && (isViewportHovered || isViewportFocused);
+
+    if (viewportOverlayZTrigger && KeybindManager::instance().isHeld(KeyAction::OverlayScenery)) {
+        int numMeshes = (int)viewport.glbMeshes.size();
+        static int highlightIdx = 0;
+        if (numMeshes > 0) {
+            if (highlightIdx >= numMeshes)
+                highlightIdx = numMeshes - 1;
+            if (highlightIdx < 0)
+                highlightIdx = 0;
+
+            if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryPrev)) {
+                highlightIdx = (highlightIdx - 1 + numMeshes) % numMeshes;
+            }
+            if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryNext)) {
+                highlightIdx = (highlightIdx + 1) % numMeshes;
+            }
+            if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryToggleVis)) {
+                viewport.glbMeshes[highlightIdx].visible = !viewport.glbMeshes[highlightIdx].visible;
+                viewport.markSceneDirty();
+            }
+            if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryDelete)) {
+                pendingDeleteSceneryIdx = highlightIdx;
+                numMeshes--;
+                if (highlightIdx >= numMeshes)
+                    highlightIdx = numMeshes - 1;
+                if (highlightIdx < 0)
+                    highlightIdx = 0;
+            }
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(imagePos.x + 10.0f, imagePos.y + 10.0f));
+        ImGui::SetNextWindowBgAlpha(0.65f);
+
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                 ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
+                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                 ImGuiWindowFlags_NoNav;
+
+        if (ImGui::Begin("SceneryOverlay", nullptr, flags)) {
+            std::string sceneryKeyName = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::OverlayScenery));
+            ImGui::Text("Scenery Meshes (%s Held)", sceneryKeyName.c_str());
+            ImGui::TextDisabled("Up/Down: select; H: toggle; X: delete");
+            ImGui::Separator();
+
+            if (viewport.glbMeshes.empty()) {
+                ImGui::TextDisabled("No scenery meshes loaded.");
+            } else {
+                for (size_t i = 0; i < viewport.glbMeshes.size(); ++i) {
+                    auto& gm = viewport.glbMeshes[i];
+
+                    std::string filename = gm.path;
+                    size_t lastSlash = filename.find_last_of("/\\");
+                    if (lastSlash != std::string::npos) {
+                        filename = filename.substr(lastSlash + 1);
+                    }
+
+                    bool isHidden = !gm.visible;
+                    if (isHidden) {
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                    }
+
+                    bool isHighlighted = (i == (size_t)highlightIdx);
+                    std::string label = filename + "##overlay_" + std::to_string(i);
+                    if (ImGui::Selectable(label.c_str(), isHighlighted)) {
+                        highlightIdx = (int)i;
+                    }
+
+                    if (isHidden) {
+                        ImGui::PopStyleColor();
+                    }
+                }
+            }
+            ImGui::End();
+        }
+    } else if (viewportOverlayZTrigger && KeybindManager::instance().isHeld(KeyAction::OverlayWarnings)) {
+        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+            track* curTrack = trackList[activeTrackIdx]->trackData;
+
+            struct WarningItem {
+                std::string text;
+                ImVec4 color;
+            };
+            std::vector<WarningItem> safetyWarnings;
+
+            for (size_t s = 0; s < curTrack->lSections.size(); ++s) {
+                section* sec = curTrack->lSections[s];
+                std::string secTypeStr = "";
+                switch (sec->type) {
+                case straight:
+                    secTypeStr = "Straight";
+                    break;
+                case curved:
+                    secTypeStr = "Curved";
+                    break;
+                case forced:
+                    secTypeStr = "Forced";
+                    break;
+                case geometric:
+                    secTypeStr = "Geometric";
+                    break;
+                case geometricriderlocal:
+                    secTypeStr = "Geometric Rider-Local";
+                    break;
+                default:
+                    secTypeStr = "Unknown";
+                    break;
+                }
+                std::string secLabel = "Section " + std::to_string(s + 1) + " (" + secTypeStr + ")";
+
+                if (sec->isStalled) {
+                    safetyWarnings.push_back({secLabel + ": Train stalled! Speed clamped.", ImVec4(1.0f, 0.4f, 0.4f, 1.0f)});
+                }
+
+                bool forceViolated = false;
+                if (curTrack->enableForceLimits) {
+                    for (const auto& node : sec->lNodes) {
+                        if (node.forceNormal > curTrack->fMaxPosNormal ||
+                            node.forceNormal < curTrack->fMaxNegNormal ||
+                            node.forceLateral > curTrack->fMaxLateral ||
+                            node.forceLateral < curTrack->fMinLateral) {
+                            forceViolated = true;
+                            break;
+                        }
+                    }
+                }
+                if (forceViolated) {
+                    safetyWarnings.push_back({secLabel + ": Forces exceed safety limits!", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)});
+                }
+
+                bool radiusViolated = false;
+                if (curTrack->enforceMinRadius && curTrack->minRadius > 0.0f) {
+                    for (size_t ni = 1; ni < sec->lNodes.size(); ++ni) {
+                        const mnode& currNode = sec->lNodes[ni];
+                        const mnode& prevNode = sec->lNodes[ni - 1];
+                        double dotProd = glm::dot(currNode.vDir, prevNode.vDir);
+                        double deltaThetaRad = std::acos(std::clamp(dotProd, -1.0, 1.0));
+                        double ds = currNode.fDistFromLast;
+                        if (deltaThetaRad > 1e-7) {
+                            double physicalRadius = ds / deltaThetaRad;
+                            if (physicalRadius < curTrack->minRadius) {
+                                radiusViolated = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (radiusViolated) {
+                    safetyWarnings.push_back({secLabel + ": Exceeds minimum radius limit!", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)});
+                }
+            }
+
+            if (curTrack->isAnyNodeNearGimbalLock) {
+                safetyWarnings.push_back({"Track: Pitch near 90 deg; gimbal lock risk.", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)});
+            }
+
+            ImGui::SetNextWindowPos(ImVec2(imagePos.x + 10.0f, imagePos.y + 10.0f));
+            ImGui::SetNextWindowBgAlpha(0.65f);
+
+            ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
+                                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                     ImGuiWindowFlags_NoNav;
+
+            if (ImGui::Begin("WarningOverlay", nullptr, flags)) {
+                std::string warnKeyName = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::OverlayWarnings));
+                ImGui::Text("Track State (%s Held)", warnKeyName.c_str());
+                ImGui::TextDisabled("Displays active safety warnings and constraints");
+                ImGui::Separator();
+
+                if (safetyWarnings.empty()) {
+                    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "No active safety warnings or issues detected.");
+                } else {
+                    for (const auto& item : safetyWarnings) {
+                        ImGui::PushStyleColor(ImGuiCol_Text, item.color);
+                        ImGui::Text("- %s", item.text.c_str());
+                        ImGui::PopStyleColor();
+                    }
+                }
+                ImGui::End();
             }
         }
     }
@@ -1344,7 +1693,22 @@ void Application::Render(float deltaTime) {
             ImGui::SeparatorText("Window Layout");
             if (ImGui::MenuItem("Reset Layout"))
                 forceResetLayout = true;
+
             ImGui::SeparatorText("Display & Analysis");
+            if (ImGui::BeginMenu("Measurements")) {
+                if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size())
+                    graphView.renderMeasurementsMenu(trackList[activeTrackIdx]);
+                else
+                    ImGui::MenuItem("No active track", nullptr, false, false);
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Metrics Bar")) {
+                if (ImGui::MenuItem("Evenly Distribute Panels"))
+                    triggerDistributeMetrics = true;
+                if (ImGui::MenuItem("Fit Panels to Content"))
+                    triggerFitMetricsToContent = true;
+                ImGui::EndMenu();
+            }
             if (ImGui::BeginMenu("Track Rendering")) {
                 int shaderMode = viewport.getTrackShaderMode();
                 if (ImGui::MenuItem("Nothing", "Ctrl+1", shaderMode == 0))
@@ -1361,14 +1725,11 @@ void Application::Render(float deltaTime) {
                     viewport.setTrackShaderMode(5);
                 ImGui::EndMenu();
             }
-            if (ImGui::BeginMenu("Measurements")) {
-                if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size())
-                    graphView.renderMeasurementsMenu(trackList[activeTrackIdx]);
-                else
-                    ImGui::MenuItem("No active track", nullptr, false, false);
-                ImGui::EndMenu();
-            }
             if (ImGui::BeginMenu("Viewport")) {
+                std::string scFs = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::ToggleViewportFullscreen));
+                if (ImGui::MenuItem("Fullscreen", scFs == "None" ? nullptr : scFs.c_str(), viewportFullscreen)) {
+                    viewportFullscreen = !viewportFullscreen;
+                }
                 ImGui::SeparatorText("Camera");
                 if (ImGui::MenuItem("Reset View", "."))
                     viewport.resetView();
@@ -1429,61 +1790,207 @@ void Application::Render(float deltaTime) {
 
     ImGuiViewport* main_viewport = ImGui::GetMainViewport();
     float statusBarHeight = ImGui::GetFrameHeight();
-    main_viewport->WorkSize.y -= statusBarHeight;
 
-    ImGuiID dockspace_id = ImGui::DockSpaceOverViewport(0, main_viewport);
+    if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
+        graphView.updatePlayhead(trackList[activeTrackIdx]);
+    }
 
-    main_viewport->WorkSize.y += statusBarHeight;
+    if (!viewportFullscreen) {
+        main_viewport->WorkSize.y -= statusBarHeight;
 
-    if (firstFrame || forceResetLayout) {
-        bool forced = forceResetLayout;
-        firstFrame = false;
-        forceResetLayout = false;
-        ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockspace_id);
-        if (forced || (node && node->ChildNodes[0] == 0)) {
-            ImGui::DockBuilderRemoveNode(dockspace_id);
-            ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
-            ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
+        ImGuiID dockspace_id = ImGui::DockSpaceOverViewport(0, main_viewport);
 
-            ImGuiID dock_main_id = dockspace_id;
-            ImGuiID dock_id_top_half, dock_id_bottom_half;
-            ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Up, 0.60f, &dock_id_top_half, &dock_id_bottom_half);
+        main_viewport->WorkSize.y += statusBarHeight;
 
-            float metricsLineHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
-            float topHalfHeight = ImGui::GetMainViewport()->Size.y * 0.60f;
-            float metricsRatio = (topHalfHeight > 0.0f) ? std::clamp(metricsLineHeight / topHalfHeight, 0.01f, 0.15f) : 0.05f;
+        if (firstFrame || forceResetLayout) {
+            bool forced = forceResetLayout;
+            firstFrame = false;
+            forceResetLayout = false;
+            ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockspace_id);
+            bool hasMetrics = (ImGui::FindWindowSettingsByID(ImHashStr("Position")) != nullptr);
+            if (forced || (node && node->ChildNodes[0] == 0) || !hasMetrics) {
+                ImGui::DockBuilderRemoveNode(dockspace_id);
+                ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+                ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
 
-            ImGuiID dock_id_metrics, dock_id_top_content;
-            ImGui::DockBuilderSplitNode(dock_id_top_half, ImGuiDir_Down, metricsRatio, &dock_id_metrics, &dock_id_top_content);
+                ImGuiID dock_main_id = dockspace_id;
+                ImGuiID dock_id_top_half, dock_id_bottom_half;
+                ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Up, 0.60f, &dock_id_top_half, &dock_id_bottom_half);
 
-            ImGuiDockNode* metrics_node = ImGui::DockBuilderGetNode(dock_id_metrics);
-            if (metrics_node) {
-                metrics_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_NoResizeY;
-                metrics_node->SizeRef.y = metricsLineHeight;
+                float metricsLineHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
+                float topHalfHeight = ImGui::GetMainViewport()->Size.y * 0.60f;
+                float metricsRatio = (topHalfHeight > 0.0f) ? std::clamp(metricsLineHeight / topHalfHeight, 0.01f, 0.15f) : 0.05f;
+
+                ImGuiID dock_id_metrics, dock_id_top_content;
+                ImGui::DockBuilderSplitNode(dock_id_top_half, ImGuiDir_Down, metricsRatio, &dock_id_metrics, &dock_id_top_content);
+
+                ImGuiDockNode* metrics_node = ImGui::DockBuilderGetNode(dock_id_metrics);
+                if (metrics_node) {
+                    metrics_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+                    metrics_node->LocalFlags &= ~ImGuiDockNodeFlags_NoResizeY;
+                    metrics_node->SizeRef.y = metricsLineHeight;
+                }
+
+                // Split metrics horizontally: fit panels to content widths by default, with remaining space distributed evenly across all panels
+                float handleWidth = 10.0f + ImGui::GetStyle().ItemSpacing.x;
+                float padX = ImGui::GetStyle().WindowPadding.x * 2.0f;
+
+                float w_pos = ImGui::CalcTextSize("X: +000.000 m    Y: +000.000 m    Z: +000.000 m").x + handleWidth + padX;
+                float w_rot = ImGui::CalcTextSize("Roll: +000.000 deg (+000.000 deg/s)    Pitch: +00.000 deg (+000.000 deg/s)    Yaw: +000.000 deg (+000.000 deg/s)").x + handleWidth + padX;
+                float w_acc = ImGui::CalcTextSize("Y-Accel: +0.000 g    X-Accel: +0.000 g").x + handleWidth + padX;
+                float w_curv = ImGui::CalcTextSize("Radius: Straight (Comb)    Straight (Yaw)    Straight (Pitch)").x + handleWidth + padX;
+                float w_trk = ImGui::CalcTextSize("Distance: +000.000 m    Time: +00.000 s").x + handleWidth + padX;
+                float w_spd = ImGui::CalcTextSize("Speed: +000.000 m/s").x + padX;
+
+                w_pos = std::max(w_pos, 60.0f);
+                w_rot = std::max(w_rot, 60.0f);
+                w_acc = std::max(w_acc, 60.0f);
+                w_curv = std::max(w_curv, 60.0f);
+                w_trk = std::max(w_trk, 60.0f);
+                w_spd = std::max(w_spd, 50.0f);
+
+                float totalContent = w_pos + w_rot + w_acc + w_curv + w_trk + w_spd;
+                float totalAvail = ImGui::GetMainViewport()->Size.x;
+                float remSpace = totalAvail - totalContent;
+                float extraEach = (remSpace > 0.0f) ? (remSpace / 6.0f) : 0.0f;
+
+                float final_spd = w_spd + extraEach;
+                float final_pos = w_pos + extraEach;
+                float final_rot = w_rot + extraEach;
+                float final_acc = w_acc + extraEach;
+                float final_curv = w_curv + extraEach;
+                float final_trk = w_trk + extraEach;
+
+                if (remSpace <= 0.0f && totalContent > 0.0f) {
+                    final_spd = (w_spd / totalContent) * totalAvail;
+                    final_pos = (w_pos / totalContent) * totalAvail;
+                    final_rot = (w_rot / totalContent) * totalAvail;
+                    final_acc = (w_acc / totalContent) * totalAvail;
+                    final_curv = (w_curv / totalContent) * totalAvail;
+                    final_trk = (w_trk / totalContent) * totalAvail;
+                }
+
+                ImGuiID m_pos, m_rot, m_acc, m_curv, m_trk, m_spd;
+                ImGuiID rem = dock_id_metrics;
+                float spdRatio = (totalAvail > 0.0f) ? std::clamp(final_spd / totalAvail, 0.02f, 0.50f) : 0.08f;
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Right, spdRatio, &m_spd, &rem);
+
+                float remMovable = final_pos + final_rot + final_acc + final_curv + final_trk;
+                float curSum = remMovable;
+
+                float r_pos = (curSum > 0.0f) ? std::clamp(final_pos / curSum, 0.01f, 0.99f) : 0.20f;
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, r_pos, &m_pos, &rem);
+                curSum -= final_pos;
+
+                float r_rot = (curSum > 0.0f) ? std::clamp(final_rot / curSum, 0.01f, 0.99f) : 0.25f;
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, r_rot, &m_rot, &rem);
+                curSum -= final_rot;
+
+                float r_acc = (curSum > 0.0f) ? std::clamp(final_acc / curSum, 0.01f, 0.99f) : 0.25f;
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, r_acc, &m_acc, &rem);
+                curSum -= final_acc;
+
+                float r_curv = (curSum > 0.0f) ? std::clamp(final_curv / curSum, 0.01f, 0.99f) : 0.50f;
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, r_curv, &m_curv, &m_trk);
+
+                for (ImGuiID id : {m_pos, m_rot, m_acc, m_curv, m_trk, m_spd}) {
+                    ImGuiDockNode* n = ImGui::DockBuilderGetNode(id);
+                    if (n) {
+                        n->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+                        n->LocalFlags &= ~ImGuiDockNodeFlags_NoResizeY;
+                        if (id == m_spd) {
+                            n->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
+                        }
+                        n->SizeRef.y = metricsLineHeight;
+                    }
+                }
+
+                ImGuiID dock_id_left_top, dock_id_viewport;
+                ImGui::DockBuilderSplitNode(dock_id_top_content, ImGuiDir_Left, 0.17f, &dock_id_left_top, &dock_id_viewport);
+
+                ImGuiDockNode* viewport_node = ImGui::DockBuilderGetNode(dock_id_viewport);
+                if (viewport_node)
+                    viewport_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+
+                ImGuiID dock_id_left_bottom, dock_id_bottom_graphs;
+                ImGui::DockBuilderSplitNode(dock_id_bottom_half, ImGuiDir_Left, 0.17f, &dock_id_left_bottom, &dock_id_bottom_graphs);
+
+                ImGui::DockBuilderDockWindow("Tracks", dock_id_left_top);
+                ImGui::DockBuilderDockWindow("Sections", dock_id_left_top);
+                // ImGui::DockBuilderDockWindow("Smoothing", dock_id_left_top);
+                ImGui::DockBuilderDockWindow("Colors", dock_id_left_top);
+                ImGui::DockBuilderDockWindow("Transition Editor", dock_id_left_bottom);
+                ImGui::DockBuilderDockWindow("Graph List", dock_id_left_bottom);
+                ImGui::DockBuilderDockWindow("Viewport", dock_id_viewport);
+
+                ImGui::DockBuilderDockWindow("Position", m_pos);
+                ImGui::DockBuilderDockWindow("Orientation", m_rot);
+                ImGui::DockBuilderDockWindow("Acceleration", m_acc);
+                ImGui::DockBuilderDockWindow("Curvature", m_curv);
+                ImGui::DockBuilderDockWindow("Track", m_trk);
+                ImGui::DockBuilderDockWindow("Speed", m_spd);
+
+                ImGui::DockBuilderDockWindow("Graphs", dock_id_bottom_graphs);
+                ImGui::DockBuilderDockWindow("Resulting Graphs", dock_id_bottom_graphs);
+                ImGui::DockBuilderDockWindow("Measurement Graphs", dock_id_bottom_graphs);
+                ImGui::DockBuilderFinish(dockspace_id);
             }
+        }
 
-            ImGuiID dock_id_left_top, dock_id_viewport;
-            ImGui::DockBuilderSplitNode(dock_id_top_content, ImGuiDir_Left, 0.17f, &dock_id_left_top, &dock_id_viewport);
+        if (triggerDistributeMetrics) {
+            triggerDistributeMetrics = false;
 
-            ImGuiDockNode* viewport_node = ImGui::DockBuilderGetNode(dock_id_viewport);
-            if (viewport_node)
-                viewport_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+            ImGuiWindow* spdWin = ImGui::FindWindowByName("Speed");
+            ImGuiDockNode* speedNode = spdWin ? spdWin->DockNode : nullptr;
+            ImGuiDockNode* metricsStripNode = speedNode ? speedNode->ParentNode : nullptr;
 
-            ImGuiID dock_id_left_bottom, dock_id_bottom_graphs;
-            ImGui::DockBuilderSplitNode(dock_id_bottom_half, ImGuiDir_Left, 0.17f, &dock_id_left_bottom, &dock_id_bottom_graphs);
+            if (metricsStripNode) {
+                struct MetricPanelPos {
+                    const char* name;
+                    float posX;
+                };
+                std::vector<MetricPanelPos> panels;
+                const char* names[] = {"Position", "Orientation", "Acceleration", "Curvature", "Track"};
+                for (const char* name : names) {
+                    ImGuiWindow* w = ImGui::FindWindowByName(name);
+                    float x = w ? w->Pos.x : 0.0f;
+                    panels.push_back({name, x});
+                }
+                std::sort(panels.begin(), panels.end(), [](const MetricPanelPos& a, const MetricPanelPos& b) {
+                    return a.posX < b.posX;
+                });
 
-            ImGui::DockBuilderDockWindow("Tracks", dock_id_left_top);
-            ImGui::DockBuilderDockWindow("Sections", dock_id_left_top);
-            // ImGui::DockBuilderDockWindow("Smoothing", dock_id_left_top);
-            ImGui::DockBuilderDockWindow("Colors", dock_id_left_top);
-            ImGui::DockBuilderDockWindow("Transition Editor", dock_id_left_bottom);
-            ImGui::DockBuilderDockWindow("Graph List", dock_id_left_bottom);
-            ImGui::DockBuilderDockWindow("Viewport", dock_id_viewport);
-            ImGui::DockBuilderDockWindow("Metrics", dock_id_metrics);
-            ImGui::DockBuilderDockWindow("Graphs", dock_id_bottom_graphs);
-            ImGui::DockBuilderDockWindow("Resulting Graphs", dock_id_bottom_graphs);
-            ImGui::DockBuilderDockWindow("Measurement Graphs", dock_id_bottom_graphs);
-            ImGui::DockBuilderFinish(dockspace_id);
+                ImGuiID metricsNodeId = metricsStripNode->ID;
+                ImGui::DockBuilderRemoveNodeChildNodes(metricsNodeId);
+
+                ImGuiID m_spd, rem = metricsNodeId;
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Right, 0.05f, &m_spd, &rem);
+                ImGui::DockBuilderDockWindow("Speed", m_spd);
+
+                ImGuiID slots[5];
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, 1.0f / 5.0f, &slots[0], &rem);
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, 1.0f / 4.0f, &slots[1], &rem);
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, 1.0f / 3.0f, &slots[2], &rem);
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, 0.50f, &slots[3], &slots[4]);
+
+                for (int i = 0; i < 5; ++i) {
+                    ImGui::DockBuilderDockWindow(panels[i].name, slots[i]);
+                }
+
+                float metricsLineHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
+                for (ImGuiID id : {slots[0], slots[1], slots[2], slots[3], slots[4], m_spd}) {
+                    ImGuiDockNode* n = ImGui::DockBuilderGetNode(id);
+                    if (n) {
+                        n->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+                        n->LocalFlags &= ~ImGuiDockNodeFlags_NoResizeY;
+                        if (id == m_spd) {
+                            n->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
+                        }
+                        n->SizeRef.y = metricsLineHeight;
+                    }
+                }
+                ImGui::DockBuilderFinish(dockspace_id);
+            }
         }
     }
 
@@ -1695,7 +2202,42 @@ void Application::Render(float deltaTime) {
         ImGui::EndPopup();
     }
 
-    {
+    if (viewportFullscreen) {
+        ImGui::SetNextWindowPos(main_viewport->WorkPos);
+        ImGui::SetNextWindowSize(main_viewport->WorkSize);
+        ImGui::SetNextWindowViewport(main_viewport->ID);
+        ImGuiWindowFlags fsFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        if (ImGui::Begin("##FullscreenViewport", nullptr, fsFlags)) {
+            RenderViewportContent(ImGui::GetContentRegionAvail(), deltaTime);
+        }
+        ImGui::End();
+        ImGui::PopStyleVar(3);
+
+        if (!viewportActive) {
+            std::string fsKey = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::ToggleViewportFullscreen));
+            std::string btnText = "Exit Fullscreen (" + (fsKey == "None" ? "Esc" : fsKey) + ")";
+            ImGui::SetNextWindowPos(ImVec2(main_viewport->WorkPos.x + 15.0f, main_viewport->WorkPos.y + main_viewport->WorkSize.y - 15.0f), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+            ImGui::SetNextWindowBgAlpha(0.35f);
+            ImGuiWindowFlags overlayFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                            ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking;
+            if (ImGui::Begin("##ExitFullscreenOverlay", nullptr, overlayFlags)) {
+                ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+                ImGui::TextUnformatted(btnText.c_str());
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                }
+                if (ImGui::IsItemClicked()) {
+                    viewportFullscreen = false;
+                }
+                ImGui::End();
+            }
+        }
+    } else {
         leftPanel.render(this);
         ImGuiWindowFlags commonFlags = 0;
         DockStyle::Begin("Transition Editor", nullptr, commonFlags);
@@ -1742,306 +2284,8 @@ void Application::Render(float deltaTime) {
         ImGui::End();
 
         DockStyle::Begin("Viewport", nullptr, commonFlags);
-        ImVec2 imagePos(0.0f, 0.0f);
-        ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
-        if (viewportPanelSize.x > 0 && viewportPanelSize.y > 0) {
-            static int lastW = 0, lastH = 0;
-            if ((int)viewportPanelSize.x != lastW || (int)viewportPanelSize.y != lastH) {
-                viewport.resize((int)viewportPanelSize.x, (int)viewportPanelSize.y);
-                lastW = (int)viewportPanelSize.x;
-                lastH = (int)viewportPanelSize.y;
-            }
-            if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
-                viewport.setActiveTrack(trackList[activeTrackIdx]);
-                gloParent->currentTrack = trackList[activeTrackIdx]->trackData;
-            } else {
-                viewport.setActiveTrack(nullptr);
-                gloParent->currentTrack = nullptr;
-            }
-
-            bool toggleRequest = ImGui::IsMouseClicked(ImGuiMouseButton_Right) && (ImGui::IsWindowHovered() || viewportActive);
-            bool escapePressed = viewportActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-            if (ImGui::IsWindowHovered() && (ImGui::IsMouseClicked(0) || ImGui::IsMouseClicked(1) || ImGui::IsMouseClicked(2)) && !viewportActive) {
-                ImGui::SetWindowFocus();
-                ImGui::ClearActiveID();
-
-                // Commented out to disable selecting meshes via clicking
-                /*
-                if (ImGui::IsMouseClicked(0)) {
-                    ImVec2 mousePos = ImGui::GetMousePos();
-                    ImVec2 imagePos = ImGui::GetCursorScreenPos();
-                    float localX = mousePos.x - imagePos.x;
-                    float localY = mousePos.y - imagePos.y;
-                    if (localX >= 0.0f && localX <= viewportPanelSize.x &&
-                        localY >= 0.0f && localY <= viewportPanelSize.y) {
-                        float ndcX = (localX / viewportPanelSize.x) * 2.0f - 1.0f;
-                        float ndcY = (localY / viewportPanelSize.y) * 2.0f - 1.0f;
-                        viewport.selectGlbAtRay(ndcX, ndcY);
-                    }
-                }
-                */
-            }
-            if (toggleRequest || escapePressed) {
-                viewportActive = !viewportActive;
-                if (escapePressed)
-                    viewportActive = false;
-                viewport.setCaptured(viewportActive);
-                viewport.markSceneDirty();
-                if (viewportActive) {
-                    ImGui::ClearActiveID();
-                    ImGui::SetWindowFocus();
-                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                } else {
-                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-                }
-            }
-
-            if (viewportActive) {
-                if (KeybindManager::instance().isTriggered(KeyAction::TogglePOVMode) && !viewport.getOrthoMode())
-                    viewport.setPOVMode(!viewport.getPOVMode());
-
-                if (viewport.getOrthoMode()) {
-                    viewport.panCamera((float)mouseDeltaX, (float)mouseDeltaY);
-                    if (ImGui::GetIO().MouseWheel != 0.0f)
-                        viewport.zoomCamera(ImGui::GetIO().MouseWheel * 2.0f);
-                } else
-                    viewport.rotateCamera((float)-mouseDeltaX * 0.1f * gloParent->mOptions->mouseSensitivity, (float)-mouseDeltaY * 0.1f * gloParent->mOptions->mouseSensitivity);
-
-                glm::vec3 moveDelta(0.0f);
-
-                if (!viewport.getOrthoMode() && !viewport.getPOVMode()) {
-                    float moveSpeed = 30.0f * deltaTime;
-                    if (ImGui::IsKeyDown(ImGuiKey_LeftShift))
-                        moveSpeed *= gloParent->mOptions->sprintMultiplier;
-                    if (KeybindManager::instance().isHeld(KeyAction::MoveForward))
-                        moveDelta.z += moveSpeed;
-                    if (KeybindManager::instance().isHeld(KeyAction::MoveBackward))
-                        moveDelta.z -= moveSpeed;
-                    if (KeybindManager::instance().isHeld(KeyAction::MoveLeft))
-                        moveDelta.x -= moveSpeed;
-                    if (KeybindManager::instance().isHeld(KeyAction::MoveRight))
-                        moveDelta.x += moveSpeed;
-                    if (ImGui::GetIO().MouseWheel != 0.0f) {
-                        float boost = ImGui::IsKeyDown(ImGuiKey_LeftShift) ? gloParent->mOptions->sprintMultiplier : 1.0f;
-                        viewport.moveCamera(glm::vec3(0.0f, ImGui::GetIO().MouseWheel * 2.0f * boost, 0.0f));
-                    }
-                }
-                if (viewport.getPOVMode()) {
-                    float boost = ImGui::IsKeyDown(ImGuiKey_LeftShift) ? gloParent->mOptions->sprintMultiplier : 1.0f;
-                    float zMovement = 0.0f;
-                    if (KeybindManager::instance().isHeld(KeyAction::MoveForward))
-                        zMovement += 1.0f;
-                    if (KeybindManager::instance().isHeld(KeyAction::MoveBackward))
-                        zMovement -= 1.0f;
-                    viewport.movePOVCamera(zMovement * boost, deltaTime);
-                    float heightSpeed = 5.0f * deltaTime * boost;
-                    if (KeybindManager::instance().isHeld(KeyAction::POVHeightUp))
-                        viewport.adjustPOVHeight(heightSpeed);
-                    if (KeybindManager::instance().isHeld(KeyAction::POVHeightDown))
-                        viewport.adjustPOVHeight(-heightSpeed);
-                    if (KeybindManager::instance().isTriggered(KeyAction::POVHeightReset))
-                        viewport.resetPOVHeight();
-                    if (ImGui::GetIO().MouseWheel != 0.0f)
-                        viewport.adjustPOVHeight(ImGui::GetIO().MouseWheel * 0.5f * boost);
-                } else
-                    viewport.moveCamera(moveDelta);
-            } else if (ImGui::IsWindowHovered())
-                viewport.zoomCamera(ImGui::GetIO().MouseWheel * 1.0f);
-
-            viewport.setShowPOVMarker3D(true);
-            viewport.render(trackList);
-            ImGui::Image((ImTextureID)viewport.getOutputTexture(), viewportPanelSize);
-            imagePos = ImGui::GetItemRectMin();
-
-            // Track whether the viewport window itself is hovered or focused (including its overlay widgets)
-            bool isViewportHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
-            bool isViewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
-            viewportOverlayZTrigger = (isViewportHovered || isViewportFocused);
-        }
+        RenderViewportContent(ImGui::GetContentRegionAvail(), deltaTime);
         ImGui::End();
-
-        if (viewportOverlayZTrigger && KeybindManager::instance().isHeld(KeyAction::OverlayScenery)) {
-            int numMeshes = (int)viewport.glbMeshes.size();
-            static int highlightIdx = 0;
-            if (numMeshes > 0) {
-                if (highlightIdx >= numMeshes)
-                    highlightIdx = numMeshes - 1;
-                if (highlightIdx < 0)
-                    highlightIdx = 0;
-
-                if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryPrev)) {
-                    highlightIdx = (highlightIdx - 1 + numMeshes) % numMeshes;
-                }
-                if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryNext)) {
-                    highlightIdx = (highlightIdx + 1) % numMeshes;
-                }
-                if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryToggleVis)) {
-                    viewport.glbMeshes[highlightIdx].visible = !viewport.glbMeshes[highlightIdx].visible;
-                    viewport.markSceneDirty();
-                }
-                if (KeybindManager::instance().isTriggered(KeyAction::OverlaySceneryDelete)) {
-                    pendingDeleteSceneryIdx = highlightIdx;
-                    numMeshes--;
-                    if (highlightIdx >= numMeshes)
-                        highlightIdx = numMeshes - 1;
-                    if (highlightIdx < 0)
-                        highlightIdx = 0;
-                }
-            }
-
-            ImGui::SetNextWindowPos(ImVec2(imagePos.x + 10.0f, imagePos.y + 10.0f));
-            ImGui::SetNextWindowBgAlpha(0.65f);
-
-            ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                                     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
-                                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-                                     ImGuiWindowFlags_NoNav;
-
-            if (ImGui::Begin("SceneryOverlay", nullptr, flags)) {
-                std::string sceneryKeyName = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::OverlayScenery));
-                ImGui::Text("Scenery Meshes (%s Held)", sceneryKeyName.c_str());
-                ImGui::TextDisabled("Up/Down: select; H: toggle; X: delete");
-                ImGui::Separator();
-
-                if (viewport.glbMeshes.empty()) {
-                    ImGui::TextDisabled("No scenery meshes loaded.");
-                } else {
-                    for (size_t i = 0; i < viewport.glbMeshes.size(); ++i) {
-                        auto& gm = viewport.glbMeshes[i];
-
-                        std::string filename = gm.path;
-                        size_t lastSlash = filename.find_last_of("/\\");
-                        if (lastSlash != std::string::npos) {
-                            filename = filename.substr(lastSlash + 1);
-                        }
-
-                        bool isHidden = !gm.visible;
-                        if (isHidden) {
-                            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-                        }
-
-                        bool isHighlighted = (i == (size_t)highlightIdx);
-                        std::string label = filename + "##overlay_" + std::to_string(i);
-                        if (ImGui::Selectable(label.c_str(), isHighlighted)) {
-                            highlightIdx = (int)i;
-                        }
-
-                        if (isHidden) {
-                            ImGui::PopStyleColor();
-                        }
-                    }
-                }
-                ImGui::End();
-            }
-        } else if (viewportOverlayZTrigger && KeybindManager::instance().isHeld(KeyAction::OverlayWarnings)) {
-            // Render Track Safety Warnings overlay in the exact same top-left spot and with the same style as SceneryOverlay
-            if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
-                track* curTrack = trackList[activeTrackIdx]->trackData;
-
-                struct WarningItem {
-                    std::string text;
-                    ImVec4 color;
-                };
-                std::vector<WarningItem> safetyWarnings;
-
-                for (size_t s = 0; s < curTrack->lSections.size(); ++s) {
-                    section* sec = curTrack->lSections[s];
-                    std::string secTypeStr = "";
-                    switch (sec->type) {
-                    case straight:
-                        secTypeStr = "Straight";
-                        break;
-                    case curved:
-                        secTypeStr = "Curved";
-                        break;
-                    case forced:
-                        secTypeStr = "Forced";
-                        break;
-                    case geometric:
-                        secTypeStr = "Geometric";
-                        break;
-                    case geometricriderlocal:
-                        secTypeStr = "Geometric Rider-Local";
-                        break;
-                    default:
-                        secTypeStr = "Unknown";
-                        break;
-                    }
-                    std::string secLabel = "Section " + std::to_string(s + 1) + " (" + secTypeStr + ")";
-
-                    if (sec->isStalled) {
-                        safetyWarnings.push_back({secLabel + ": Train stalled! Speed clamped.", ImVec4(1.0f, 0.4f, 0.4f, 1.0f)}); // Red
-                    }
-
-                    bool forceViolated = false;
-                    if (curTrack->enableForceLimits) {
-                        for (const auto& node : sec->lNodes) {
-                            if (node.forceNormal > curTrack->fMaxPosNormal ||
-                                node.forceNormal < curTrack->fMaxNegNormal ||
-                                node.forceLateral > curTrack->fMaxLateral ||
-                                node.forceLateral < curTrack->fMinLateral) {
-                                forceViolated = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (forceViolated) {
-                        safetyWarnings.push_back({secLabel + ": Forces exceed safety limits!", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)}); // Orange
-                    }
-
-                    bool radiusViolated = false;
-                    if (curTrack->enforceMinRadius && curTrack->minRadius > 0.0f) {
-                        for (size_t ni = 1; ni < sec->lNodes.size(); ++ni) {
-                            const mnode& currNode = sec->lNodes[ni];
-                            const mnode& prevNode = sec->lNodes[ni - 1];
-                            double dotProd = glm::dot(currNode.vDir, prevNode.vDir);
-                            double deltaThetaRad = std::acos(std::clamp(dotProd, -1.0, 1.0));
-                            double ds = currNode.fDistFromLast;
-                            if (deltaThetaRad > 1e-7) {
-                                double physicalRadius = ds / deltaThetaRad;
-                                if (physicalRadius < curTrack->minRadius) {
-                                    radiusViolated = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if (radiusViolated) {
-                        safetyWarnings.push_back({secLabel + ": Exceeds minimum radius limit!", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)}); // Orange
-                    }
-                }
-
-                if (curTrack->isAnyNodeNearGimbalLock) {
-                    safetyWarnings.push_back({"Track: Pitch near 90 deg; gimbal lock risk.", ImVec4(1.0f, 0.7f, 0.4f, 1.0f)}); // Orange (matching radius/force limits)
-                }
-
-                ImGui::SetNextWindowPos(ImVec2(imagePos.x + 10.0f, imagePos.y + 10.0f));
-                ImGui::SetNextWindowBgAlpha(0.65f);
-
-                ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                                         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
-                                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-                                         ImGuiWindowFlags_NoNav;
-
-                if (ImGui::Begin("WarningOverlay", nullptr, flags)) {
-                    std::string warnKeyName = KeybindManager::formatChord(KeybindManager::instance().getChord(KeyAction::OverlayWarnings));
-                    ImGui::Text("Track State (%s Held)", warnKeyName.c_str());
-                    ImGui::TextDisabled("Displays active safety warnings and constraints");
-                    ImGui::Separator();
-
-                    if (safetyWarnings.empty()) {
-                        ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "No active safety warnings or issues detected.");
-                    } else {
-                        for (const auto& item : safetyWarnings) {
-                            ImGui::PushStyleColor(ImGuiCol_Text, item.color);
-                            ImGui::Text("- %s", item.text.c_str());
-                            ImGui::PopStyleColor();
-                        }
-                    }
-                    ImGui::End();
-                }
-            }
-        }
 
         DockStyle::Begin("Graph List", nullptr, commonFlags);
         if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
@@ -2096,130 +2340,383 @@ void Application::Render(float deltaTime) {
             ImGui::Text("No active track.");
         ImGui::End();
 
-        DockStyle::Begin("Metrics", nullptr, commonFlags | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar);
-        ImGuiDockNode* metricsDockNode = ImGui::GetWindowDockNode();
-        if (metricsDockNode) {
-            float targetHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
-            if (metricsDockNode->SizeRef.y != targetHeight) {
-                metricsDockNode->SizeRef.y = targetHeight;
-                metricsDockNode->WantLockSizeOnce = true;
-            }
-            metricsDockNode->LocalFlags |= ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_NoResizeY;
-        }
-        if (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size()) {
-            trackHandler* hTrack = trackList[activeTrackIdx];
-            if (hTrack->trackData->isReferenceTrack()) {
-                ImGui::Text("Reference Track (Metrics Disabled)");
-            } else {
-                mnode* lastNode = nullptr;
-                if (viewport.getPOVNode())
-                    lastNode = viewport.getPOVNode();
-                else if (!hTrack->trackData->lSections.empty() && hTrack->trackData->activeSection) {
-                    if (!hTrack->trackData->activeSection->lNodes.empty())
-                        lastNode = &hTrack->trackData->activeSection->lNodes.back();
-                } else
-                    lastNode = hTrack->trackData->anchorNode;
+        bool hasActiveTrack = (activeTrackIdx >= 0 && activeTrackIdx < (int)trackList.size());
+        trackHandler* hTrack = hasActiveTrack ? trackList[activeTrackIdx] : nullptr;
+        bool isRef = (hTrack && hTrack->trackData && hTrack->trackData->isReferenceTrack());
 
-                if (lastNode) {
-                    glm::mat4 anchorBase = glm::translate(glm::mat4(1.0f), (glm::vec3)hTrack->trackData->startPos) *
-                                           glm::rotate(glm::mat4(1.0f), glm::radians((float)hTrack->trackData->startYaw - 90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                    glm::vec3 worldPos = glm::vec3(anchorBase * glm::vec4(lastNode->vPosHeart(hTrack->trackData->fHeart), 1.0f));
+        mnode* lastNode = nullptr;
+        glm::vec3 worldPos(0.0f);
+        float lenFact = gloParent->mOptions->getLengthFactor();
+        std::string lenStr = gloParent->mOptions->getLengthString();
+        float spdFact = gloParent->mOptions->getSpeedFactor();
+        std::string spdStr = gloParent->mOptions->getSpeedString();
+        int lastNodeIndex = 0;
+        double timeVal = 0.0;
+        double distVal = 0.0;
+        std::string radCombStr = "Straight";
+        std::string radYawStr = "Straight";
+        std::string radPitchStr = "Straight";
 
-                    float lenFact = gloParent->mOptions->getLengthFactor();
-                    std::string lenStr = gloParent->mOptions->getLengthString();
-                    float spdFact = gloParent->mOptions->getSpeedFactor();
-                    std::string spdStr = gloParent->mOptions->getSpeedString();
+        if (hTrack && hTrack->trackData && !isRef) {
+            track* curTrack = hTrack->trackData;
+            if (viewport.getPOVNode())
+                lastNode = viewport.getPOVNode();
+            else if (!curTrack->lSections.empty() && curTrack->activeSection) {
+                if (!curTrack->activeSection->lNodes.empty())
+                    lastNode = &curTrack->activeSection->lNodes.back();
+            } else
+                lastNode = curTrack->anchorNode;
 
-                    std::vector<std::string> groups;
-                    char buf[256];
-                    snprintf(buf, sizeof(buf), "X: %+.3f %s    Y: %+.3f %s    Z: %+.3f %s", worldPos.x * lenFact, lenStr.c_str(), worldPos.y * lenFact, lenStr.c_str(), worldPos.z * lenFact, lenStr.c_str());
-                    groups.push_back(buf);
-                    snprintf(buf, sizeof(buf), "Roll: %+.3f deg (%+.3f deg/s)    Pitch: %+.3f deg (%+.3f deg/s)    Yaw: %+.3f deg (%+.3f deg/s)", lastNode->fRoll, lastNode->fRollSpeed, lastNode->getPitch(), lastNode->getPitchChange(), lastNode->getDirection(), lastNode->getYawChange());
-                    groups.push_back(buf);
-                    snprintf(buf, sizeof(buf), "Y-Accel: %+.3f g    X-Accel: %+.3f g", lastNode->forceNormal, lastNode->forceLateral);
-                    groups.push_back(buf);
+            if (lastNode) {
+                glm::mat4 anchorBase = glm::translate(glm::mat4(1.0f), (glm::vec3)curTrack->startPos) *
+                                       glm::rotate(glm::mat4(1.0f), glm::radians((float)curTrack->startYaw - 90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                worldPos = glm::vec3(anchorBase * glm::vec4(lastNode->vPosHeart(curTrack->fHeart), 1.0f));
 
-                    int lastNodeIndex = 0;
-                    if (viewport.getPOVNode()) {
-                        lastNodeIndex = viewport.getPOVPos();
-                    } else if (!hTrack->trackData->lSections.empty()) {
-                        section* activeSec = hTrack->trackData->activeSection;
-                        if (!activeSec) {
-                            activeSec = hTrack->trackData->lSections.back();
+                if (viewport.getPOVNode()) {
+                    lastNodeIndex = viewport.getPOVPos();
+                } else if (!curTrack->lSections.empty()) {
+                    section* activeSec = curTrack->activeSection;
+                    if (!activeSec)
+                        activeSec = curTrack->lSections.back();
+                    lastNodeIndex = curTrack->getNumPoints(activeSec);
+                    if (!activeSec->lNodes.empty())
+                        lastNodeIndex += activeSec->lNodes.size() - 1;
+                }
+
+                timeVal = (double)lastNodeIndex / 1000.0;
+                distVal = lastNode->fTotalLength * lenFact;
+
+                if (lastNodeIndex > 0) {
+                    mnode* prevNode = curTrack->getPoint(lastNodeIndex - 1);
+                    if (prevNode) {
+                        double ds = lastNode->fDistFromLast;
+                        if (ds > 1e-7) {
+                            // Combined (3D)
+                            double dotProd = glm::dot(lastNode->vDir, prevNode->vDir);
+                            double deltaThetaRad = std::acos(std::clamp(dotProd, -1.0, 1.0));
+                            if (deltaThetaRad > 1e-7) {
+                                double r = (ds / deltaThetaRad) * lenFact;
+                                char rb[64];
+                                snprintf(rb, sizeof(rb), "%.2f %s", r, lenStr.c_str());
+                                radCombStr = rb;
+                            }
+
+                            // Yaw (spatial horizontal turning rate)
+                            double cosPitch = std::cos(std::abs(lastNode->getPitch()) * F_PI / 180.0);
+                            double dYawRad = std::abs(lastNode->fYawFromLast * F_PI / 180.0) * cosPitch;
+                            if (dYawRad > 1e-7) {
+                                double r = (ds / dYawRad) * lenFact;
+                                char rb[64];
+                                snprintf(rb, sizeof(rb), "%.2f %s", r, lenStr.c_str());
+                                radYawStr = rb;
+                            }
+
+                            // Pitch (vertical plane turning rate)
+                            double dPitchRad = std::abs(lastNode->fPitchFromLast * F_PI / 180.0);
+                            if (dPitchRad > 1e-7) {
+                                double r = (ds / dPitchRad) * lenFact;
+                                char rb[64];
+                                snprintf(rb, sizeof(rb), "%.2f %s", r, lenStr.c_str());
+                                radPitchStr = rb;
+                            }
                         }
-                        lastNodeIndex = hTrack->trackData->getNumPoints(activeSec);
-                        if (!activeSec->lNodes.empty()) {
-                            lastNodeIndex += activeSec->lNodes.size() - 1;
-                        }
-                    }
-                    double timeVal = (double)lastNodeIndex / 1000.0;
-                    double distVal = lastNode->fTotalLength * lenFact;
-
-                    snprintf(buf, sizeof(buf), "Distance: %+.3f %s    Time: %+.3f s", distVal, lenStr.c_str(), timeVal);
-                    groups.push_back(buf);
-
-                    char speedBuf[128];
-                    snprintf(speedBuf, sizeof(speedBuf), "Speed: %+.3f %s", lastNode->fVel * spdFact, spdStr.c_str());
-                    std::string speedStr(speedBuf);
-
-                    float totalTextWidth = 0.0f;
-                    std::vector<float> textWidths;
-                    for (size_t i = 0; i < groups.size(); ++i) {
-                        float w = ImGui::CalcTextSize(groups[i].c_str()).x;
-                        if (i == groups.size() - 1) {
-                            w += ImGui::CalcTextSize("    ").x + ImGui::CalcTextSize(speedStr.c_str()).x;
-                        }
-                        textWidths.push_back(w);
-                        totalTextWidth += w;
-                    }
-
-                    float availWidth = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
-                    float startX = ImGui::GetWindowContentRegionMin().x;
-                    float padding = 15.0f;
-                    if (groups.size() > 1 && availWidth > totalTextWidth)
-                        padding = (availWidth - totalTextWidth - 1.0f) / (groups.size() - 1);
-
-                    float currentX = startX;
-                    for (size_t i = 0; i < groups.size(); ++i) {
-                        if (i > 0)
-                            ImGui::SameLine();
-                        if (i > 0 && currentX + textWidths[i] > startX + availWidth + 1.0f) {
-                            ImGui::NewLine();
-                            currentX = startX;
-                        }
-                        ImGui::SetCursorPosX(currentX);
-                        if (i == groups.size() - 1) {
-                            ImGui::TextUnformatted(groups[i].c_str());
-                            ImGui::SameLine(0, 0);
-                            ImGui::TextUnformatted("    ");
-                            ImGui::SameLine(0, 0);
-                            ImGui::TextColored(ImVec4(0, 1, 0, 1), "%s", speedStr.c_str());
-                        } else {
-                            ImGui::TextUnformatted(groups[i].c_str());
-                        }
-                        currentX += textWidths[i] + padding;
                     }
                 }
             }
-        } else
-            ImGui::Text("No active track.");
-        ImGui::End();
-    }
+        }
 
-    if (gloParent->mOptions->showFPS) {
-        frameCount++;
-        double now = glfwGetTime();
-        if (now - lastFPSUpdate >= 1.0) {
-            currentFPS = (float)frameCount / (float)(now - lastFPSUpdate);
-            frameCount = 0;
-            lastFPSUpdate = now;
+        char bufPos[256] = "";
+        char bufRot[256] = "";
+        char bufAcc[128] = "";
+        char bufCurv[256] = "";
+        char bufTrk[128] = "";
+        char bufSpd[128] = "";
+
+        if (lastNode && !isRef) {
+            snprintf(bufPos, sizeof(bufPos), "X: %+.3f %s    Y: %+.3f %s    Z: %+.3f %s",
+                     worldPos.x * lenFact, lenStr.c_str(),
+                     worldPos.y * lenFact, lenStr.c_str(),
+                     worldPos.z * lenFact, lenStr.c_str());
+            snprintf(bufRot, sizeof(bufRot), "Roll: %+.3f deg (%+.3f deg/s)    Pitch: %+.3f deg (%+.3f deg/s)    Yaw: %+.3f deg (%+.3f deg/s)",
+                     lastNode->fRoll, lastNode->fRollSpeed,
+                     lastNode->getPitch(), lastNode->getPitchChange(),
+                     lastNode->getDirection(), lastNode->getYawChange());
+            snprintf(bufAcc, sizeof(bufAcc), "Y-Accel: %+.3f g    X-Accel: %+.3f g",
+                     lastNode->forceNormal, lastNode->forceLateral);
+            snprintf(bufCurv, sizeof(bufCurv), "Radius: %s (Comb)    %s (Yaw)    %s (Pitch)",
+                     radCombStr.c_str(), radYawStr.c_str(), radPitchStr.c_str());
+            snprintf(bufTrk, sizeof(bufTrk), "Distance: %+.3f %s    Time: %+.3f s",
+                     distVal, lenStr.c_str(), timeVal);
+            snprintf(bufSpd, sizeof(bufSpd), "Speed: %+.3f %s",
+                     lastNode->fVel * spdFact, spdStr.c_str());
         }
-        ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10, 10), ImGuiCond_Always, ImVec2(1, 0));
-        ImGui::SetNextWindowBgAlpha(0.35f);
-        if (ImGui::Begin("FPS Overlay", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove)) {
-            ImGui::Text("%.1f FPS", currentFPS);
-            ImGui::End();
+
+        if (triggerFitMetricsToContent) {
+            ImGuiWindow* spdWin = ImGui::FindWindowByName("Speed");
+            ImGuiDockNode* speedNode = spdWin ? spdWin->DockNode : nullptr;
+            ImGuiDockNode* metricsStripNode = speedNode ? speedNode->ParentNode : nullptr;
+
+            if (metricsStripNode) {
+                triggerFitMetricsToContent = false;
+                struct MetricPanelInfo {
+                    const char* name;
+                    float posX;
+                    float contentWidth;
+                };
+
+                float handleWidth = 10.0f + ImGui::GetStyle().ItemSpacing.x;
+                float padX = ImGui::GetStyle().WindowPadding.x * 2.0f;
+
+                float def_pos = ImGui::CalcTextSize("X: +000.000 m    Y: +000.000 m    Z: +000.000 m").x + handleWidth + padX;
+                float def_rot = ImGui::CalcTextSize("Roll: +000.000 deg (+000.000 deg/s)    Pitch: +00.000 deg (+000.000 deg/s)    Yaw: +000.000 deg (+000.000 deg/s)").x + handleWidth + padX;
+                float def_acc = ImGui::CalcTextSize("Y-Accel: +0.000 g    X-Accel: +0.000 g").x + handleWidth + padX;
+                float def_curv = ImGui::CalcTextSize("Radius: Straight (Comb)    Straight (Yaw)    Straight (Pitch)").x + handleWidth + padX;
+                float def_trk = ImGui::CalcTextSize("Distance: +000.000 m    Time: +00.000 s").x + handleWidth + padX;
+                float def_spd = ImGui::CalcTextSize("Speed: +000.000 m/s").x + padX;
+
+                std::vector<MetricPanelInfo> movablePanels = {
+                    {"Position", 0.0f, std::max(ImGui::CalcTextSize(bufPos).x + handleWidth + padX, def_pos)},
+                    {"Orientation", 0.0f, std::max(ImGui::CalcTextSize(bufRot).x + handleWidth + padX, def_rot)},
+                    {"Acceleration", 0.0f, std::max(ImGui::CalcTextSize(bufAcc).x + handleWidth + padX, def_acc)},
+                    {"Curvature", 0.0f, std::max(ImGui::CalcTextSize(bufCurv).x + handleWidth + padX, def_curv)},
+                    {"Track", 0.0f, std::max(ImGui::CalcTextSize(bufTrk).x + handleWidth + padX, def_trk)}};
+
+                for (auto& p : movablePanels) {
+                    ImGuiWindow* w = ImGui::FindWindowByName(p.name);
+                    p.posX = w ? w->Pos.x : 0.0f;
+                    if (p.contentWidth < 60.0f)
+                        p.contentWidth = 60.0f;
+                }
+
+                std::stable_sort(movablePanels.begin(), movablePanels.end(), [](const MetricPanelInfo& a, const MetricPanelInfo& b) {
+                    return a.posX < b.posX;
+                });
+
+                float speedContentWidth = std::max(std::max(ImGui::CalcTextSize(bufSpd).x + padX, def_spd), 50.0f);
+
+                float totalContentWidth = speedContentWidth;
+                for (const auto& p : movablePanels) {
+                    totalContentWidth += p.contentWidth;
+                }
+
+                float totalAvail = (metricsStripNode->Size.x > 0.0f) ? metricsStripNode->Size.x : ImGui::GetMainViewport()->Size.x;
+                float remSpace = totalAvail - totalContentWidth;
+                float extraEach = (remSpace > 0.0f) ? (remSpace / 6.0f) : 0.0f;
+
+                float finalSpeedWidth = speedContentWidth + extraEach;
+                float finalMovableWidths[5];
+                for (int i = 0; i < 5; ++i) {
+                    finalMovableWidths[i] = movablePanels[i].contentWidth + extraEach;
+                }
+
+                if (remSpace <= 0.0f && totalContentWidth > 0.0f) {
+                    finalSpeedWidth = (speedContentWidth / totalContentWidth) * totalAvail;
+                    for (int i = 0; i < 5; ++i) {
+                        finalMovableWidths[i] = (movablePanels[i].contentWidth / totalContentWidth) * totalAvail;
+                    }
+                }
+
+                ImGuiID metricsNodeId = metricsStripNode->ID;
+                ImGui::DockBuilderRemoveNodeChildNodes(metricsNodeId);
+
+                ImGuiID m_spd, rem = metricsNodeId;
+                float speedRatio = (totalAvail > 0.0f) ? std::clamp(finalSpeedWidth / totalAvail, 0.02f, 0.50f) : 0.08f;
+                ImGui::DockBuilderSplitNode(rem, ImGuiDir_Right, speedRatio, &m_spd, &rem);
+                ImGui::DockBuilderDockWindow("Speed", m_spd);
+
+                float remainingMovableTotal = 0.0f;
+                for (int i = 0; i < 5; ++i)
+                    remainingMovableTotal += finalMovableWidths[i];
+
+                ImGuiID slots[5];
+                float currentSum = remainingMovableTotal;
+                for (int i = 0; i < 4; ++i) {
+                    float r = (currentSum > 0.0f) ? std::clamp(finalMovableWidths[i] / currentSum, 0.01f, 0.99f) : 0.20f;
+                    ImGui::DockBuilderSplitNode(rem, ImGuiDir_Left, r, &slots[i], &rem);
+                    currentSum -= finalMovableWidths[i];
+                }
+                slots[4] = rem;
+
+                for (int i = 0; i < 5; ++i) {
+                    ImGui::DockBuilderDockWindow(movablePanels[i].name, slots[i]);
+                }
+
+                float metricsLineHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
+                for (ImGuiID id : {slots[0], slots[1], slots[2], slots[3], slots[4], m_spd}) {
+                    ImGuiDockNode* n = ImGui::DockBuilderGetNode(id);
+                    if (n) {
+                        n->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+                        n->LocalFlags &= ~ImGuiDockNodeFlags_NoResizeY;
+                        if (id == m_spd) {
+                            n->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
+                        }
+                        n->SizeRef.y = metricsLineHeight;
+                    }
+                }
+                ImGui::DockBuilderFinish(metricsNodeId);
+            }
         }
+
+        float minMetricHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
+        ImGuiWindowFlags metricFlags = commonFlags | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar;
+
+        auto applyMetricNodeFlags = [&]() {
+            ImGuiDockNode* dNode = ImGui::GetWindowDockNode();
+            if (dNode) {
+                dNode->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+                dNode->LocalFlags &= ~ImGuiDockNodeFlags_NoResizeY;
+            }
+        };
+
+        auto renderDragHandle = [](const char* id) -> float {
+            ImGuiWindow* window = ImGui::GetCurrentWindow();
+            ImGuiDockNode* node = ImGui::GetWindowDockNode();
+
+            float lineHeight = ImGui::GetTextLineHeight();
+            float handleWidth = 10.0f;
+            ImGui::InvisibleButton(id, ImVec2(handleWidth, lineHeight));
+
+            bool hovered = ImGui::IsItemHovered();
+            bool active = ImGui::IsItemActive();
+
+            if (hovered) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+                ImGui::SetTooltip("Drag to rearrange or undock panel.");
+            }
+            if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                ImGui::StartMouseMovingWindowOrNode(window, node, true);
+            }
+
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            ImVec2 pMin = ImGui::GetItemRectMin();
+            ImVec2 pMax = ImGui::GetItemRectMax();
+            float cx = (pMin.x + pMax.x) * 0.5f;
+            float cy = (pMin.y + pMax.y) * 0.5f;
+
+            ImU32 dotColor = active ? ImGui::GetColorU32(ImGuiCol_PlotLinesHovered)
+                                    : (hovered ? ImGui::GetColorU32(ImGuiCol_Text)
+                                               : ImGui::GetColorU32(ImGuiCol_TextDisabled, 0.45f));
+
+            float dotR = 1.25f;
+            float stepX = 2.0f;
+            float stepY = 3.5f;
+
+            for (float ox : {-stepX, stepX}) {
+                for (float oy : {-stepY, 0.0f, stepY}) {
+                    drawList->AddCircleFilled(ImVec2(cx + ox, cy + oy), dotR, dotColor);
+                }
+            }
+
+            ImGui::SameLine();
+            return ImGui::GetCursorPosX();
+        };
+
+        auto renderCenteredText = [](float startOffset, const std::string& text, const ImVec4* color = nullptr) {
+            float totalAvail = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
+            float textWidth = ImGui::CalcTextSize(text.c_str()).x;
+            float targetX = ImGui::GetWindowContentRegionMin().x + (totalAvail - textWidth) * 0.5f;
+            if (targetX < startOffset)
+                targetX = startOffset;
+            ImGui::SetCursorPosX(targetX);
+            if (color) {
+                ImGui::TextColored(*color, "%s", text.c_str());
+            } else {
+                ImGui::TextUnformatted(text.c_str());
+            }
+        };
+
+        auto showPlaceholder = [&](float startOffset) {
+            const char* placeholder = "No node data.";
+            if (!hasActiveTrack)
+                placeholder = "No active track.";
+            else if (isRef)
+                placeholder = "Reference Track (Disabled)";
+
+            float totalAvail = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
+            float textWidth = ImGui::CalcTextSize(placeholder).x;
+            float targetX = ImGui::GetWindowContentRegionMin().x + (totalAvail - textWidth) * 0.5f;
+            if (targetX < startOffset)
+                targetX = startOffset;
+            ImGui::SetCursorPosX(targetX);
+            ImGui::TextDisabled("%s", placeholder);
+        };
+
+        // 1. Position
+        ImGui::SetNextWindowSizeConstraints(ImVec2(20.0f, minMetricHeight), ImVec2(FLT_MAX, FLT_MAX));
+        DockStyle::Begin("Position", nullptr, metricFlags);
+        applyMetricNodeFlags();
+        float offset1 = renderDragHandle("::##DragPos");
+        if (lastNode && !isRef) {
+            renderCenteredText(offset1, bufPos);
+        } else {
+            showPlaceholder(offset1);
+        }
+        ImGui::End();
+
+        // 2. Orientation
+        ImGui::SetNextWindowSizeConstraints(ImVec2(20.0f, minMetricHeight), ImVec2(FLT_MAX, FLT_MAX));
+        DockStyle::Begin("Orientation", nullptr, metricFlags);
+        applyMetricNodeFlags();
+        float offset2 = renderDragHandle("::##DragRot");
+        if (lastNode && !isRef) {
+            renderCenteredText(offset2, bufRot);
+        } else {
+            showPlaceholder(offset2);
+        }
+        ImGui::End();
+
+        // 3. Acceleration
+        ImGui::SetNextWindowSizeConstraints(ImVec2(20.0f, minMetricHeight), ImVec2(FLT_MAX, FLT_MAX));
+        DockStyle::Begin("Acceleration", nullptr, metricFlags);
+        applyMetricNodeFlags();
+        float offset3 = renderDragHandle("::##DragAcc");
+        if (lastNode && !isRef) {
+            renderCenteredText(offset3, bufAcc);
+        } else {
+            showPlaceholder(offset3);
+        }
+        ImGui::End();
+
+        // 4. Curvature
+        ImGui::SetNextWindowSizeConstraints(ImVec2(20.0f, minMetricHeight), ImVec2(FLT_MAX, FLT_MAX));
+        DockStyle::Begin("Curvature", nullptr, metricFlags);
+        applyMetricNodeFlags();
+        float offset4 = renderDragHandle("::##DragCurv");
+        if (lastNode && !isRef) {
+            renderCenteredText(offset4, bufCurv);
+        } else {
+            showPlaceholder(offset4);
+        }
+        ImGui::End();
+
+        // 5. Track
+        ImGui::SetNextWindowSizeConstraints(ImVec2(20.0f, minMetricHeight), ImVec2(FLT_MAX, FLT_MAX));
+        DockStyle::Begin("Track", nullptr, metricFlags);
+        applyMetricNodeFlags();
+        float offset5 = renderDragHandle("::##DragTrk");
+        if (lastNode && !isRef) {
+            renderCenteredText(offset5, bufTrk);
+        } else {
+            showPlaceholder(offset5);
+        }
+        ImGui::End();
+
+        // 6. Speed (Anchored, non-moveable)
+        ImGui::SetNextWindowSizeConstraints(ImVec2(20.0f, minMetricHeight), ImVec2(FLT_MAX, FLT_MAX));
+        DockStyle::Begin("Speed", nullptr, metricFlags | ImGuiWindowFlags_NoMove);
+        ImGuiDockNode* spdDockNode = ImGui::GetWindowDockNode();
+        if (spdDockNode) {
+            spdDockNode->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+            spdDockNode->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
+            spdDockNode->LocalFlags &= ~ImGuiDockNodeFlags_NoResizeY;
+        }
+        if (lastNode && !isRef) {
+            ImVec4 green(0, 1, 0, 1);
+            renderCenteredText(0.0f, bufSpd, &green);
+        } else {
+            showPlaceholder(0.0f);
+        }
+        ImGui::End();
     }
 
     // Render Status Bar at the bottom of the window
@@ -2331,6 +2828,26 @@ void Application::Render(float deltaTime) {
         ImGui::PopStyleVar(3);
     }
 
+    if (gloParent->mOptions->showFPS) {
+        frameCount++;
+        double now = glfwGetTime();
+        if (now - lastFPSUpdate >= 1.0) {
+            currentFPS = (float)frameCount / (float)(now - lastFPSUpdate);
+            frameCount = 0;
+            lastFPSUpdate = now;
+        }
+        ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10, 10), ImGuiCond_Always, ImVec2(1, 0));
+        ImGui::SetNextWindowBgAlpha(0.35f);
+        ImGuiWindowFlags fpsFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                    ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking;
+        if (ImGui::Begin("FPS Overlay", nullptr, fpsFlags)) {
+            ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+            ImGui::Text("%.1f FPS", currentFPS);
+            ImGui::End();
+        }
+    }
+
     if (notificationTimer > 0.0f) {
         notificationTimer -= deltaTime;
 
@@ -2380,6 +2897,7 @@ void Application::RenderOptionsWindow() {
             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
+            // 1. Font Size
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2402,6 +2920,7 @@ void Application::RenderOptionsWindow() {
             }
             if (ImGui::SliderFloat("##FontSize", &gloParent->mOptions->fontSize, 10.0f, 32.0f, "%.1f px")) {
                 gloParent->mOptions->fontSize = std::clamp(gloParent->mOptions->fontSize, 10.0f, 32.0f);
+                gloParent->mOptions->save("options.cfg");
             }
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("Requires application restart for settings to take effect.");
@@ -2410,6 +2929,23 @@ void Application::RenderOptionsWindow() {
                 ImGui::PopStyleColor();
             }
 
+            // 2. Hide Empty Mfgs
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Hide Empty Mfgs");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Hides manufacturers with no available track styles or clearance envelopes in the Left Panel dropdown.");
+            }
+            ImGui::TableNextColumn();
+            if (ImGui::Checkbox("##HideEmptyManufacturers", &gloParent->mOptions->hideEmptyManufacturers)) {
+                gloParent->mOptions->save("options.cfg");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Hides manufacturers with no available track styles or clearance envelopes in the Left Panel dropdown.");
+            }
+
+            // 3. Max Undo Steps
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2422,20 +2958,7 @@ void Application::RenderOptionsWindow() {
                     mUndoHandler->setMaxStackSize(gloParent->mOptions->maxUndoChanges);
             }
 
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::AlignTextToFramePadding();
-            ImGui::Text("Theme");
-            ImGui::TableNextColumn();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            int themeIdx = gloParent->mOptions->theme;
-            const char* themes[] = {"Dark", "Light", "Classic", "Soft Dark", "Soft Light"};
-            if (ImGui::Combo("##Theme", &themeIdx, themes, IM_ARRAYSIZE(themes))) {
-                gloParent->mOptions->theme = themeIdx;
-                gloParent->mOptions->tabHighlightColor = GetDefaultTabHighlightColor(themeIdx);
-                ApplyTheme(themeIdx);
-            }
-
+            // 4. Tab Highlight Color
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2453,6 +2976,22 @@ void Application::RenderOptionsWindow() {
                 ImGui::EndPopup();
             }
 
+            // 5. Theme
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Theme");
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            int themeIdx = gloParent->mOptions->theme;
+            const char* themes[] = {"Dark", "Light", "Classic", "Soft Dark", "Soft Light"};
+            if (ImGui::Combo("##Theme", &themeIdx, themes, IM_ARRAYSIZE(themes))) {
+                gloParent->mOptions->theme = themeIdx;
+                gloParent->mOptions->tabHighlightColor = GetDefaultTabHighlightColor(themeIdx);
+                ApplyTheme(themeIdx);
+            }
+
+            // 6. Transparent Graphs
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2463,6 +3002,7 @@ void Application::RenderOptionsWindow() {
             ImGui::TableNextColumn();
             ImGui::Checkbox("##TransparentGraphs", &gloParent->mOptions->transparentGraphs);
 
+            // 7. Units
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2572,6 +3112,7 @@ void Application::RenderOptionsWindow() {
             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
+            // 1. Anti-Aliasing
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2599,6 +3140,7 @@ void Application::RenderOptionsWindow() {
                 viewport.setMSAASamples(gloParent->mOptions->msaaSamples);
             }
 
+            // 2. Auto Focus
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2612,6 +3154,7 @@ void Application::RenderOptionsWindow() {
                 ImGui::SetTooltip("Automatically focus/zoom the graph viewports onto the selected track section.");
             }
 
+            // 3. Field of View
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2623,6 +3166,7 @@ void Application::RenderOptionsWindow() {
                 viewport.setFOV(gloParent->mOptions->fov);
             }
 
+            // 4. Floor Color
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2633,6 +3177,7 @@ void Application::RenderOptionsWindow() {
                 viewport.markSceneDirty();
             }
 
+            // 5. FPS Limit
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2643,6 +3188,45 @@ void Application::RenderOptionsWindow() {
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Limits the maximum frame rate to save CPU/GPU power.");
 
+            // 6. Grid Fade End
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Grid Fade End");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Distance from the camera where the grid completely fades away into the ground plane.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##GridFadeEnd", &gloParent->mOptions->gridFadeEnd, 50.0f, 3000.0f, "%.0f m")) {
+                gloParent->mOptions->gridFadeEnd = std::max(gloParent->mOptions->gridFadeStart + 5.0f, gloParent->mOptions->gridFadeEnd);
+                viewport.markSceneDirty();
+                gloParent->mOptions->save("options.cfg");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Distance from the camera where the grid completely fades away into the ground plane.");
+            }
+
+            // 7. Grid Fade Start
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Grid Fade Start");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Distance from the camera where the grid begins smoothly fading out.");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##GridFadeStart", &gloParent->mOptions->gridFadeStart, 10.0f, 1000.0f, "%.0f m")) {
+                gloParent->mOptions->gridFadeStart = std::clamp(gloParent->mOptions->gridFadeStart, 5.0f, gloParent->mOptions->gridFadeEnd - 5.0f);
+                viewport.markSceneDirty();
+                gloParent->mOptions->save("options.cfg");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Distance from the camera where the grid begins smoothly fading out.");
+            }
+
+            // 8. Look-ahead Smoothing
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2656,6 +3240,7 @@ void Application::RenderOptionsWindow() {
                 ImGui::SetTooltip("Smooths out camera when in POV mode. Turn off to match the behaviour of old FVD.");
             }
 
+            // 9. Mesh Quality
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2669,6 +3254,7 @@ void Application::RenderOptionsWindow() {
                 viewport.markSceneDirty();
             }
 
+            // 10. Scenery Shadows (Exp.)
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2680,6 +3266,7 @@ void Application::RenderOptionsWindow() {
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("EXPERIMENTAL: Enables planar shadows for imported scenery geometry.\nMay impact performance on large models.");
 
+            // 11. Screenshot Res.
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2694,6 +3281,7 @@ void Application::RenderOptionsWindow() {
                 ImGui::SetTooltip("Multiplies the viewport resolution (up to 8x) to capture high-definition, anti-aliased screenshots. Press F12 to capture.");
             }
 
+            // 12. Show FPS
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2755,6 +3343,49 @@ void Application::RenderOptionsWindow() {
             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
+            // 1. Incr. Ctrl
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Ctrl");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the multiplier for the Ctrl + Scroll Wheel step size over input fields (default: 1.0).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##CtrlScrollInc", &gloParent->mOptions->scrollCtrlIncrement, 0.001f, 0.1f, "%.3f")) {
+                gloParent->mOptions->scrollCtrlIncrement = std::max(0.0001f, gloParent->mOptions->scrollCtrlIncrement);
+            }
+
+            // 2. Incr. Scroll
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Scroll");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the multiplier for the scroll wheel step size over input fields (default: 1.0).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##ScrollInc", &gloParent->mOptions->scrollIncrement, 0.01f, 1.0f, "%.3f")) {
+                gloParent->mOptions->scrollIncrement = std::max(0.0001f, gloParent->mOptions->scrollIncrement);
+            }
+
+            // 3. Incr. Shift
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Shift");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the multiplier for the Shift + Scroll Wheel step size over input fields (default: 10.0).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##ShiftScrollInc", &gloParent->mOptions->scrollShiftIncrement, 0.1f, 10.0f, "%.3f")) {
+                gloParent->mOptions->scrollShiftIncrement = std::max(0.0001f, gloParent->mOptions->scrollShiftIncrement);
+            }
+
+            // 4. Mouse Sens.
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2764,6 +3395,8 @@ void Application::RenderOptionsWindow() {
             if (ImGui::SliderFloat("##MouseSens", &gloParent->mOptions->mouseSensitivity, 0.1f, 5.0f, "%.2f")) {
                 gloParent->mOptions->mouseSensitivity = std::clamp(gloParent->mOptions->mouseSensitivity, 0.1f, 5.0f);
             }
+
+            // 5. Sprint Mult.
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -2780,44 +3413,6 @@ void Application::RenderOptionsWindow() {
                 ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key.");
             }
 
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::AlignTextToFramePadding();
-            ImGui::Text("Incr. Scroll");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Sets the multiplier for the scroll wheel step size over input fields (default: 1.0).");
-            }
-            ImGui::TableNextColumn();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputFloat("##ScrollInc", &gloParent->mOptions->scrollIncrement, 0.01f, 1.0f, "%.3f")) {
-                gloParent->mOptions->scrollIncrement = std::max(0.0001f, gloParent->mOptions->scrollIncrement);
-            }
-
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::AlignTextToFramePadding();
-            ImGui::Text("Incr. Ctrl");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Sets the multiplier for the Ctrl + Scroll Wheel step size over input fields (default: 1.0).");
-            }
-            ImGui::TableNextColumn();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputFloat("##CtrlScrollInc", &gloParent->mOptions->scrollCtrlIncrement, 0.001f, 0.1f, "%.3f")) {
-                gloParent->mOptions->scrollCtrlIncrement = std::max(0.0001f, gloParent->mOptions->scrollCtrlIncrement);
-            }
-
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::AlignTextToFramePadding();
-            ImGui::Text("Incr. Shift");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Sets the multiplier for the Shift + Scroll Wheel step size over input fields (default: 10.0).");
-            }
-            ImGui::TableNextColumn();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputFloat("##ShiftScrollInc", &gloParent->mOptions->scrollShiftIncrement, 0.1f, 10.0f, "%.3f")) {
-                gloParent->mOptions->scrollShiftIncrement = std::max(0.0001f, gloParent->mOptions->scrollShiftIncrement);
-            }
             ImGui::EndTable();
         }
     }
@@ -2906,7 +3501,11 @@ void Application::RenderOptionsWindow() {
             ImGui::PopID();
         };
 
-        auto RenderCategoryTable = [&](const char* title, const std::vector<KeyAction>& actions) {
+        auto RenderCategoryTable = [&](const char* title, std::vector<KeyAction> actions) {
+            std::sort(actions.begin(), actions.end(), [](KeyAction a, KeyAction b) {
+                return KeybindManager::instance().getInfo(a).name < KeybindManager::instance().getInfo(b).name;
+            });
+
             bool nodeOpen = ImGui::TreeNodeEx(title, ImGuiTreeNodeFlags_DefaultOpen);
             std::string popupId = std::string("ResetPopup_") + title;
             if (ImGui::BeginPopupContextItem(popupId.c_str())) {
@@ -2942,55 +3541,60 @@ void Application::RenderOptionsWindow() {
             }
         };
 
-        RenderCategoryTable("1. General & Project Actions", {KeyAction::Undo,
-                                                             KeyAction::Redo,
-                                                             KeyAction::SaveProject,
-                                                             KeyAction::IncrementalSave,
-                                                             KeyAction::ExportTrack,
-                                                             KeyAction::SaveScreenshot,
-                                                             KeyAction::MeasurementPointsWindow,
-                                                             KeyAction::ResetView,
-                                                             KeyAction::DeleteGlbMesh});
+        RenderCategoryTable("1. Camera Views & Viewport Navigation", {KeyAction::MoveBackward,
+                                                                      KeyAction::MoveForward,
+                                                                      KeyAction::MoveLeft,
+                                                                      KeyAction::MoveRight,
+                                                                      KeyAction::POVHeightDown,
+                                                                      KeyAction::POVHeightReset,
+                                                                      KeyAction::POVHeightUp,
+                                                                      KeyAction::TogglePOVMode,
+                                                                      KeyAction::ToggleViewportFullscreen,
+                                                                      KeyAction::ViewFrontOrtho,
+                                                                      KeyAction::ViewPerspective,
+                                                                      KeyAction::ViewSideOrtho,
+                                                                      KeyAction::ViewTopOrtho});
 
-        RenderCategoryTable("2. Section & Transition Editing", {KeyAction::SelectPrevSection,
-                                                                KeyAction::SelectNextSection,
+        RenderCategoryTable("2. General & Project Actions", {KeyAction::DeleteGlbMesh,
+                                                             KeyAction::ExportTrack,
+                                                             KeyAction::IncrementalSave,
+                                                             KeyAction::MeasurementPointsWindow,
+                                                             KeyAction::Redo,
+                                                             KeyAction::ResetView,
+                                                             KeyAction::SaveProject,
+                                                             KeyAction::SaveScreenshot,
+                                                             KeyAction::Undo});
+
+        RenderCategoryTable("3. Graph View & Playhead", {KeyAction::PlayheadPlayPause,
+                                                         KeyAction::PlayheadStepBackward,
+                                                         KeyAction::PlayheadStepForward});
+
+        RenderCategoryTable("4. Section & Transition Editing", {KeyAction::AppendTransition,
                                                                 KeyAction::DeleteSection,
                                                                 KeyAction::DeleteTransition,
                                                                 KeyAction::PrependTransition,
-                                                                KeyAction::AppendTransition});
+                                                                KeyAction::SelectNextSection,
+                                                                KeyAction::SelectPrevSection});
 
-        RenderCategoryTable("3. Track Shading Modes", {KeyAction::ShaderNothing,
-                                                       KeyAction::ShaderVelocity,
-                                                       KeyAction::ShaderRollSpeed,
+        RenderCategoryTable("5. Track Shading Modes", {KeyAction::ShaderLateralForce,
                                                        KeyAction::ShaderNormalForce,
-                                                       KeyAction::ShaderLateralForce,
-                                                       KeyAction::ShaderTrackFlexion});
+                                                       KeyAction::ShaderNothing,
+                                                       KeyAction::ShaderRollSpeed,
+                                                       KeyAction::ShaderTrackFlexion,
+                                                       KeyAction::ShaderVelocity});
 
-        RenderCategoryTable("4. Camera Views & Viewport Navigation", {KeyAction::TogglePOVMode,
-                                                                      KeyAction::MoveForward,
-                                                                      KeyAction::MoveBackward,
-                                                                      KeyAction::MoveLeft,
-                                                                      KeyAction::MoveRight,
-                                                                      KeyAction::POVHeightUp,
-                                                                      KeyAction::POVHeightDown,
-                                                                      KeyAction::POVHeightReset,
-                                                                      KeyAction::ViewPerspective,
-                                                                      KeyAction::ViewTopOrtho,
-                                                                      KeyAction::ViewSideOrtho,
-                                                                      KeyAction::ViewFrontOrtho});
-
-        RenderCategoryTable("5. Viewport In-Scene Overlays", {KeyAction::OverlayScenery,
-                                                              KeyAction::OverlayWarnings,
-                                                              KeyAction::OverlaySceneryPrev,
+        RenderCategoryTable("6. Viewport In-Scene Overlays", {KeyAction::OverlayScenery,
+                                                              KeyAction::OverlaySceneryDelete,
                                                               KeyAction::OverlaySceneryNext,
+                                                              KeyAction::OverlaySceneryPrev,
                                                               KeyAction::OverlaySceneryToggleVis,
-                                                              KeyAction::OverlaySceneryDelete});
-
-        RenderCategoryTable("6. Graph View & Playhead", {KeyAction::PlayheadPlayPause,
-                                                         KeyAction::PlayheadStepBackward,
-                                                         KeyAction::PlayheadStepForward});
+                                                              KeyAction::OverlayWarnings,
+                                                              KeyAction::ToggleTrainMesh});
     }
     ImGui::End();
+    if (!showOptions) {
+        gloParent->mOptions->save("options.cfg");
+    }
 }
 
 void Application::RenderTrainGeneratorWindow() {
@@ -3150,19 +3754,20 @@ void Application::RenderTrainGeneratorWindow() {
     }
 
     ImGui::Separator();
-    if (ImGui::Button("Generate", ImVec2(-FLT_MIN, 0))) {
+    if (myTrack && ImGui::Button("Generate", ImVec2(-FLT_MIN, 0))) {
         float centerOffsetZ = ((arrCars - 1) * -arrCarSpacing + (arrRows - 1) * arrSpacing.z) / 2.0f;
+        float baseHeight = myTrack ? (float)myTrack->fHeart : 1.1f;
         for (int c = 0; c < arrCars; ++c) {
             for (int r = 0; r < arrRows; ++r) {
                 for (int s = 0; s < arrSeats; ++s) {
                     float hue = (float)(c * arrRows + r) / (float)(arrCars * arrRows);
                     ImVec4 rgb;
                     ImGui::ColorConvertHSVtoRGB(hue, 1.0f, 1.0f, rgb.x, rgb.y, rgb.z);
-                    track::TrainOffset o;
-                    snprintf(o.name, 64, "C%d R%d S%d", c + 1, r + 1, s + 1);
-                    o.offset = glm::vec3((s - (arrSeats - 1) / 2.0f) * arrSpacing.x, r * arrSpacing.y, (c * -arrCarSpacing + r * arrSpacing.z) - centerOffsetZ);
-                    o.color = glm::vec3(rgb.x, rgb.y, rgb.z);
-                    myTrack->trainOffsets.push_back(o);
+                    track::MeasurementPoint point;
+                    snprintf(point.name, 64, "C%d R%d S%d", c + 1, r + 1, s + 1);
+                    point.position = glm::vec3((s - (arrSeats - 1) / 2.0f) * arrSpacing.x, baseHeight + r * arrSpacing.y, (c * -arrCarSpacing + r * arrSpacing.z) - centerOffsetZ);
+                    point.color = glm::vec3(rgb.x, rgb.y, rgb.z);
+                    myTrack->trainOffsets.push_back(point);
                 }
             }
         }
@@ -3220,7 +3825,7 @@ void Application::RenderMeasurementPointsWindow() {
 
         for (size_t i = 0; i < myTrack->trainOffsets.size(); ++i) {
             ImGui::PushID((int)i);
-            auto& o = myTrack->trainOffsets[i];
+            auto& point = myTrack->trainOffsets[i];
             ImGui::TableNextRow();
 
             ImGui::TableSetColumnIndex(0);
@@ -3232,26 +3837,26 @@ void Application::RenderMeasurementPointsWindow() {
 
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-FLT_MIN);
-            ImGui::InputText("##N", o.name, 64);
+            ImGui::InputText("##N", point.name, 64);
 
             ImGui::TableSetColumnIndex(2);
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::DragFloat3("##P", &o.offset.x, 0.1f)) {
+            if (ImGui::DragFloat3("##P", &point.position.x, 0.1f)) {
                 myTrack->hasChanged = true;
                 myTrack->graphChanged = true;
             }
 
             ImGui::TableSetColumnIndex(3);
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - 20.0f) * 0.5f);
-            ImGui::Checkbox("##showN", &o.showNormal);
+            ImGui::Checkbox("##showN", &point.showNormal);
 
             ImGui::TableSetColumnIndex(4);
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - 20.0f) * 0.5f);
-            ImGui::Checkbox("##showL", &o.showLateral);
+            ImGui::Checkbox("##showL", &point.showLateral);
 
             ImGui::TableSetColumnIndex(5);
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - 20.0f) * 0.5f);
-            ImGui::ColorEdit3("##C", &o.color.x, ImGuiColorEditFlags_NoInputs);
+            ImGui::ColorEdit3("##C", &point.color.x, ImGuiColorEditFlags_NoInputs);
 
             ImGui::PopID();
         }
@@ -3261,8 +3866,9 @@ void Application::RenderMeasurementPointsWindow() {
     ImGui::Separator();
 
     if (ImGui::Button("Add Point")) {
-        track::TrainOffset o;
-        myTrack->trainOffsets.push_back(o);
+        track::MeasurementPoint point;
+        point.position.y = (float)myTrack->fHeart;
+        myTrack->trainOffsets.push_back(point);
         myTrack->hasChanged = true;
         myTrack->graphChanged = true;
         pushUndo();

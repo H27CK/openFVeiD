@@ -21,7 +21,6 @@
 */
 
 #include "section.h"
-#include "track.h"
 #include <vector>
 
 class seccurved : public section {

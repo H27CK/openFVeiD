@@ -44,7 +44,7 @@
 #ifdef NDEBUG
 #define lenAssert(c) \
     if (!(c))        \
-        std::cerr << "Assertion '" << #c << "' in " << __FILE__ << " line " << __LINE__ << " failed." << std::endl;
+        std::cerr << "Assertion '" << #c << "' in " << __FILE__ << " line " << __LINE__ << " failed.\n";
 #else
 #define lenAssert(c) assert(c);
 #endif

@@ -179,7 +179,6 @@ void Viewport::shutdown() {
     unloadSkybox(false);
     destroyPipelines();
     floorTexture.destroy();
-    rasterTexture.destroy();
     dummyCubeTexture.destroy();
     dummyWhiteTexture.destroy();
     metalNormalTexture.destroy();
@@ -317,33 +316,6 @@ void Viewport::resize(int width, int height) {
 }
 
 void Viewport::initTextures() {
-#define RASTER_SIZE (600)
-    unsigned char* rasterData = new unsigned char[RASTER_SIZE * RASTER_SIZE * 4];
-    for (int i = 0; i < RASTER_SIZE; ++i) {
-        for (int j = 0; j < RASTER_SIZE; ++j) {
-            float major = std::min(fabsf(i - RASTER_SIZE / 2.0f), fabsf(j - RASTER_SIZE / 2.0f)) / (RASTER_SIZE / 2.0f);
-            float minor = std::min((float)std::min(fabsf(((i + (RASTER_SIZE / 20)) % (RASTER_SIZE / 10) - (RASTER_SIZE / 20.0f))),
-                                                   fabsf(((j + (RASTER_SIZE / 20)) % (RASTER_SIZE / 10) - (RASTER_SIZE / 20.0f)))),
-                                   1.0f);
-            major = 1.0f - major;
-            minor = 1.0f - minor;
-            for (int k = 0; k < 9; ++k) {
-                major *= major;
-                minor *= minor;
-            }
-            major = 1.0f - major;
-            minor = 1.0f - 0.5f * minor;
-            int col = (int)(std::min(major, minor) * 255.0f);
-            int idx = (i * RASTER_SIZE + j) * 4;
-            rasterData[idx + 0] = col;
-            rasterData[idx + 1] = col;
-            rasterData[idx + 2] = col;
-            rasterData[idx + 3] = 255;
-        }
-    }
-    rasterTexture.create2d(*gVulkanContext, RASTER_SIZE, RASTER_SIZE, rasterData);
-    delete[] rasterData;
-
     unsigned char whitePixel[4] = {255, 255, 255, 255};
     floorTexture.create2d(*gVulkanContext, 1, 1, whitePixel);
     dummyWhiteTexture.create2d(*gVulkanContext, 1, 1, whitePixel);
@@ -444,7 +416,7 @@ bool Viewport::loadSkybox(const SkyboxDefinition& definition) {
     if (totalBytes > 512ULL * 1024ULL * 1024ULL ||
         totalBytes > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         LOG_WARN("Skybox '%s' is too large to load safely (%llu MiB decoded)",
-                 definition.name.c_str(), static_cast<unsigned long long>(totalBytes / (1024 * 1024)));
+                 definition.name.c_str(), static_cast<unsigned long long>(totalBytes / (1024ULL * 1024ULL)));
         return false;
     }
 
@@ -692,6 +664,8 @@ bool Viewport::saveEnvironmentPreset(const std::string& path) {
            << options.gridLineColor.z << "\n"
            << "grid_major_thickness " << options.gridMajorThickness << "\n"
            << "grid_minor_thickness " << options.gridMinorThickness << "\n"
+           << "grid_fade_start " << options.gridFadeStart << "\n"
+           << "grid_fade_end " << options.gridFadeEnd << "\n"
            << "mist_color " << options.mistColor.x << " " << options.mistColor.y << " "
            << options.mistColor.z << "\n"
            << "mist_enabled " << options.mistEnabled << "\n"
@@ -753,6 +727,10 @@ bool Viewport::loadEnvironmentPreset(const std::string& path) {
             values >> preset.gridMajorThickness;
         else if (key == "grid_minor_thickness")
             values >> preset.gridMinorThickness;
+        else if (key == "grid_fade_start")
+            values >> preset.gridFadeStart;
+        else if (key == "grid_fade_end")
+            values >> preset.gridFadeEnd;
         else if (key == "mist_color")
             values >> preset.mistColor.x >> preset.mistColor.y >> preset.mistColor.z;
         else if (key == "mist_enabled")
@@ -792,6 +770,8 @@ bool Viewport::loadEnvironmentPreset(const std::string& path) {
     preset.ambientLightStrength = std::clamp(preset.ambientLightStrength, 0.0f, 2.0f);
     preset.gridMajorThickness = std::clamp(preset.gridMajorThickness, 0.1f, 10.0f);
     preset.gridMinorThickness = std::clamp(preset.gridMinorThickness, 0.1f, 10.0f);
+    preset.gridFadeStart = std::clamp(preset.gridFadeStart, 5.0f, 2000.0f);
+    preset.gridFadeEnd = std::clamp(preset.gridFadeEnd, preset.gridFadeStart + 5.0f, 4000.0f);
     preset.sunLightStrength = std::clamp(preset.sunLightStrength, 0.0f, 2.0f);
     preset.sunPitch = std::clamp(preset.sunPitch, -90.0f, 0.0f);
     preset.mistNear = std::clamp(preset.mistNear, 0.0f, 5000.0f);
@@ -848,24 +828,23 @@ bool Viewport::loadGroundTexture(const std::string& path) {
         if (data) {
             floorTexture.create2d(*gVulkanContext, width, height, data);
             stbi_image_free(data);
-            floorPipeline.bindTexture(1, floorTexture.view, floorTexture.sampler);
+            floorPipeline.bindTexture(0, floorTexture.view, floorTexture.sampler);
             return true;
         }
     }
 
     unsigned char whitePixel[4] = {255, 255, 255, 255};
     floorTexture.create2d(*gVulkanContext, 1, 1, whitePixel);
-    floorPipeline.bindTexture(1, floorTexture.view, floorTexture.sampler);
+    floorPipeline.bindTexture(0, floorTexture.view, floorTexture.sampler);
     return false;
 }
 
 void Viewport::initFloorMesh() {
-    float a = 20000.f;
     float floor[4 * 6] = {
-        -a, 0.f, -a, 0.f, 1.0f, 0.f,
-        -a, 0.f, +a, 0.f, 1.0f, 0.f,
-        +a, 0.f, -a, 0.f, 1.0f, 0.f,
-        +a, 0.f, +a, 0.f, 1.0f, 0.f};
+        -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        -1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     floorMesh.vertexBuffer.create(*gVulkanContext, sizeof(floor), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     floorMesh.vertexBuffer.write(floor, sizeof(floor));
     floorMesh.count = 4;
@@ -950,13 +929,12 @@ void Viewport::initPipelines() {
         .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
         .alphaBlend = true,
         .stencilMode = VulkanPipelineConfig::StencilMode::writeReference,
-        .sampledImageCount = 2,
+        .sampledImageCount = 1,
         .uniformBufferSize = sizeof(FloorUniforms),
     };
     floorConfig.sampleCount = currentSampleCount;
     floorPipeline.create(*gVulkanContext, floorConfig);
-    floorPipeline.bindTexture(0, rasterTexture.view, rasterTexture.sampler);
-    floorPipeline.bindTexture(1, floorTexture.view, floorTexture.sampler);
+    floorPipeline.bindTexture(0, floorTexture.view, floorTexture.sampler);
 
     VulkanPipelineConfig heartlineConfig = {
         .vertexSpirvPath = locateSpirvShader("track.vert"),
@@ -1721,7 +1699,7 @@ void Viewport::drawFloor(VkCommandBuffer commandBuffer) {
         .grdTexSize = grdTexSize,
         .opacity = 1.0f,
         .border = 1,
-        .grid = gloParent->mOptions->drawGrid ? 1 : 0,
+        .grid = (gloParent->mOptions && gloParent->mOptions->drawGrid) ? 1 : 0,
         .mistEnabled = gloParent->mOptions->mistEnabled ? 1 : 0,
         .mistNear = gloParent->mOptions->mistNear,
         .mistFar = gloParent->mOptions->mistFar,
@@ -1729,6 +1707,10 @@ void Viewport::drawFloor(VkCommandBuffer commandBuffer) {
         .sunStrength = gloParent->mOptions->sunLightStrength,
         .gridMajorThickness = gloParent->mOptions->gridMajorThickness,
         .gridMinorThickness = gloParent->mOptions->gridMinorThickness,
+        .gridFadeStart = gloParent->mOptions->gridFadeStart,
+        .gridFadeEnd = gloParent->mOptions->gridFadeEnd,
+        ._pad0 = 0.0f,
+        ._pad1 = 0.0f,
     };
     floorPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
     VkDeviceSize zeroOffset = 0;
@@ -1831,7 +1813,7 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
     vkCmdBindIndexBuffer(commandBuffer, markerMesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     for (size_t i = 0; i < myTrack->trainOffsets.size(); ++i) {
-        const auto& offset = myTrack->trainOffsets[i];
+        const auto& point = myTrack->trainOffsets[i];
         if (myTrack->getNumPoints() == 0)
             continue;
 
@@ -1841,7 +1823,7 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
             povDist = povMarkerNode->fTotalLength;
         }
 
-        double targetDist = povDist + offset.offset.z;
+        double targetDist = povDist + point.position.z;
         glm::mat4 trackFrame = evaluateTrackTransformAtDist(myTrack, targetDist, baseAnchorBase);
 
         glm::vec3 worldRight = glm::vec3(trackFrame[0]);
@@ -1849,10 +1831,10 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
         glm::vec3 worldForward = -glm::vec3(trackFrame[2]);
         glm::vec3 railPos = glm::vec3(trackFrame[3]);
 
-        glm::vec3 markerPos = railPos + worldRight * offset.offset.x + worldUp * offset.offset.y;
+        glm::vec3 markerPos = railPos + worldRight * point.position.x + worldUp * point.position.y;
 
         float markerScale = 1.0f;
-        glm::vec3 markerColor = offset.color;
+        glm::vec3 markerColor = point.color;
 
         if (myTrack->forceHighlightMode == 1) {
             if ((int)i == myTrack->maxNormalOffsetIdx) {
@@ -2091,7 +2073,7 @@ void Viewport::drawTrain(VkCommandBuffer commandBuffer, trackHandler* hTrack, Re
         return;
 
     track* myTrack = hTrack->trackData;
-    if (myTrack->train.getLayout().empty() || myTrack->getNumPoints() <= 1)
+    if (!myTrack->train.visible || myTrack->train.getLayout().empty() || myTrack->getNumPoints() <= 1)
         return;
 
     if (pass == RenderPass::PlanarShadow && !gloParent->mOptions->glbShadowsEnabled)
@@ -2309,9 +2291,12 @@ void Viewport::drawOrthoGrid(VkCommandBuffer commandBuffer) {
         float startZ = std::floor((cameraPos.z - halfWidth) / (drawMinor ? subSpacing : spacing)) * (drawMinor ? subSpacing : spacing);
         float endZ = std::ceil((cameraPos.z + halfWidth) / (drawMinor ? subSpacing : spacing)) * (drawMinor ? subSpacing : spacing);
 
-        for (float y = startY; y <= endY; y += (drawMinor ? subSpacing : spacing)) {
-            bool isZero = std::abs(y) < 0.01f * (drawMinor ? subSpacing : spacing);
-            bool isMajor = std::abs(std::round(y / spacing) * spacing - y) < 0.01f * (drawMinor ? subSpacing : spacing);
+        float step = drawMinor ? subSpacing : spacing;
+        int stepsY = std::max(0, static_cast<int>(std::round((endY - startY) / step)));
+        for (int i = 0; i <= stepsY; ++i) {
+            float y = startY + static_cast<float>(i) * step;
+            bool isZero = std::abs(y) < 0.01f * step;
+            bool isMajor = std::abs(std::round(y / spacing) * spacing - y) < 0.01f * step;
             if (isZero) {
                 zAxisVertices.insert(zAxisVertices.end(), {0.0f, y, startZ, 0.0f, y, endZ});
             } else if (isMajor) {
@@ -2320,9 +2305,11 @@ void Viewport::drawOrthoGrid(VkCommandBuffer commandBuffer) {
                 minorVertices.insert(minorVertices.end(), {0.0f, y, startZ, 0.0f, y, endZ});
             }
         }
-        for (float z = startZ; z <= endZ; z += (drawMinor ? subSpacing : spacing)) {
-            bool isZero = std::abs(z) < 0.01f * (drawMinor ? subSpacing : spacing);
-            bool isMajor = std::abs(std::round(z / spacing) * spacing - z) < 0.01f * (drawMinor ? subSpacing : spacing);
+        int stepsZ = std::max(0, static_cast<int>(std::round((endZ - startZ) / step)));
+        for (int i = 0; i <= stepsZ; ++i) {
+            float z = startZ + static_cast<float>(i) * step;
+            bool isZero = std::abs(z) < 0.01f * step;
+            bool isMajor = std::abs(std::round(z / spacing) * spacing - z) < 0.01f * step;
             if (isZero) {
                 yAxisVertices.insert(yAxisVertices.end(), {0.0f, startY, z, 0.0f, endY, z});
             } else if (isMajor) {
@@ -2337,9 +2324,12 @@ void Viewport::drawOrthoGrid(VkCommandBuffer commandBuffer) {
         float startX = std::floor((cameraPos.x - halfWidth) / (drawMinor ? subSpacing : spacing)) * (drawMinor ? subSpacing : spacing);
         float endX = std::ceil((cameraPos.x + halfWidth) / (drawMinor ? subSpacing : spacing)) * (drawMinor ? subSpacing : spacing);
 
-        for (float y = startY; y <= endY; y += (drawMinor ? subSpacing : spacing)) {
-            bool isZero = std::abs(y) < 0.01f * (drawMinor ? subSpacing : spacing);
-            bool isMajor = std::abs(std::round(y / spacing) * spacing - y) < 0.01f * (drawMinor ? subSpacing : spacing);
+        float step = drawMinor ? subSpacing : spacing;
+        int stepsY = std::max(0, static_cast<int>(std::round((endY - startY) / step)));
+        for (int i = 0; i <= stepsY; ++i) {
+            float y = startY + static_cast<float>(i) * step;
+            bool isZero = std::abs(y) < 0.01f * step;
+            bool isMajor = std::abs(std::round(y / spacing) * spacing - y) < 0.01f * step;
             if (isZero) {
                 xAxisVertices.insert(xAxisVertices.end(), {startX, y, 0.0f, endX, y, 0.0f});
             } else if (isMajor) {
@@ -2348,15 +2338,50 @@ void Viewport::drawOrthoGrid(VkCommandBuffer commandBuffer) {
                 minorVertices.insert(minorVertices.end(), {startX, y, 0.0f, endX, y, 0.0f});
             }
         }
-        for (float x = startX; x <= endX; x += (drawMinor ? subSpacing : spacing)) {
-            bool isZero = std::abs(x) < 0.01f * (drawMinor ? subSpacing : spacing);
-            bool isMajor = std::abs(std::round(x / spacing) * spacing - x) < 0.01f * (drawMinor ? subSpacing : spacing);
+        int stepsX = std::max(0, static_cast<int>(std::round((endX - startX) / step)));
+        for (int i = 0; i <= stepsX; ++i) {
+            float x = startX + static_cast<float>(i) * step;
+            bool isZero = std::abs(x) < 0.01f * step;
+            bool isMajor = std::abs(std::round(x / spacing) * spacing - x) < 0.01f * step;
             if (isZero) {
                 yAxisVertices.insert(yAxisVertices.end(), {x, startY, 0.0f, x, endY, 0.0f});
             } else if (isMajor) {
                 majorVertices.insert(majorVertices.end(), {x, startY, 0.0f, x, endY, 0.0f});
             } else if (drawMinor) {
                 minorVertices.insert(minorVertices.end(), {x, startY, 0.0f, x, endY, 0.0f});
+            }
+        }
+    } else if (viewMode == ViewMode::Top) {
+        float startZ = std::floor((cameraPos.z - halfHeight) / (drawMinor ? subSpacing : spacing)) * (drawMinor ? subSpacing : spacing);
+        float endZ = std::ceil((cameraPos.z + halfHeight) / (drawMinor ? subSpacing : spacing)) * (drawMinor ? subSpacing : spacing);
+        float startX = std::floor((cameraPos.x - halfWidth) / (drawMinor ? subSpacing : spacing)) * (drawMinor ? subSpacing : spacing);
+        float endX = std::ceil((cameraPos.x + halfWidth) / (drawMinor ? subSpacing : spacing)) * (drawMinor ? subSpacing : spacing);
+
+        float step = drawMinor ? subSpacing : spacing;
+        int stepsZ = std::max(0, static_cast<int>(std::round((endZ - startZ) / step)));
+        for (int i = 0; i <= stepsZ; ++i) {
+            float z = startZ + static_cast<float>(i) * step;
+            bool isZero = std::abs(z) < 0.01f * step;
+            bool isMajor = std::abs(std::round(z / spacing) * spacing - z) < 0.01f * step;
+            if (isZero) {
+                xAxisVertices.insert(xAxisVertices.end(), {startX, 0.0f, z, endX, 0.0f, z});
+            } else if (isMajor) {
+                majorVertices.insert(majorVertices.end(), {startX, 0.0f, z, endX, 0.0f, z});
+            } else if (drawMinor) {
+                minorVertices.insert(minorVertices.end(), {startX, 0.0f, z, endX, 0.0f, z});
+            }
+        }
+        int stepsX = std::max(0, static_cast<int>(std::round((endX - startX) / step)));
+        for (int i = 0; i <= stepsX; ++i) {
+            float x = startX + static_cast<float>(i) * step;
+            bool isZero = std::abs(x) < 0.01f * step;
+            bool isMajor = std::abs(std::round(x / spacing) * spacing - x) < 0.01f * step;
+            if (isZero) {
+                zAxisVertices.insert(zAxisVertices.end(), {x, 0.0f, startZ, x, 0.0f, endZ});
+            } else if (isMajor) {
+                majorVertices.insert(majorVertices.end(), {x, 0.0f, startZ, x, 0.0f, endZ});
+            } else if (drawMinor) {
+                minorVertices.insert(minorVertices.end(), {x, 0.0f, startZ, x, 0.0f, endZ});
             }
         }
     } else {

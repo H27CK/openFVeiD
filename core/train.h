@@ -97,6 +97,7 @@ public:
 
     const TrainCarDef* findCarDef(const std::string& carId) const;
 
+    bool visible = true;
     int middleCarCount = 3;
     int boundCameraIndex = -1;
 

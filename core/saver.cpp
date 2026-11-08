@@ -227,52 +227,39 @@ std::string saver::doLoad(bool importOnly) {
         return std::string("Error: Cannot open file for reading");
     }
 
-    if (importOnly) {
-        std::string temp = readString(&fin, 3);
-        if (temp != "FVD") {
-            fin.close();
-            return "Error while loading: not an FVD file!";
-        }
-        temp = readString(&fin, 5); // version
-
-        if (temp == "v1.00") {
-            while (fin.peek() != EOF) {
-                ChunkHeader header = readChunkHeader(fin);
-                if (!fin)
-                    break;
-                std::string tag(header.tag, 4);
-                std::streampos chunkEnd = fin.tellg() + (std::streamoff)header.length;
-
-                if (tag == "TRKS") {
-                    loadTracksChunk(fin, header.version, header.length);
-                }
-                fin.seekg(chunkEnd, ios::beg);
-            }
-        } else {
-            fin.close();
-            return "Error while loading: Unsupported version!";
-        }
-    } else {
-        doLoadFromStream(fin);
+    std::string temp = readString(&fin, 3);
+    if (temp != "FVD") {
+        fin.close();
+        return "Error while loading: not an FVD file!";
     }
+    temp = readString(&fin, 5); // version
+    if (temp != "v1.00") {
+        fin.close();
+        return "Error while loading: Unsupported version!";
+    }
+
+    fin.seekg(0, ios::beg);
+    doLoadFromStream(fin, importOnly);
 
     fin.close();
     return "Project loaded successfully!";
 }
 
-void saver::doLoadFromStream(std::istream& fin) {
+void saver::doLoadFromStream(std::istream& fin, bool importOnly) {
     std::string temp = readString(&fin, 3);
     if (temp != "FVD")
         return;
     temp = readString(&fin, 5);
 
     if (temp == "v1.00") {
-        // Clear current track list
-        for (auto t : trackList) {
-            delete t;
+        if (!importOnly) {
+            // Clear current track list
+            for (auto t : trackList) {
+                delete t;
+            }
+            trackList.clear();
+            gloParent->resetEnvironment();
         }
-        trackList.clear();
-        gloParent->resetEnvironment();
 
         while (fin.peek() != EOF) {
             ChunkHeader header = readChunkHeader(fin);
@@ -283,14 +270,16 @@ void saver::doLoadFromStream(std::istream& fin) {
             std::streampos chunkStart = fin.tellg();
             std::streampos chunkEnd = chunkStart + (std::streamoff)header.length;
 
-            if (tag == "ENVI") {
-                loadEnvironmentChunk(fin, header.version, header.length);
-            } else if (tag == "TRKS") {
+            if (tag == "TRKS") {
                 loadTracksChunk(fin, header.version, header.length);
-            } else if (tag == "GLBS") {
-                loadGlbsChunk(fin, header.version, header.length);
-            } else {
-                LOG_INFO("Skipping unknown top-level chunk: %s", tag.c_str());
+            } else if (!importOnly) {
+                if (tag == "ENVI") {
+                    loadEnvironmentChunk(fin, header.version, header.length);
+                } else if (tag == "GLBS") {
+                    loadGlbsChunk(fin, header.version, header.length);
+                } else {
+                    LOG_INFO("Skipping unknown top-level chunk: %s", tag.c_str());
+                }
             }
             fin.seekg(chunkEnd, ios::beg);
         }

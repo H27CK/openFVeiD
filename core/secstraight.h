@@ -20,7 +20,6 @@
 */
 
 #include "section.h"
-#include "track.h"
 
 class secstraight : public section {
 public:

@@ -618,6 +618,18 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
             return true;
         };
 
+        auto mfgHasStyles = [&](const char* mfg) {
+            for (const auto& s : cachedTrackStyles) {
+                if (mfgEquals(s.manufacturer, mfg))
+                    return true;
+            }
+            for (const auto& s : cachedClearanceStyles) {
+                if (mfgEquals(s.manufacturer, mfg))
+                    return true;
+            }
+            return false;
+        };
+
         // 1. Manufacturer Predefined Dropdown
         const char* currentMfgLabel = myTrack->trackManufacturer.empty() ? "None / Custom" : myTrack->trackManufacturer.c_str();
         PROP_ROW(
@@ -641,6 +653,10 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
                 }
                 for (const char* mfg : kTrackManufacturers) {
                     bool isSelected = (!myTrack->trackManufacturer.empty() && mfgEquals(myTrack->trackManufacturer, mfg));
+                    if (gloParent && gloParent->mOptions && gloParent->mOptions->hideEmptyManufacturers) {
+                        if (!isSelected && !mfgHasStyles(mfg))
+                            continue;
+                    }
                     if (ImGui::Selectable(mfg, isSelected)) {
                         if (myTrack->trackManufacturer != mfg) {
                             myTrack->trackManufacturer = mfg;
@@ -750,7 +766,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
         END_PROP_TABLE()
     }
 
-    if (ImGui::CollapsingHeader("Train", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Train")) {
         double currentTime = ImGui::GetTime();
         static std::vector<TrainStyleMetadata> cachedTrainStyles;
         static double lastTrainScanTime = -10.0;
@@ -850,7 +866,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
         END_PROP_TABLE()
     }
 
-    if (ImGui::CollapsingHeader("Limits: Force", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Limits: Force")) {
         BEGIN_PROP_TABLE("SafetyLimitsProps")
 
         bool enableLimits = myTrack->enableForceLimits;
@@ -897,7 +913,7 @@ void LeftPanel::renderTrackProperties(trackHandler* hTrack, Application* app) {
         END_PROP_TABLE()
     }
 
-    if (ImGui::CollapsingHeader("Limits: Radius", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Limits: Radius")) {
         BEGIN_PROP_TABLE("RadiusLimitsProps")
 
         bool enforceRad = myTrack->enforceMinRadius;
@@ -1837,6 +1853,20 @@ void LeftPanel::renderEnvironmentTab() {
             "Grid Minor Thickness",
             if (ImGui::SliderFloat("##GridMinorThickness", &gloParent->mOptions->gridMinorThickness, 0.1f, 10.0f, "%.1f px")) {
                 gloParent->mOptions->gridMinorThickness = std::max(0.01f, gloParent->mOptions->gridMinorThickness);
+                if (gViewport)
+                    gViewport->markSceneDirty();
+            })
+        PROP_ROW(
+            "Grid Fade Start",
+            if (ImGui::SliderFloat("##GridFadeStart", &gloParent->mOptions->gridFadeStart, 10.0f, 1000.0f, "%.0f m")) {
+                gloParent->mOptions->gridFadeStart = std::clamp(gloParent->mOptions->gridFadeStart, 5.0f, gloParent->mOptions->gridFadeEnd - 5.0f);
+                if (gViewport)
+                    gViewport->markSceneDirty();
+            })
+        PROP_ROW(
+            "Grid Fade End",
+            if (ImGui::SliderFloat("##GridFadeEnd", &gloParent->mOptions->gridFadeEnd, 50.0f, 3000.0f, "%.0f m")) {
+                gloParent->mOptions->gridFadeEnd = std::max(gloParent->mOptions->gridFadeStart + 5.0f, gloParent->mOptions->gridFadeEnd);
                 if (gViewport)
                     gViewport->markSceneDirty();
             })

@@ -3,6 +3,7 @@
 */
 
 #include "secnlcsv.h"
+#include "track.h"
 #include "exportfuncs.h"
 #include <iostream>
 #include <fstream>

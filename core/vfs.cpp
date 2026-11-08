@@ -20,6 +20,7 @@
 #include "vfs.h"
 #include "ext/miniz.h"
 #include "logger.h"
+#include "workingdirectory.h"
 
 #include <algorithm>
 #include <cctype>
@@ -138,16 +139,66 @@ void VFS::init() {
     refresh();
 }
 
+static std::vector<std::filesystem::path> getSearchDirectories(const std::filesystem::path& exeDir) {
+    std::vector<std::filesystem::path> dirs;
+    std::error_code ec;
+
+    if (!exeDir.empty() && std::filesystem::exists(exeDir, ec)) {
+        dirs.push_back(exeDir);
+    }
+
+    std::string resDirStr = platformResourcesDirectory();
+    if (!resDirStr.empty()) {
+        std::filesystem::path resDir(resDirStr);
+        if (std::filesystem::exists(resDir, ec)) {
+            bool duplicate = false;
+            for (const auto& d : dirs) {
+                if (std::filesystem::equivalent(d, resDir, ec)) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) {
+                dirs.push_back(resDir);
+            }
+        }
+    }
+
+    std::filesystem::path curDir = std::filesystem::current_path(ec);
+    if (!ec && std::filesystem::exists(curDir, ec)) {
+        bool duplicate = false;
+        for (const auto& d : dirs) {
+            if (std::filesystem::equivalent(d, curDir, ec)) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            dirs.push_back(curDir);
+        }
+    }
+
+    return dirs;
+}
+
 void VFS::refresh() {
     mountedPacks.clear();
 
+    std::vector<std::filesystem::path> searchDirs = getSearchDirectories(exeDir);
+    std::unordered_set<std::string> mountedPackNames;
     std::error_code ec;
-    if (std::filesystem::exists(exeDir, ec)) {
-        for (const auto& entry : std::filesystem::directory_iterator(exeDir, ec)) {
+
+    for (const auto& dir : searchDirs) {
+        if (!std::filesystem::exists(dir, ec))
+            continue;
+        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
             if (entry.is_regular_file(ec) && entry.path().extension() == ".fvdpack") {
-                auto pack = std::make_unique<PackArchive>(entry.path().string());
-                if (pack->valid) {
-                    mountedPacks.push_back(std::move(pack));
+                std::string filename = entry.path().filename().string();
+                if (mountedPackNames.insert(filename).second) {
+                    auto pack = std::make_unique<PackArchive>(entry.path().string());
+                    if (pack->valid) {
+                        mountedPacks.push_back(std::move(pack));
+                    }
                 }
             }
         }
@@ -178,30 +229,33 @@ std::vector<std::string> VFS::listFiles(const std::string& prefix, const std::ve
         normPrefix += '/';
     }
 
-    // 1. Scan disk folder strictly next to executable (<exe_dir>/<prefix>)
+    std::vector<std::filesystem::path> searchDirs = getSearchDirectories(exeDir);
     std::error_code ec;
-    std::filesystem::path diskDir = exeDir / prefix;
-    if (std::filesystem::exists(diskDir, ec)) {
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(diskDir, std::filesystem::directory_options::follow_directory_symlink, ec)) {
-            if (entry.is_regular_file(ec)) {
-                std::string ext = entry.path().extension().string();
-                bool matchesExt = false;
-                for (const auto& e : extensions) {
-                    if (ext == e) {
-                        matchesExt = true;
-                        break;
-                    }
-                }
-                if (matchesExt) {
-                    // Create relative virtual path starting with prefix/
-                    std::filesystem::path rel = std::filesystem::relative(entry.path(), exeDir, ec);
-                    std::string vpath = normalizePath(rel.string());
-                    std::string key = vpath;
-                    for (char& c : key)
-                        c = (char)std::tolower((unsigned char)c);
 
-                    if (seenKeys.insert(key).second) {
-                        results.push_back(vpath);
+    // 1. Scan disk folders across search directories
+    for (const auto& baseDir : searchDirs) {
+        std::filesystem::path diskDir = baseDir / prefix;
+        if (std::filesystem::exists(diskDir, ec)) {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(diskDir, std::filesystem::directory_options::follow_directory_symlink, ec)) {
+                if (entry.is_regular_file(ec)) {
+                    std::string ext = entry.path().extension().string();
+                    bool matchesExt = false;
+                    for (const auto& e : extensions) {
+                        if (ext == e) {
+                            matchesExt = true;
+                            break;
+                        }
+                    }
+                    if (matchesExt) {
+                        std::filesystem::path rel = std::filesystem::relative(entry.path(), baseDir, ec);
+                        std::string vpath = normalizePath(rel.string());
+                        std::string key = vpath;
+                        for (char& c : key)
+                            c = (char)std::tolower((unsigned char)c);
+
+                        if (seenKeys.insert(key).second) {
+                            results.push_back(vpath);
+                        }
                     }
                 }
             }
@@ -245,9 +299,12 @@ bool VFS::exists(const std::string& virtualPath) {
     std::string norm = normalizePath(virtualPath);
     std::error_code ec;
 
-    // 1. Check disk next to executable
-    if (std::filesystem::exists(exeDir / norm, ec))
-        return true;
+    // 1. Check disk directories
+    std::vector<std::filesystem::path> searchDirs = getSearchDirectories(exeDir);
+    for (const auto& baseDir : searchDirs) {
+        if (std::filesystem::exists(baseDir / norm, ec))
+            return true;
+    }
 
     // 2. Check packs
     std::string key = norm;
@@ -280,16 +337,19 @@ bool VFS::readFileBinary(const std::string& virtualPath, std::vector<uint8_t>& o
 
     std::string norm = normalizePath(virtualPath);
 
-    // 1. Try disk next to executable first
-    std::filesystem::path diskPath = exeDir / norm;
-    if (std::filesystem::exists(diskPath, ec)) {
-        std::ifstream f(diskPath, std::ios::binary | std::ios::ate);
-        if (f.is_open()) {
-            std::streamsize size = f.tellg();
-            f.seekg(0, std::ios::beg);
-            outBytes.resize(static_cast<size_t>(size));
-            if (f.read(reinterpret_cast<char*>(outBytes.data()), size)) {
-                return true;
+    // 1. Try disk search directories
+    std::vector<std::filesystem::path> searchDirs = getSearchDirectories(exeDir);
+    for (const auto& baseDir : searchDirs) {
+        std::filesystem::path diskPath = baseDir / norm;
+        if (std::filesystem::exists(diskPath, ec) && !std::filesystem::is_directory(diskPath, ec)) {
+            std::ifstream f(diskPath, std::ios::binary | std::ios::ate);
+            if (f.is_open()) {
+                std::streamsize size = f.tellg();
+                f.seekg(0, std::ios::beg);
+                outBytes.resize(static_cast<size_t>(size));
+                if (f.read(reinterpret_cast<char*>(outBytes.data()), size)) {
+                    return true;
+                }
             }
         }
     }

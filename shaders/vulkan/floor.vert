@@ -2,7 +2,8 @@
 
 layout(location = 0) in vec3 aPosition;
 
-layout(location = 0) out vec3 vRayDir;
+layout(location = 0) out vec3 vNear;
+layout(location = 1) out vec3 vFar;
 
 layout(set = 0, binding = 0) uniform FloorUniforms {
     mat4 projectionMatrix;
@@ -26,16 +27,16 @@ layout(set = 0, binding = 0) uniform FloorUniforms {
     float sunStrength;
     float gridMajorThickness;
     float gridMinorThickness;
+    float gridFadeStart;
+    float gridFadeEnd;
 }
 u;
 
 void main(void) {
-    // In camera space: pos = R * (WorldPos - CameraPos)
-    mat4 viewRot = u.modelMatrix;
-    viewRot[3] = vec4(0.0, 0.0, 0.0, 1.0);
-    vec3 cameraRelativePos = aPosition + vec3(0.0, u.floorHeight - u.eyePos.y, 0.0);
-    gl_Position = u.projectionMatrix * viewRot * vec4(cameraRelativePos, 1.0);
-
-    // Pass the camera-relative ray direction for analytical per-pixel ray-plane reconstruction
-    vRayDir = cameraRelativePos;
+    gl_Position = vec4(aPosition.xy, 1.0, 1.0);
+    mat4 invPV = inverse(u.projectionMatrix * u.modelMatrix);
+    vec4 nearPt = invPV * vec4(aPosition.xy, -1.0, 1.0);
+    vec4 farPt = invPV * vec4(aPosition.xy, 1.0, 1.0);
+    vNear = nearPt.xyz / nearPt.w;
+    vFar = farPt.xyz / farPt.w;
 }

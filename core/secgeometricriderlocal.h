@@ -21,7 +21,6 @@
 */
 
 #include "section.h"
-#include "track.h"
 
 class secgeometricriderlocal : public section {
 public:

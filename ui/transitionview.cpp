@@ -538,7 +538,7 @@ void TransitionView::renderTargetSolver(trackHandler* hTrack, subfunc* sf, Appli
         break;
     }
 
-    if (ImGui::CollapsingHeader("Target Solver", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Target Solver")) {
         BEGIN_PROP_TABLE("TargetSolverProps")
 
         PROP_ROW(

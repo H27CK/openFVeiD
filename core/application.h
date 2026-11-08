@@ -96,6 +96,7 @@ private:
     void RenderMeasurementPointsWindow();
     void RenderParametricTrackEditorWindow();
     void RenderEnvironmentWindow();
+    void RenderViewportContent(ImVec2 viewportPanelSize, float deltaTime);
     void HandleShortcuts();
     void PerformExport(const std::string& path);
     void PerformIncrementalSave();
@@ -118,6 +119,8 @@ private:
     void showInAppNotification(const std::string& msg);
     bool firstFrame = true;
     bool forceResetLayout = false;
+    bool triggerDistributeMetrics = false;
+    bool triggerFitMetricsToContent = false;
     bool showWelcomeScreen = false;
     VulkanTexture welcomeSvgTexture;
     VkDescriptorSet welcomeSvgDescriptorSet = VK_NULL_HANDLE;
@@ -131,6 +134,7 @@ private:
     bool showAboutDialog = false;
     bool showExitPopup = false;
     bool viewportActive = false;
+    bool viewportFullscreen = false;
 
     // Update Checker
     void triggerUpdateCheck();

@@ -18,6 +18,7 @@
 */
 
 #include "secforced.h"
+#include "track.h"
 #include "exportfuncs.h"
 #include "mnode.h"
 #include <algorithm>

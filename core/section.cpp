@@ -477,49 +477,57 @@ bool section::setLocked(eFunctype func, int _id, bool _locked) {
     switch (func) {
     case funcRoll:
         if (!_locked) {
-            return rollFunc->unlock(_id);
-        } else if (normForce == NULL && latForce == NULL) {
+            return rollFunc ? rollFunc->unlock(_id) : false;
+        } else if (!normForce || !latForce) {
             return false;
         } else if (normForce->lockedFunc() > -1 && latForce->lockedFunc() > -1) {
             return false;
         } else {
-            return rollFunc->lock(_id);
+            return rollFunc ? rollFunc->lock(_id) : false;
         }
         break;
     case funcNormal:
         if (!_locked) {
-            return normForce->unlock(_id);
+            return normForce ? normForce->unlock(_id) : false;
+        } else if (!rollFunc || !latForce) {
+            return false;
         } else if (rollFunc->lockedFunc() > -1 && latForce->lockedFunc() > -1) {
             return false;
         } else {
-            return normForce->lock(_id);
+            return normForce ? normForce->lock(_id) : false;
         }
         break;
     case funcLateral:
         if (!_locked) {
-            return latForce->unlock(_id);
+            return latForce ? latForce->unlock(_id) : false;
+        } else if (!rollFunc || !normForce) {
+            return false;
         } else if (rollFunc->lockedFunc() > -1 && normForce->lockedFunc() > -1) {
             return false;
         } else {
-            return latForce->lock(_id);
+            return latForce ? latForce->lock(_id) : false;
         }
         break;
     case funcPitch:
         if (!_locked) {
-            return normForce->unlock(_id);
+            return normForce ? normForce->unlock(_id) : false;
+        } else if (!rollFunc || !latForce) {
+            return false;
         } else if (rollFunc->lockedFunc() > -1 && latForce->lockedFunc() > -1) {
             return false;
         } else {
-            return normForce->lock(_id);
+            return normForce ? normForce->lock(_id) : false;
         }
         break;
     case funcYaw:
         if (!_locked) {
-            return latForce->unlock(_id);
+            return latForce ? latForce->unlock(_id) : false;
+        } else if (!rollFunc || !normForce) {
+            return false;
         } else if (rollFunc->lockedFunc() > -1 && normForce->lockedFunc() > -1) {
             return false;
         } else {
-            return latForce->lock(_id);
+            return latForce ? latForce->lock(_id) : false;
         }
         break;
     default:
@@ -557,7 +565,7 @@ void section::chaseCurves() {
         return;
 
     double activeLength = activeFunc->getMaxArgument();
-    func* secondaryFuncs[2];
+    func* secondaryFuncs[3];
     int count = 0;
     if (rollFunc && rollFunc != activeFunc)
         secondaryFuncs[count++] = rollFunc;

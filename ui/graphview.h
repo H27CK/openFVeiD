@@ -89,6 +89,7 @@ public:
 
     void renderList(trackHandler* track);
     void lockPlayheadToCurrentTransition(trackHandler* hTrack);
+    void updatePlayhead(trackHandler* track);
     void renderMeasurementsMenu(trackHandler* track);
     void renderPlot(trackHandler* track);
     void renderResultingPlot(trackHandler* track);

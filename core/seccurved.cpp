@@ -18,6 +18,7 @@
 */
 
 #include "seccurved.h"
+#include "track.h"
 #include "exportfuncs.h"
 #include "dummies.h"
 #include "mnode.h"

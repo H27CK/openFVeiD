@@ -19,7 +19,7 @@ public:
 
     // Stream-based for Undo system
     void doSaveToStream(std::ostream& fout);
-    void doLoadFromStream(std::istream& fin);
+    void doLoadFromStream(std::istream& fin, bool importOnly = false);
 
     // Chunk-based helpers
     void saveEnvironmentChunk(std::ostream& out);

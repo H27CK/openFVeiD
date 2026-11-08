@@ -18,6 +18,7 @@
 */
 
 #include "secgeometric.h"
+#include "track.h"
 #include "exportfuncs.h"
 #include "dummies.h"
 #include <algorithm>
