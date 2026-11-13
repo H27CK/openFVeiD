@@ -149,6 +149,7 @@ void secstatic::saveSection(std::ostream& file) {
     float tempAccel = (float)fAccel;
     writeBytes(&file, (const char*)&tempVel, sizeof(float));
     writeBytes(&file, (const char*)&tempAccel, sizeof(float));
+    writeBytes(&file, (const char*)&bAccelRespectsGravity, sizeof(bool));
 }
 
 void secstatic::loadSection(std::istream& file) {
@@ -180,6 +181,12 @@ void secstatic::loadSection(std::istream& file) {
         fAccel = (double)readFloat(&file);
     } else {
         fAccel = 0.0;
+    }
+
+    if (file.peek() != EOF) {
+        bAccelRespectsGravity = readBool(&file);
+    } else {
+        bAccelRespectsGravity = false;
     }
 }
 

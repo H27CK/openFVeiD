@@ -587,6 +587,7 @@ void secgeometric::saveSection(std::ostream& file) {
     rollFunc->saveFunction(file);
     normForce->saveFunction(file);
     latForce->saveFunction(file);
+    writeBytes(&file, (const char*)&bAccelRespectsGravity, sizeof(bool));
 }
 
 void secgeometric::loadSection(std::istream& file) {
@@ -605,10 +606,15 @@ void secgeometric::loadSection(std::istream& file) {
         fAccel = (double)readFloat(&file);
     } else {
         fAccel = 0.0;
-    }
+    }    
     rollFunc->loadFunction(file);
     normForce->loadFunction(file);
     latForce->loadFunction(file);
+    if (file.peek() != EOF) {
+        bAccelRespectsGravity = readBool(&file);
+    } else {
+        bAccelRespectsGravity = false;
+    }
 }
 
 bool secgeometric::isInFunction(int index, subfunc* func) {
