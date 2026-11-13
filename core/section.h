@@ -89,6 +89,7 @@ public:
     bool bSpeed;
     double fVel;
     double fAccel;
+    bool bAccelRespectsGravity;
 
     bool bOrientation;
     bool bArgument;
