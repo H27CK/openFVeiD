@@ -113,7 +113,8 @@ int secstatic::updateSection(int node) {
             } else {
                 // Constant acceleration
                 double minSpeed = (double)gloParent->mOptions->stallSpeed;
-                curNode->fVel = std::max(minSpeed, prevNode->fVel + this->fAccel / F_HZ);
+                double accel = this->bAccelRespectsGravity ? this->fAccel - (F_G * sin(curNode->getPitch() * F_PI / 180.0)) : this->fAccel;
+                curNode->fVel = std::max(minSpeed, prevNode->fVel + accel / F_HZ);
                 curNode->fEnergy = 0.5 * curNode->fVel * curNode->fVel +
                                    F_G * (curNode->vPosHeart(parent->fHeart * 0.9f).y +
                                           curNode->fTotalLength * parent->fFriction);
@@ -148,6 +149,7 @@ void secstatic::saveSection(std::ostream& file) {
     float tempAccel = (float)fAccel;
     writeBytes(&file, (const char*)&tempVel, sizeof(float));
     writeBytes(&file, (const char*)&tempAccel, sizeof(float));
+    writeBytes(&file, (const char*)&bAccelRespectsGravity, sizeof(bool));
 }
 
 void secstatic::loadSection(std::istream& file) {
@@ -179,6 +181,12 @@ void secstatic::loadSection(std::istream& file) {
         fAccel = (double)readFloat(&file);
     } else {
         fAccel = 0.0;
+    }
+
+    if (file.peek() != EOF) {
+        bAccelRespectsGravity = readBool(&file);
+    } else {
+        bAccelRespectsGravity = false;
     }
 }
 
