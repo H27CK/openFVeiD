@@ -1616,7 +1616,7 @@ void LeftPanel::renderCurvedProperties(trackHandler* hTrack, section* sec, Appli
             PROP_ROW(
                 "Accel Respects Gravity",
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::Checkbox("##StraightAccelGravity", &c->bAccelRespectsGravity)) {
+                if (ImGui::Checkbox("##CurvedAccelGravity", &c->bAccelRespectsGravity)) {
                     changed = true;
                 })
         }
@@ -1689,7 +1689,7 @@ void LeftPanel::renderForcedProperties(trackHandler* hTrack, section* sec, Appli
             PROP_ROW(
                 "Accel Respects Gravity",
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::Checkbox("##StraightAccelGravity", &sec->bAccelRespectsGravity)) {
+                if (ImGui::Checkbox("##ForcedAccelGravity", &sec->bAccelRespectsGravity)) {
                     changed = true;
                 })
         }
@@ -1766,7 +1766,7 @@ void LeftPanel::renderStaticProperties(trackHandler* hTrack, section* sec, Appli
         PROP_ROW(
             "Accel Respects Gravity",
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::Checkbox("##StraightAccelGravity", &sec->bAccelRespectsGravity)) {
+            if (ImGui::Checkbox("##StaticAccelGravity", &sec->bAccelRespectsGravity)) {
                 changed = true;
             })
     }
