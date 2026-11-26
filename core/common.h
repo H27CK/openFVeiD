@@ -34,11 +34,11 @@ inline bool ValueScroll(float* v, float step = 1.0f, float ctrlStep = 0.1f) {
     if (ImGui::IsItemHovered()) {
         ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
         if (ImGui::GetIO().MouseWheel != 0.0f) {
-            float multiplier = gloParent->mOptions->scrollIncrement;
+            float multiplier = gloParent->mOptions->scrollIncrementV;
             if (ImGui::GetIO().KeyCtrl) {
-                multiplier = gloParent->mOptions->scrollCtrlIncrement;
+                multiplier = gloParent->mOptions->scrollCtrlIncrementV;
             } else if (ImGui::GetIO().KeyShift) {
-                multiplier = gloParent->mOptions->scrollShiftIncrement;
+                multiplier = gloParent->mOptions->scrollShiftIncrementV;
             }
             *v += ImGui::GetIO().MouseWheel * step * multiplier;
             return true;
@@ -51,11 +51,11 @@ inline bool ValueScrollInt(int* v, int step = 1, int ctrlStep = 1) {
     if (ImGui::IsItemHovered()) {
         ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
         if (ImGui::GetIO().MouseWheel != 0.0f) {
-            float multiplier = gloParent->mOptions->scrollIncrement;
+            float multiplier = gloParent->mOptions->scrollIncrementV;
             if (ImGui::GetIO().KeyCtrl) {
-                multiplier = gloParent->mOptions->scrollCtrlIncrement;
+                multiplier = gloParent->mOptions->scrollCtrlIncrementV;
             } else if (ImGui::GetIO().KeyShift) {
-                multiplier = gloParent->mOptions->scrollShiftIncrement;
+                multiplier = gloParent->mOptions->scrollShiftIncrementV;
             }
             *v += static_cast<int>(std::round(ImGui::GetIO().MouseWheel * step * multiplier));
             return true;

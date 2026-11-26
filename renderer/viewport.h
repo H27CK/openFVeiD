@@ -209,6 +209,8 @@ public:
             sceneDirty = true;
         }
     }
+
+    void buildMarkerMesh();
     int getTrackShaderMode() const {
         return curTrackShader;
     }
@@ -296,6 +298,7 @@ private:
     Mesh skyMesh;
     Mesh floorMesh;
     Mesh markerMesh;
+    Mesh povMarkerMesh;
 
     glm::vec3 freeFlyPos;
     glm::vec3 freeFlyDir;

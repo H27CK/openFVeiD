@@ -204,10 +204,10 @@ double subfunc::getValue(double x, bool skipUpdate) {
         parent->changeLength(parent->secParent->getMaxArgument() - minArgument,
                              parent->getSubfuncNumber(this));
     } else if (x > maxArgument + 1e-4) {
-        std::cerr << "Function got parameter out of bounds: x = " << x << std::endl;
+        std::cerr << "Function got parameter out of bounds: x = " << x << '\n';
         x = maxArgument;
     } else if (x < minArgument - 1e-4) {
-        std::cerr << "Function got parameter out of bounds: x = " << x << std::endl;
+        std::cerr << "Function got parameter out of bounds: x = " << x << '\n';
         x = minArgument;
     } else {
         // Clamp for minor precision errors
@@ -354,7 +354,7 @@ double subfunc::getValue(double x, bool skipUpdate) {
         }
         return startValue;
     default:
-        std::cerr << "unknown degree" << std::endl;
+        std::cerr << "unknown degree\n";
     }
     return -1.0;
 }

@@ -1463,12 +1463,13 @@ void LeftPanel::renderAnchorProperties(trackHandler* hTrack, section* sec, Appli
     if (ImGui::CollapsingHeader("Rotation", ImGuiTreeNodeFlags_DefaultOpen)) {
         BEGIN_PROP_TABLE("AnchorPropsRot")
         float yaw = (float)myTrack->startYaw, pitch = (float)myTrack->startPitch, roll = (float)myTrack->anchorNode->fRoll;
+        float rollMult = (gloParent && gloParent->mOptions) ? gloParent->mOptions->rollMultiplier : 1.0f;
         PROP_ROW(
             "Psi (Yaw)", if (ImGui::DragFloat("##AnchorPsi", &yaw, 0.1f, -1800.0f, 1800.0f, "%.3f deg") || common::ValueScroll(&yaw, 1.0f, 0.1f)) { myTrack->startYaw = std::clamp(yaw, -1800.0f, 1800.0f); syncAnchorNode(hTrack); syncAnchorDerivsToForces(myTrack->anchorNode); changed = true; })
         PROP_ROW(
             "Theta (Pitch)", if (ImGui::DragFloat("##AnchorTheta", &pitch, 0.1f, -90.0f, 90.0f, "%.3f deg") || common::ValueScroll(&pitch, 1.0f, 0.1f)) { myTrack->startPitch = std::clamp(pitch, -90.0f, 90.0f); syncAnchorNode(hTrack); syncAnchorDerivsToForces(myTrack->anchorNode); changed = true; })
         PROP_ROW(
-            "Phi (Roll)", if (ImGui::DragFloat("##AnchorPhi", &roll, 0.1f, -1800.0f, 1800.0f, "%.3f deg") || common::ValueScroll(&roll, 1.0f, 0.1f)) { myTrack->anchorNode->fRoll = std::clamp(roll, -1800.0f, 1800.0f); syncAnchorNode(hTrack); syncAnchorDerivsToForces(myTrack->anchorNode); changed = true; })
+            "Phi (Roll)", if (ImGui::DragFloat("##AnchorPhi", &roll, 0.1f * rollMult, -1800.0f, 1800.0f, "%.3f deg") || common::ValueScroll(&roll, 1.0f * rollMult, 0.1f * rollMult)) { myTrack->anchorNode->fRoll = std::clamp(roll, -1800.0f, 1800.0f); syncAnchorNode(hTrack); syncAnchorDerivsToForces(myTrack->anchorNode); changed = true; })
         END_PROP_TABLE()
     }
 

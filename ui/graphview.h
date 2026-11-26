@@ -94,6 +94,7 @@ public:
     void renderPlot(trackHandler* track);
     void renderResultingPlot(trackHandler* track);
     void renderTimeline(trackHandler* track);
+    void handleHorizontalGraphScroll(float wheelH);
     void renderMeasurementPlot(trackHandler* track);
     void updateData(trackHandler* track);
     void exportToCSV(const std::string& filepath, trackHandler* hTrack, int startNodeIdx, int endNodeIdx);

@@ -63,13 +63,16 @@ struct DummyOptions {
     float gridFadeStart = 150.0f;
     float gridMajorThickness = 1.5f;
     float gridMinorThickness = 1.0f;
+    float measurementLineLength = 1.0f;
+    float measurementLineThickness = 1.0f;
     float minRadius = 5.0f;
     float mistFar = 270.0f;
     float mistNear = 100.0f;
     float mouseSensitivity = 1.0f;
-    float scrollCtrlIncrement = 1.0f;
-    float scrollIncrement = 0.1f;
-    float scrollShiftIncrement = 10.0f;
+    float rollMultiplier = 1.0f;
+    float scrollCtrlIncrementV = 1.0f;
+    float scrollIncrementV = 0.1f;
+    float scrollShiftIncrementV = 10.0f;
     float skyboxRotation = 0.0f;
     float sprintMultiplier = 2.0f;
     float stallSpeed = 0.1f;
@@ -100,6 +103,9 @@ struct DummyOptions {
     int meshQuality = 1;
     int msaaSamples = 4;
     int screenshotMultiplier = 2;
+    int scrollCtrlIncrementH = 1;
+    int scrollIncrementH = 5;
+    int scrollShiftIncrementH = 25;
     int targetFPS = 60;
     int theme = 3; // 0: Dark, 1: Light, 2: Classic, 3: Soft Dark, 4: Soft Light
 
@@ -172,13 +178,16 @@ struct DummyOptions {
                 << gridFadeStart << " "
                 << gridMajorThickness << " "
                 << gridMinorThickness << " "
+                << measurementLineLength << " "
+                << measurementLineThickness << " "
                 << minRadius << " "
                 << mistFar << " "
                 << mistNear << " "
                 << mouseSensitivity << " "
-                << scrollCtrlIncrement << " "
-                << scrollIncrement << " "
-                << scrollShiftIncrement << " "
+                << rollMultiplier << " "
+                << scrollCtrlIncrementV << " "
+                << scrollIncrementV << " "
+                << scrollShiftIncrementV << " "
                 << skyboxRotation << " "
                 << sprintMultiplier << " "
                 << stallSpeed << " "
@@ -208,6 +217,9 @@ struct DummyOptions {
                 << meshQuality << " "
                 << msaaSamples << " "
                 << screenshotMultiplier << " "
+                << scrollCtrlIncrementH << " "
+                << scrollIncrementH << " "
+                << scrollShiftIncrementH << " "
                 << targetFPS << " "
                 << theme << " "
                 // Colors / Vectors (alphabetical)
@@ -242,9 +254,9 @@ struct DummyOptions {
                     // Booleans (alphabetical)
                     >> autoFocusOnSelection >> drawGrid >> editShadows >> enableCurveChasing >> enforceMinRadius >> glbShadowsEnabled >> graphOverlayEnabled >> hideEmptyManufacturers >> lookAheadPovSmoothing >> mistEnabled >> relativeExport >> shadowsEnabled >> showFPS >> skyboxEnabled >> softShadowsEnabled >> strictCustomStyleLock >> trackTextureEnabled >> transparentGraphs >> useLegacyHeartline
                     // Floats (alphabetical)
-                    >> ambientLightStrength >> fontSize >> fov >> graphSpacingLimit >> gridFadeEnd >> gridFadeStart >> gridMajorThickness >> gridMinorThickness >> minRadius >> mistFar >> mistNear >> mouseSensitivity >> scrollCtrlIncrement >> scrollIncrement >> scrollShiftIncrement >> skyboxRotation >> sprintMultiplier >> stallSpeed >> sunLightStrength >> sunPitch >> sunYaw
+                    >> ambientLightStrength >> fontSize >> fov >> graphSpacingLimit >> gridFadeEnd >> gridFadeStart >> gridMajorThickness >> gridMinorThickness >> measurementLineLength >> measurementLineThickness >> minRadius >> mistFar >> mistNear >> mouseSensitivity >> rollMultiplier >> scrollCtrlIncrementV >> scrollIncrementV >> scrollShiftIncrementV >> skyboxRotation >> sprintMultiplier >> stallSpeed >> sunLightStrength >> sunPitch >> sunYaw
                     // Integers (alphabetical)
-                    >> defaultTransitionLateral >> defaultTransitionNormal >> defaultTransitionPitch >> defaultTransitionRoll >> defaultTransitionYaw >> keyAppendTransition >> keyBackward >> keyForward >> keyLeft >> keyOverlayScenery >> keyOverlayWarnings >> keyPrependTransition >> keyRight >> keyViewFront >> keyViewPerspective >> keyViewSide >> keyViewTop >> maxUndoChanges >> measures >> meshQuality >> msaaSamples >> screenshotMultiplier >> targetFPS >> theme
+                    >> defaultTransitionLateral >> defaultTransitionNormal >> defaultTransitionPitch >> defaultTransitionRoll >> defaultTransitionYaw >> keyAppendTransition >> keyBackward >> keyForward >> keyLeft >> keyOverlayScenery >> keyOverlayWarnings >> keyPrependTransition >> keyRight >> keyViewFront >> keyViewPerspective >> keyViewSide >> keyViewTop >> maxUndoChanges >> measures >> meshQuality >> msaaSamples >> screenshotMultiplier >> scrollCtrlIncrementH >> scrollIncrementH >> scrollShiftIncrementH >> targetFPS >> theme
                     // Colors / Vectors (alphabetical)
                     >> ambientLightColor.x >> ambientLightColor.y >> ambientLightColor.z >> backgroundColor.x >> backgroundColor.y >> backgroundColor.z >> floorColor.x >> floorColor.y >> floorColor.z >> gridLineColor.x >> gridLineColor.y >> gridLineColor.z >> mistColor.x >> mistColor.y >> mistColor.z >> shadowColor.x >> shadowColor.y >> shadowColor.z >> sunLightColor.x >> sunLightColor.y >> sunLightColor.z >> tabHighlightColor.x >> tabHighlightColor.y >> tabHighlightColor.z
                     // Strings (alphabetical)

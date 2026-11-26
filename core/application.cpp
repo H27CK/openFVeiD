@@ -648,7 +648,6 @@ bool Application::Initialize(int argc, char** argv) {
 }
 
 void Application::Run() {
-    double targetDuration = 1.0 / (double)std::max(1, gloParent->mOptions->targetFPS);
     double nextFrameTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(window) || showExitPopup) {
@@ -793,7 +792,7 @@ void Application::Run() {
         }
 
         // 5. Frame Pacing
-        targetDuration = 1.0 / (double)std::max(1, gloParent->mOptions->targetFPS);
+        double targetDuration = 1.0 / (double)std::max(1, gloParent->mOptions->targetFPS);
         nextFrameTime += targetDuration;
 
         double now = glfwGetTime();
@@ -1193,6 +1192,7 @@ void Application::RenderViewportContent(ImVec2 viewportPanelSize, float deltaTim
 
     bool isViewportHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
     bool isViewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+
     bool viewportOverlayZTrigger = !viewportFullscreen && (isViewportHovered || isViewportFocused);
 
     if (viewportOverlayZTrigger && KeybindManager::instance().isHeld(KeyAction::OverlayScenery)) {
@@ -1419,7 +1419,10 @@ void Application::Render(float deltaTime) {
                         if (lastSlash != std::string::npos) {
                             displayLabel = displayLabel.substr(lastSlash + 1);
                         }
-                        if (ImGui::MenuItem((displayLabel + "##recent_" + path).c_str())) {
+                        std::string menuLabel = displayLabel;
+                        menuLabel += "##recent_";
+                        menuLabel += path;
+                        if (ImGui::MenuItem(menuLabel.c_str())) {
                             exitViewport();
                             loadProjectFile(path);
                         }
@@ -3240,7 +3243,47 @@ void Application::RenderOptionsWindow() {
                 ImGui::SetTooltip("Smooths out camera when in POV mode. Turn off to match the behaviour of old FVD.");
             }
 
-            // 9. Mesh Quality
+            // 9. Meas. Line Length
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Meas. Line Length");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the line length of the 3-axis markers in the viewport representing measurement points (default: 1.0x).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##MeasLineLength", &gloParent->mOptions->measurementLineLength, 0.2f, 5.0f, "%.2fx")) {
+                gloParent->mOptions->measurementLineLength = std::clamp(gloParent->mOptions->measurementLineLength, 0.1f, 10.0f);
+                viewport.buildMarkerMesh();
+                viewport.markSceneDirty();
+                gloParent->mOptions->save("options.cfg");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the line length of the 3-axis markers in the viewport representing measurement points (default: 1.0x).");
+            }
+
+            // 10. Meas. Line Thick.
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Meas. Line Thick.");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the line thickness of the 3-axis markers in the viewport representing measurement points (default: 1.0x).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##MeasLineThickness", &gloParent->mOptions->measurementLineThickness, 0.2f, 5.0f, "%.2fx")) {
+                gloParent->mOptions->measurementLineThickness = std::clamp(gloParent->mOptions->measurementLineThickness, 0.1f, 10.0f);
+                viewport.buildMarkerMesh();
+                viewport.markSceneDirty();
+                gloParent->mOptions->save("options.cfg");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the line thickness of the 3-axis markers in the viewport representing measurement points (default: 1.0x).");
+            }
+
+            // 11. Mesh Quality
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -3254,7 +3297,7 @@ void Application::RenderOptionsWindow() {
                 viewport.markSceneDirty();
             }
 
-            // 10. Scenery Shadows (Exp.)
+            // 12. Scenery Shadows (Exp.)
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -3266,7 +3309,7 @@ void Application::RenderOptionsWindow() {
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("EXPERIMENTAL: Enables planar shadows for imported scenery geometry.\nMay impact performance on large models.");
 
-            // 11. Screenshot Res.
+            // 13. Screenshot Res.
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -3281,7 +3324,7 @@ void Application::RenderOptionsWindow() {
                 ImGui::SetTooltip("Multiplies the viewport resolution (up to 8x) to capture high-definition, anti-aliased screenshots. Press F12 to capture.");
             }
 
-            // 12. Show FPS
+            // 14. Show FPS
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
@@ -3343,74 +3386,130 @@ void Application::RenderOptionsWindow() {
             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-            // 1. Incr. Ctrl
+            // 1. Incr. Ctrl (H)
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
-            ImGui::Text("Incr. Ctrl");
+            ImGui::Text("Incr. Ctrl (H)");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Sets the multiplier for the Ctrl + Scroll Wheel step size over input fields (default: 1.0).");
+                ImGui::SetTooltip("Sets the lateral pan percentage for Ctrl + Horizontal Scroll across the graph view (default: 1%%).");
             }
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputFloat("##CtrlScrollInc", &gloParent->mOptions->scrollCtrlIncrement, 0.001f, 0.1f, "%.3f")) {
-                gloParent->mOptions->scrollCtrlIncrement = std::max(0.0001f, gloParent->mOptions->scrollCtrlIncrement);
+            if (ImGui::InputInt("##CtrlScrollIncH", &gloParent->mOptions->scrollCtrlIncrementH, 1, 5)) {
+                gloParent->mOptions->scrollCtrlIncrementH = std::max(1, gloParent->mOptions->scrollCtrlIncrementH);
             }
 
-            // 2. Incr. Scroll
+            // 2. Incr. Ctrl (V)
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
-            ImGui::Text("Incr. Scroll");
+            ImGui::Text("Incr. Ctrl (V)");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Sets the multiplier for the scroll wheel step size over input fields (default: 1.0).");
+                ImGui::SetTooltip("Sets the step multiplier for Ctrl + Vertical Scroll over numeric input fields (default: 1.0).");
             }
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputFloat("##ScrollInc", &gloParent->mOptions->scrollIncrement, 0.01f, 1.0f, "%.3f")) {
-                gloParent->mOptions->scrollIncrement = std::max(0.0001f, gloParent->mOptions->scrollIncrement);
+            if (ImGui::InputFloat("##CtrlScrollInc", &gloParent->mOptions->scrollCtrlIncrementV, 0.001f, 0.1f, "%.3f")) {
+                gloParent->mOptions->scrollCtrlIncrementV = std::max(0.0001f, gloParent->mOptions->scrollCtrlIncrementV);
             }
 
-            // 3. Incr. Shift
+            // 3. Incr. Scroll (H)
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
-            ImGui::Text("Incr. Shift");
+            ImGui::Text("Incr. Scroll (H)");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Sets the multiplier for the Shift + Scroll Wheel step size over input fields (default: 10.0).");
+                ImGui::SetTooltip("Sets the lateral pan percentage for Horizontal Scroll across the graph view (default: 5%%).");
             }
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputFloat("##ShiftScrollInc", &gloParent->mOptions->scrollShiftIncrement, 0.1f, 10.0f, "%.3f")) {
-                gloParent->mOptions->scrollShiftIncrement = std::max(0.0001f, gloParent->mOptions->scrollShiftIncrement);
+            if (ImGui::InputInt("##ScrollIncH", &gloParent->mOptions->scrollIncrementH, 1, 5)) {
+                gloParent->mOptions->scrollIncrementH = std::max(1, gloParent->mOptions->scrollIncrementH);
             }
 
-            // 4. Mouse Sens.
+            // 4. Incr. Scroll (V)
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Scroll (V)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the step multiplier for Vertical Scroll over numeric input fields (default: 0.1).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##ScrollInc", &gloParent->mOptions->scrollIncrementV, 0.01f, 1.0f, "%.3f")) {
+                gloParent->mOptions->scrollIncrementV = std::max(0.0001f, gloParent->mOptions->scrollIncrementV);
+            }
+
+            // 5. Incr. Shift (H)
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Shift (H)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the lateral pan percentage for Shift + Horizontal Scroll across the graph view (default: 25%%).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputInt("##ShiftScrollIncH", &gloParent->mOptions->scrollShiftIncrementH, 1, 10)) {
+                gloParent->mOptions->scrollShiftIncrementH = std::max(1, gloParent->mOptions->scrollShiftIncrementH);
+            }
+
+            // 6. Incr. Shift (V)
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Incr. Shift (V)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the step multiplier for Shift + Vertical Scroll over numeric input fields (default: 10.0).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##ShiftScrollInc", &gloParent->mOptions->scrollShiftIncrementV, 0.1f, 10.0f, "%.3f")) {
+                gloParent->mOptions->scrollShiftIncrementV = std::max(0.0001f, gloParent->mOptions->scrollShiftIncrementV);
+            }
+
+            // 7. Mouse Sens.
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
             ImGui::Text("Mouse Sens.");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the camera mouse look sensitivity in the 3D viewport (default: 1.0).");
+            }
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::SliderFloat("##MouseSens", &gloParent->mOptions->mouseSensitivity, 0.1f, 5.0f, "%.2f")) {
-                gloParent->mOptions->mouseSensitivity = std::clamp(gloParent->mOptions->mouseSensitivity, 0.1f, 5.0f);
+            if (ImGui::InputFloat("##MouseSens", &gloParent->mOptions->mouseSensitivity, 0.05f, 0.5f, "%.2f")) {
+                gloParent->mOptions->mouseSensitivity = std::max(0.01f, gloParent->mOptions->mouseSensitivity);
             }
 
-            // 5. Sprint Mult.
+            // 8. Roll Mult.
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Roll Mult.");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Sets the adjustment multiplier when modifying roll values across all section types (default: 1.0).");
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputFloat("##RollMult", &gloParent->mOptions->rollMultiplier, 0.1f, 1.0f, "%.2f")) {
+                gloParent->mOptions->rollMultiplier = std::max(0.0001f, gloParent->mOptions->rollMultiplier);
+            }
+
+            // 9. Sprint Mult.
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
             ImGui::Text("Sprint Mult.");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key.");
+                ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key (default: 2.0).");
             }
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::SliderFloat("##SprintMult", &gloParent->mOptions->sprintMultiplier, 1.0f, 10.0f, "%.1fx")) {
-                gloParent->mOptions->sprintMultiplier = std::clamp(gloParent->mOptions->sprintMultiplier, 1.0f, 10.0f);
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Camera sprint speed multiplier when holding down the Shift key.");
+            if (ImGui::InputFloat("##SprintMult", &gloParent->mOptions->sprintMultiplier, 0.5f, 1.0f, "%.2f")) {
+                gloParent->mOptions->sprintMultiplier = std::max(1.0f, gloParent->mOptions->sprintMultiplier);
             }
 
             ImGui::EndTable();

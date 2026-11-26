@@ -188,6 +188,8 @@ void Viewport::shutdown() {
     floorMesh.vertexBuffer.destroy();
     markerMesh.vertexBuffer.destroy();
     markerMesh.indexBuffer.destroy();
+    povMarkerMesh.vertexBuffer.destroy();
+    povMarkerMesh.indexBuffer.destroy();
     for (auto& sm : glbMeshes) {
         for (auto& prim : sm.primitives) {
             prim.mesh.vertexBuffer.destroy();
@@ -854,6 +856,59 @@ void Viewport::initFloorMesh() {
     skyMesh.vertexBuffer.write(sky, sizeof(sky));
     skyMesh.count = 4;
 
+    // POV marker mesh (standard fixed thickness)
+    {
+        std::vector<float> povMarkerData;
+        std::vector<uint32_t> povIndices;
+        auto addPOVBox = [&](glm::vec3 minB, glm::vec3 maxB) {
+            uint32_t base = (uint32_t)(povMarkerData.size() / 3);
+            float verts[8][3] = {
+                {minB.x, minB.y, minB.z},
+                {maxB.x, minB.y, minB.z},
+                {maxB.x, maxB.y, minB.z},
+                {minB.x, maxB.y, minB.z},
+                {minB.x, minB.y, maxB.z},
+                {maxB.x, minB.y, maxB.z},
+                {maxB.x, maxB.y, maxB.z},
+                {minB.x, maxB.y, maxB.z}};
+            for (int i = 0; i < 8; ++i) {
+                povMarkerData.push_back(verts[i][0]);
+                povMarkerData.push_back(verts[i][1]);
+                povMarkerData.push_back(verts[i][2]);
+            }
+            uint32_t boxIndices[36] = {
+                0, 1, 2, 2, 3, 0, // front
+                5, 4, 7, 7, 6, 5, // back
+                4, 0, 3, 3, 7, 4, // left
+                1, 5, 6, 6, 2, 1, // right
+                3, 2, 6, 6, 7, 3, // top
+                4, 5, 1, 1, 0, 4  // bottom
+            };
+            for (int i = 0; i < 36; ++i) {
+                povIndices.push_back(base + boxIndices[i]);
+            }
+        };
+
+        float L = 0.15f;
+        float R = 0.004f;
+        addPOVBox(glm::vec3(-L, -R, -R), glm::vec3(L, R, R));
+        addPOVBox(glm::vec3(-R, -L, -R), glm::vec3(R, L, R));
+        addPOVBox(glm::vec3(-R, -R, -L), glm::vec3(R, R, L));
+
+        povMarkerMesh.vertexBuffer.create(*gVulkanContext, povMarkerData.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        povMarkerMesh.vertexBuffer.write(povMarkerData.data(), povMarkerData.size() * sizeof(float));
+        povMarkerMesh.indexBuffer.create(*gVulkanContext, povIndices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        povMarkerMesh.indexBuffer.write(povIndices.data(), povIndices.size() * sizeof(uint32_t));
+        povMarkerMesh.count = (int)povIndices.size();
+    }
+
+    buildMarkerMesh();
+}
+
+void Viewport::buildMarkerMesh() {
+    if (!gVulkanContext)
+        return;
+
     std::vector<float> markerData;
     std::vector<uint32_t> indices;
 
@@ -886,8 +941,16 @@ void Viewport::initFloorMesh() {
         }
     };
 
-    float L = 0.15f;
-    float R = 0.004f;
+    float lenMult = (gloParent && gloParent->mOptions) ? gloParent->mOptions->measurementLineLength : 1.0f;
+    if (lenMult <= 0.0f)
+        lenMult = 1.0f;
+    float L = 0.15f * lenMult;
+
+    float thickMult = (gloParent && gloParent->mOptions) ? gloParent->mOptions->measurementLineThickness : 1.0f;
+    if (thickMult <= 0.0f)
+        thickMult = 1.0f;
+    float R = 0.004f * thickMult;
+
     // Axis along X
     addBox(glm::vec3(-L, -R, -R), glm::vec3(L, R, R));
     // Axis along Y
@@ -895,9 +958,11 @@ void Viewport::initFloorMesh() {
     // Axis along Z
     addBox(glm::vec3(-R, -R, -L), glm::vec3(R, R, L));
 
-    markerMesh.vertexBuffer.create(*gVulkanContext, markerData.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    if (markerMesh.vertexBuffer.buffer == VK_NULL_HANDLE) {
+        markerMesh.vertexBuffer.create(*gVulkanContext, markerData.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        markerMesh.indexBuffer.create(*gVulkanContext, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    }
     markerMesh.vertexBuffer.write(markerData.data(), markerData.size() * sizeof(float));
-    markerMesh.indexBuffer.create(*gVulkanContext, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     markerMesh.indexBuffer.write(indices.data(), indices.size() * sizeof(uint32_t));
     markerMesh.count = (int)indices.size();
 }
@@ -1807,6 +1872,16 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
         .sunStrength = gloParent->mOptions->sunLightStrength,
     };
 
+    static float lastMarkerThickness = -1.0f;
+    static float lastMarkerLength = -1.0f;
+    float currentMarkerThickness = (gloParent && gloParent->mOptions) ? gloParent->mOptions->measurementLineThickness : 1.0f;
+    float currentMarkerLength = (gloParent && gloParent->mOptions) ? gloParent->mOptions->measurementLineLength : 1.0f;
+    if (currentMarkerThickness != lastMarkerThickness || currentMarkerLength != lastMarkerLength) {
+        lastMarkerThickness = currentMarkerThickness;
+        lastMarkerLength = currentMarkerLength;
+        buildMarkerMesh();
+    }
+
     VkBuffer buffers[2] = {markerMesh.vertexBuffer.buffer, zeroAttributeBuffer.buffer};
     VkDeviceSize offsets[2] = {0, 0};
     vkCmdBindVertexBuffers(commandBuffer, 0, 2, buffers, offsets);
@@ -1873,11 +1948,16 @@ void Viewport::drawMarkers(VkCommandBuffer commandBuffer) {
     if (showPOVMarker3D && !povMode) {
         mnode* povMarkerNode = getPOVNode();
         if (povMarkerNode) {
+            VkBuffer povBuffers[2] = {povMarkerMesh.vertexBuffer.buffer, zeroAttributeBuffer.buffer};
+            VkDeviceSize povOffsets[2] = {0, 0};
+            vkCmdBindVertexBuffers(commandBuffer, 0, 2, povBuffers, povOffsets);
+            vkCmdBindIndexBuffer(commandBuffer, povMarkerMesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
             glm::vec3 pos = povMarkerNode->vPos;
             uniforms.anchorBase = baseAnchorBase * glm::translate(glm::mat4(1.0f), pos) * glm::scale(glm::mat4(1.0f), glm::vec3(0.7f));
             uniforms.solidColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
             markerPipeline.bindWithUniforms(commandBuffer, &uniforms, sizeof(uniforms));
-            vkCmdDrawIndexed(commandBuffer, markerMesh.count, 1, 0, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, povMarkerMesh.count, 1, 0, 0, 0);
         }
     }
 }

@@ -133,18 +133,25 @@ void func::setMaxArgument(double newMax) {
 }
 
 void func::translateValues(subfunc* caller) {
+    if (!caller)
+        return;
+
     int i = 0;
-    subfunc *prev, *cur = NULL;
+    subfunc* cur = nullptr;
     while (i < (int)funcList.size()) {
         cur = funcList[i++];
         if (cur == caller)
             break;
     }
+    if (cur != caller)
+        return;
 
     for (; i < (int)funcList.size(); ++i) {
-        prev = cur;
+        subfunc* prev = cur;
         cur = funcList[i];
-        cur->translateValues(prev->endValue());
+        if (cur && prev) {
+            cur->translateValues(prev->endValue());
+        }
     }
 }
 

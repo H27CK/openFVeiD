@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(FVDPlusPlus VERSION 0.9.10 LANGUAGES C CXX)
+project(FVDPlusPlus VERSION 0.9.11 LANGUAGES C CXX)
 
 set(FVD_VERSION "" CACHE STRING "Version string shown in the app, injected by the release workflow")
 if(FVD_VERSION STREQUAL "")

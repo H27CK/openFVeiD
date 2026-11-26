@@ -1817,8 +1817,11 @@ void GraphView::renderResultingPlot(trackHandler* hTrack) {
                     spec.LineColor.w = secData.isActive ? 0.9f : 0.4f;
 
                     std::string label = graphs[i].label;
-                    if (!firstVisible)
-                        label = "##" + label + "_" + std::to_string(s);
+                    if (!firstVisible) {
+                        label.insert(0, "##");
+                        label += '_';
+                        label += std::to_string(s);
+                    }
                     firstVisible = false;
 
                     PlotVectorLine(label.c_str(), secData.x.data(), secData.y.data(), (int)secData.x.size(), spec);
@@ -2532,6 +2535,49 @@ void GraphView::renderTimeline(trackHandler* hTrack) {
             }
         }
     }
+
+    bool windowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+    ImGuiIO& io = ImGui::GetIO();
+    float wheelH = io.MouseWheelH;
+    if (wheelH == 0.0f && io.KeyShift && io.MouseWheel != 0.0f) {
+        wheelH = -io.MouseWheel;
+    }
+    if (wheelH != 0.0f && windowHovered) {
+        ImGuiID scrollID = ImGui::GetID("GraphViewScroll");
+        if (io.MouseWheelH != 0.0f) {
+            ImGui::SetKeyOwner(ImGuiKey_MouseWheelX, scrollID, ImGuiInputFlags_LockThisFrame);
+        } else {
+            ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, scrollID, ImGuiInputFlags_LockThisFrame);
+        }
+        handleHorizontalGraphScroll(wheelH);
+    }
+}
+
+void GraphView::handleHorizontalGraphScroll(float wheelH) {
+    if (wheelH == 0.0f || !gloParent || !gloParent->mOptions)
+        return;
+
+    ImGuiIO& io = ImGui::GetIO();
+    double step = static_cast<double>(gloParent->mOptions->scrollIncrementH);
+    if (io.KeyCtrl) {
+        step = static_cast<double>(gloParent->mOptions->scrollCtrlIncrementH);
+    } else if (io.KeyShift && io.MouseWheelH != 0.0f) {
+        step = static_cast<double>(gloParent->mOptions->scrollShiftIncrementH);
+    }
+
+    double currentSpan = linkedXMax - linkedXMin;
+    if (currentSpan <= 0.0) {
+        currentSpan = 10.0;
+    }
+
+    // In Dear ImGui, MouseWheelH > 0 is scroll left, MouseWheelH < 0 is scroll right.
+    // Subtracting wheelH ensures scrolling left decreases X and scrolling right increases X.
+    double deltaX = -static_cast<double>(wheelH) * (step / 100.0) * currentSpan;
+    if (std::isnan(deltaX) || std::isinf(deltaX))
+        return;
+
+    linkedXMin += deltaX;
+    linkedXMax += deltaX;
 }
 
 void GraphView::exportToCSV(const std::string& filepath, trackHandler* hTrack, int startNodeIdx, int endNodeIdx) {

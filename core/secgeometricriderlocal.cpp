@@ -34,7 +34,7 @@ secgeometricriderlocal::~secgeometricriderlocal() {
 
 secgeometricriderlocal::secgeometricriderlocal(track* getParent, mnode* first, float gettime)
     : section(getParent, geometricriderlocal, first) {
-    this->iTime = (int)(gettime + 0.5);
+    this->iTime = (int)std::lround(gettime);
     this->length = 0.0;
     rollFunc->changeLength(1.f, 0);
 
@@ -91,7 +91,7 @@ int secgeometricriderlocal::updateSection(int node) {
     node = node > (int)lNodes.size() - 2 ? (int)lNodes.size() - 2 : node;
     node = node < 0 ? 0 : node;
 
-    int numNodes = (int)(getMaxArgument() * F_HZ + 0.5);
+    int numNodes = (int)std::lround(getMaxArgument() * F_HZ);
     iTime = numNodes;
 
     if (node >= (int)lNodes.size() - 1 && node > 0) {

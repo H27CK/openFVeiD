@@ -74,15 +74,17 @@ void TransitionView::render(trackHandler* hTrack, subfunc* sf, Application* app)
 
         ImGui::Spacing();
         renderActions(hTrack, sf, app);
-        ImGui::Spacing();
-        renderTargetSolver(hTrack, sf, app);
-        ImGui::Spacing();
+        if (gloParent->selectedFunc == sf) {
+            ImGui::Spacing();
+            renderTargetSolver(hTrack, sf, app);
+            ImGui::Spacing();
+        }
     } else {
         ImGui::TextDisabled("Select a transition from the list or graph to edit properties.");
         ImGui::Spacing();
     }
 
-    renderSelectionList(hTrack, sf, app);
+    renderSelectionList(hTrack, gloParent->selectedFunc, app);
 
     if (ImGui::GetCurrentContext()->ActiveIdPreviousFrame != 0 && ImGui::GetCurrentContext()->ActiveId == 0) {
         if (app) {
@@ -240,9 +242,10 @@ void TransitionView::renderBasicProperties(trackHandler* hTrack, subfunc* sf, Ap
 
     float change = sf->symArg / changeFactor;
     std::string chgSuffix = getChangeSuffix(sf);
+    float rollMult = (sf->parent->type == funcRoll && gloParent && gloParent->mOptions) ? gloParent->mOptions->rollMultiplier : 1.0f;
     PROP_ROW(
         "Change",
-        if (ImGui::DragFloat(("##Change" + chgSuffix).c_str(), &change, 0.01f, -500.0f / changeFactor, 500.0f / changeFactor, ("%.3f " + chgSuffix).c_str()) || common::ValueScroll(&change, 1.0f, 0.1f)) {
+        if (ImGui::DragFloat(("##Change" + chgSuffix).c_str(), &change, 0.01f * rollMult, -500.0f / changeFactor, 500.0f / changeFactor, ("%.3f " + chgSuffix).c_str()) || common::ValueScroll(&change, 1.0f * rollMult, 0.1f * rollMult)) {
             sf->symArg = change * changeFactor;
             hTrack->trackData->requestUpdateTrack(sf->parent->secParent, 0);
         })
@@ -548,6 +551,8 @@ void TransitionView::renderTargetSolver(trackHandler* hTrack, subfunc* sf, Appli
             };)
 
         bool showAnchorBtn = (app && app->trackList.size() > 1);
+        bool isRollVar = ((TargetVariable)solverTargetVar == TargetVariable::Roll || (TargetVariable)solverTargetVar == TargetVariable::RollRate);
+        float rollMult = (isRollVar && gloParent && gloParent->mOptions) ? gloParent->mOptions->rollMultiplier : 1.0f;
         PROP_ROW(
             "Target Value",
             if (showAnchorBtn) {
@@ -555,7 +560,8 @@ void TransitionView::renderTargetSolver(trackHandler* hTrack, subfunc* sf, Appli
                 float btnWidth = ImGui::CalcTextSize("From Anchor").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f;
                 float totalReserved = btnWidth + ImGui::GetStyle().ItemSpacing.x;
                 ImGui::SetNextItemWidth(-totalReserved);
-                ImGui::DragFloat("##TargetValue", &solverTargetValue, 0.1f, -360.0f, 360.0f, ("%.3f" + valSuffix).c_str());
+                if (ImGui::DragFloat("##TargetValue", &solverTargetValue, 0.1f * rollMult, -360.0f, 360.0f, ("%.3f" + valSuffix).c_str()) || common::ValueScroll(&solverTargetValue, 1.0f * rollMult, 0.1f * rollMult)) {
+                }
                 ImGui::SameLine();
                 if (ImGui::Button("From Anchor", ImVec2(btnWidth, frameH))) {
                     ImGui::OpenPopup("MatchTrackAnchorPopup");
@@ -607,7 +613,8 @@ void TransitionView::renderTargetSolver(trackHandler* hTrack, subfunc* sf, Appli
                     ImGui::EndPopup();
                 }
             } else {
-                ImGui::DragFloat("##TargetValue", &solverTargetValue, 0.1f, -360.0f, 360.0f, ("%.3f" + valSuffix).c_str());
+                if (ImGui::DragFloat("##TargetValue", &solverTargetValue, 0.1f * rollMult, -360.0f, 360.0f, ("%.3f" + valSuffix).c_str()) || common::ValueScroll(&solverTargetValue, 1.0f * rollMult, 0.1f * rollMult)) {
+                }
             })
 
         PROP_ROW(
